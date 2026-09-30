@@ -223,6 +223,12 @@ export function ambientLabels(): { text: string; x: number; y: number }[] {
   ]
 }
 
+/** 锚点默认矩形估算（默认态只显示 index + label + count；供碰撞求解，§31） */
+export function anchorBoxSize(label: string, tier: Tier): { width: number; height: number } {
+  const f = tierFont(tier)
+  return { width: Math.max(label.length * f.size * 0.62 + 46, 200), height: 62 }
+}
+
 /** Gather（§42）：紧凑非对称分组——两列错落，禁止围圆 */
 export function gatherTargets(ids: string[]): Record<string, { x: number; y: number }> {
   const out: Record<string, { x: number; y: number }> = {}

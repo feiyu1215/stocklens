@@ -12,6 +12,8 @@ const ALLOWED = new Set([
   "unknown-dimension",
   // Task 15.2 art-direction 原型：midea-overview + 真实 unknown 维度响应形态（见 index.json note）
   "midea-artdirection",
+  // Task 15.3B §44：碰撞测试用 8 维度 fixture
+  "midea-eight",
 ])
 
 /**

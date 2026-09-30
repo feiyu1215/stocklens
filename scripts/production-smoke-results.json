@@ -1,5 +1,5 @@
 {
-  "base": "https://feb-comprehensive-truth-receiving.trycloudflare.com",
+  "base": "https://stocklens-blush.vercel.app",
   "results": {
     "P1-经营": {
       "ok": true,
@@ -13,7 +13,7 @@
       ],
       "evidence": 25,
       "conflict": 2,
-      "latency": 11219
+      "latency": 12144
     },
     "P2-估值": {
       "ok": true,
@@ -24,7 +24,7 @@
       ],
       "evidence": 10,
       "conflict": 1,
-      "latency": 4881
+      "latency": 6134
     },
     "P3-行情": {
       "ok": true,
@@ -35,12 +35,12 @@
       ],
       "evidence": 7,
       "conflict": 1,
-      "latency": 3989
+      "latency": 6630
     },
     "P4-合规": {
       "ok": true,
       "mode": "compliance_redirect",
-      "latency": 683
+      "latency": 475
     },
     "P5-追问": {
       "ok": true,
@@ -51,7 +51,7 @@
         "inferences",
         "unknowns"
       ],
-      "latency": 7751
+      "latency": 9258
     },
     "P0-首页": {
       "ok": true

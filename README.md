@@ -6,7 +6,7 @@ AI Native 个股多维诊断与证据验证工具（题目 03 交付）。
 > 它把真实金融数据组织成可追溯的证据链，区分**事实、分析推断与暂时无法验证的信息**，
 > 并让每一个结论都能点回原始数据。
 
-- **公开访问**：https://feb-comprehensive-truth-receiving.trycloudflare.com （cloudflared 隧道，随演示进程存活；失效时按下方「本地运行」自建）
+- **公开访问（正式）**：https://stocklens-blush.vercel.app （Vercel 生产部署；源码 https://github.com/feiyu1215/stocklens ）
 - **研究对象**：美的集团 000333.SZ（P0 固定标的，不做全市场搜索）
 
 ## 目标用户
@@ -57,12 +57,16 @@ npm run dev                  # http://localhost:3000
 
 命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，198 个）/ npm run lint。
 
-公网隧道（复现当前部署形态）：
+正式部署（Vercel，已完成）：
 
 ```bash
-npm run build && npm run start -- --port 3100
-cloudflared tunnel --url http://localhost:3100   # 输出 trycloudflare.com 公网 URL
+npx vercel link --yes --project stocklens
+npx vercel env add FUYAO_API_KEY production      # 值来自 .env.local
+npx vercel env add DEEPSEEK_API_KEY production
+npx vercel deploy --prod                         # https://stocklens-blush.vercel.app
 ```
+
+后续更新只需 `git push`（Vercel 已关联仓库自动部署）或再次 `npx vercel deploy --prod`。
 
 ## 调试 API
 

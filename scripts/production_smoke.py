@@ -1,6 +1,7 @@
 import json, time, urllib.request, urllib.error
 
-BASE = "https://feb-comprehensive-truth-receiving.trycloudflare.com"
+import sys
+BASE = sys.argv[1] if len(sys.argv) > 1 else "https://stocklens-blush.vercel.app"
 
 def post(path, payload, timeout=120):
     req = urllib.request.Request(

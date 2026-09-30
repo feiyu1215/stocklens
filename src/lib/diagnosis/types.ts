@@ -64,6 +64,24 @@ export interface DiagnosisResponse {
   } | null
   /** additive extension（Task 08）：行业估值样本量（UI 展示 n=…） */
   industryValuationSampleSize?: number | null
+  /** additive extension（Task 10）：事件/风险 Lite 汇总（UI 展示用；不含 rawFields） */
+  events?: {
+    items: {
+      eventId: string
+      type: string
+      title: string
+      statement: string
+      eventDate?: string
+      source: "fuyao"
+      sourceEndpoint: string
+    }[]
+    coverage: {
+      anomaly: string
+      attention: string
+      corporateAction: string
+      newsDisclosure: string
+    }
+  } | null
   /** additive extension（Task 09）：证据选择计数（UI 用 full；synthesis 供 Trace/调试） */
   evidenceSelection?: {
     full: number

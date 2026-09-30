@@ -1,4 +1,5 @@
 import type { FinancialPeriodData } from "@/lib/data/types"
+import { computeInterpretation } from "./interpretation"
 import { UNITS, type MetricResult, type MetricSourceField } from "./types"
 
 // 财务类指标（确定性计算，无语义判断）。
@@ -112,7 +113,33 @@ function buildCumulativeYoY(
   if (previous === 0) {
     return { ...base, status: "unavailable", value: null, unavailableReason: `denominator (${comparisonPeriod} ${field}) is 0` }
   }
-  return { ...base, value: (current / previous - 1) * 100 }
+  const interpretation = computeInterpretation({
+    current,
+    previous,
+    historicalAbsValues: standaloneHistory(periods, field),
+  })
+  return { ...base, value: (current / previous - 1) * 100, ...interpretationFields(interpretation) }
+}
+
+/** 该字段的历史单季绝对值样本（用于 scale-aware 低基数判断） */
+function standaloneHistory(periods: FinancialPeriodData[], field: CumulativeField): number[] {
+  const out: number[] = []
+  for (const p of periods) {
+    const v = getStandaloneQuarterValue(periods, p.period, field)
+    if (typeof v === "number" && Number.isFinite(v)) out.push(v)
+  }
+  return out
+}
+
+function interpretationFields(result: { flags: string[]; note?: string }): {
+  interpretationFlags?: MetricResult["interpretationFlags"]
+  interpretationNote?: string
+} {
+  if (result.flags.length === 0) return {}
+  return {
+    interpretationFlags: result.flags as MetricResult["interpretationFlags"],
+    ...(result.note ? { interpretationNote: result.note } : {}),
+  }
 }
 
 /** 单季同比：本期单季 / 上年同期单季 - 1（×100，单位 %） */
@@ -180,7 +207,16 @@ function buildQuarterlyYoY(
   if (previousStandalone === 0) {
     return { ...base, status: "unavailable", value: null, unavailableReason: `denominator (${comparisonPeriod} standalone quarter) is 0` }
   }
-  return { ...base, value: (currentStandalone / previousStandalone - 1) * 100 }
+  const interpretation = computeInterpretation({
+    current: currentStandalone,
+    previous: previousStandalone,
+    historicalAbsValues: standaloneHistory(periods, field),
+  })
+  return {
+    ...base,
+    value: (currentStandalone / previousStandalone - 1) * 100,
+    ...interpretationFields(interpretation),
+  }
 }
 
 /** CFO / 归母净利润（同一累计报告期） */

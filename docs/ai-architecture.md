@@ -93,6 +93,27 @@ Planner（意图 + 维度）
 **边界**：Packing 只压缩 LLM 上下文；UI/Follow-up/Debug 的完整证据集不受影响；
 Validator（Evidence Binding / 分区类型 / 合规）不放宽——送进模型的证据包即校验范围。
 
+## Low-base Interpretation Guardrail（Task 10）
+
+极端同比（真实案例：2025-Q4 OCF YoY = −1600%，数学正确但基数极小）如果原样交给 LLM，
+模型容易表述为"现金流极端恶化"。护栏做法：
+
+- 用**自身历史单季绝对值中位数**建 scale-aware 基准（不写死金额阈值，跨公司可比）；
+- 上年同期 < 中位数 × 10%（样本 ≥4）→ `low_base`；正负切换 → `sign_flip_base`；
+  |YoY| ≥ 500% → `extreme_change`；
+- 只增加解释元数据，**绝不修改原始数值**；Evidence 与 LLM 输入都携带 note；
+- Prompt 明文："不得仅根据极端同比数字推断经营状况出现同等幅度的恶化或改善"；
+- UI 在趋势表与 Drawer 展示 ⚠ 标记与上年同期绝对金额（不隐藏原值）。
+
+## Event Coverage ≠ Complete News Coverage（Task 10）
+
+Event / Risk Lite 只回答"最近是否出现值得注意的市场事件或关注变化"，覆盖：
+个股异动（接口原文）、热榜关注度、公司行为。**公告与新闻文本源未接入**，
+因此 `EV_UNKNOWN_RISK_NEWS_DISCLOSURE` 恒定存在——系统不会让用户误以为已覆盖全部事件。
+"接口成功但无记录"与"接口失败"严格区分（前者仍不能推出"无事件"）。
+被问"为什么最近跌了"时，若事件证据不足，必须回答"当前证据只能确认行情变化，
+无法验证具体驱动原因"，禁止无证据归因（如"资金出逃""预期下调"）。
+
 ## Compliance：Pre-check + Post-check 双保险
 
 - **Pre-check**（Planner 之前）：确定性模式匹配拦截明显投资建议请求（能买吗/目标价/

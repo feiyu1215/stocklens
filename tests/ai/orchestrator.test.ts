@@ -43,7 +43,7 @@ describe("runDiagnosis —— 完整成功链路", () => {
     const allowedDims = new Set(["growth", "profitability", "cashflow", "valuation", "market", "industry"])
     expect(resp.evidence.every((e) => allowedDims.has(e.dimension))).toBe(true)
     expect(resp.stats.totalEvidence).toBe(resp.evidence.length)
-    // Planner 选中 growth/profitability/cashflow/valuation(+market optional)，未选 industry：
+    // Planner 选中 growth/profitability/cashflow/valuation(+market optional)，未选 industry/risk：
     // 选中事实 = 21 原有 + 8（CSI300 3 / 相对 3 / 行业估值 2）= 29；行业行情 6 条被维度过滤排除
     expect(resp.stats.fact).toBe(29)
     expect(resp.stats.inference).toBe(3)
@@ -180,8 +180,8 @@ describe("§52/§53｜AI Failure 不污染 Truth Layer", () => {
     expect(resp.ai.status).toBe("failed")
     expect(resp.planner).toBeUndefined()
     expect(resp.synthesis).toBeNull()
-    // 全量证据 = 40 条（Task 08 前 26 + 基准/行业 14）
-    expect(resp.stats.totalEvidence).toBe(40)
+    // 全量证据 = 42 条（Task 08 的 40 + Task 10 事件边界 UNKNOWN 2 条）
+    expect(resp.stats.totalEvidence).toBe(42)
     expect(resp.notices?.length).toBeGreaterThan(0)
   })
 })

@@ -40,6 +40,7 @@ export function buildSynthesisSystemPrompt(): string {
     "- 绝对不要发明输入中不存在的 evidenceId（例如自造 EV_UNKNOWN_XXX）。unknowns 分区只允许引用输入中 type=unknown 的证据；若输入中没有 unknown 证据，unknowns 返回空数组。",
     "- 如果某类信息只有 unknown 证据，如实说明「当前无法验证」，不要绕过它下结论。",
     "- 输入证据已由系统根据用户研究意图确定性筛选。仅使用提供的 Evidence；不要讨论未提供的维度，也不要要求补充证据。",
+    "- 若某条 Evidence 带 interpretationNote（同比解释护栏），必须保留该限制：不得仅根据极端同比数字推断经营状况出现同等幅度的恶化或改善，应提示结合绝对金额观察。",
     "",
     "只输出一个 JSON 对象，格式：",
     '{"summary":{"text":"...","evidenceIds":[...]},"confirmedFacts":[{"text":"...","evidenceIds":[...]}],"analysisInferences":[{"text":"...","evidenceIds":[...]}],"unknowns":[{"text":"...","evidenceIds":[...]}],"nextQuestions":["..."]}',

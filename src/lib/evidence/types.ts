@@ -47,6 +47,12 @@ export interface Evidence {
   confidenceReason: string
   /** UNKNOWN 必须给出无法验证的原因 */
   unavailableReason?: string
+  /**
+   * Task 10 解释护栏（additive）：同比值的解释限制（低基数/正负切换/极端变化）。
+   * 只提示解释谨慎性，不改变 signal 强度。
+   */
+  interpretationFlags?: import("@/lib/metrics/interpretation").MetricInterpretationFlag[]
+  interpretationNote?: string
 }
 
 export interface EvidenceContext {

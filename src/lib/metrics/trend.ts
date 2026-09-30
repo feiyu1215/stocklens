@@ -1,5 +1,6 @@
 import type { FinancialPeriodData } from "@/lib/data/types"
 import { getStandaloneQuarterValue, type CumulativeField } from "./financial"
+import { computeInterpretation, type MetricInterpretationFlag } from "./interpretation"
 
 // 财务趋势（Task 08 §15–18）：
 // 复用 Task 02 已验证的「累计 → 单季差分」算法（getStandaloneQuarterValue），不另写第二套。
@@ -16,6 +17,13 @@ export interface FinancialTrendPoint {
   revenueQuarterYoY?: number | null
   netProfitQuarterYoY?: number | null
   operatingCashflowQuarterYoY?: number | null
+  /** Task 10 解释护栏（additive）：各字段的 flags 与提示（不修改同比原值） */
+  interpretation?: Partial<
+    Record<
+      "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY",
+      { flags: MetricInterpretationFlag[]; note?: string; previousAbsolute?: number }
+    >
+  >
 }
 
 type TrendField = Extract<CumulativeField, "revenue" | "netProfit" | "operatingCashflow">
@@ -56,10 +64,29 @@ function quarterSortKey(period: string): number {
 }
 
 /** 单季值 + 单季同比时间序列（ASC）。缺失保留 null，不假设。 */
+function yoyKeyOf(
+  field: TrendField,
+): "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY" {
+  if (field === "revenue") return "revenueQuarterYoY"
+  if (field === "netProfit") return "netProfitQuarterYoY"
+  return "operatingCashflowQuarterYoY"
+}
+
 export function buildFinancialTrend(periods: FinancialPeriodData[]): FinancialTrendPoint[] {
   if (periods.length === 0) return []
 
   const fields: TrendField[] = ["revenue", "netProfit", "operatingCashflow"]
+
+  // 各字段历史单季绝对值样本（scale-aware 低基数基准）
+  const historyByField = new Map<TrendField, number[]>()
+  for (const field of fields) {
+    const values: number[] = []
+    for (const p of periods) {
+      const v = getStandaloneQuarterValue(periods, p.period, field)
+      if (typeof v === "number" && Number.isFinite(v)) values.push(v)
+    }
+    historyByField.set(field, values)
+  }
 
   const points = new Map<string, FinancialTrendPoint>()
   for (const p of periods) {
@@ -88,6 +115,22 @@ export function buildFinancialTrend(periods: FinancialPeriodData[]): FinancialTr
         previous !== 0
       ) {
         setQuarterYoY(point, field, (current / previous - 1) * 100)
+        const interpretation = computeInterpretation({
+          current,
+          previous,
+          historicalAbsValues: historyByField.get(field) ?? [],
+        })
+        if (interpretation.flags.length > 0) {
+          const yoyKey = yoyKeyOf(field)
+          point.interpretation = {
+            ...(point.interpretation ?? {}),
+            [yoyKey]: {
+              flags: interpretation.flags,
+              ...(interpretation.note ? { note: interpretation.note } : {}),
+              previousAbsolute: previous,
+            },
+          }
+        }
       } else {
         setQuarterYoY(point, field, null)
       }

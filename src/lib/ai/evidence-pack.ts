@@ -211,6 +211,8 @@ export interface CompactEvidenceForLLM {
   basedOn: string[]
   period?: string
   comparisonPeriod?: string
+  /** Task 10：同比解释护栏提示（模型必须保留该限制） */
+  interpretationNote?: string
 }
 
 export function toCompactEvidence(e: Evidence): CompactEvidenceForLLM {
@@ -224,5 +226,6 @@ export function toCompactEvidence(e: Evidence): CompactEvidenceForLLM {
     basedOn: e.basedOn,
     ...(e.period ? { period: e.period } : {}),
     ...(e.comparisonPeriod ? { comparisonPeriod: e.comparisonPeriod } : {}),
+    ...(e.interpretationNote ? { interpretationNote: e.interpretationNote } : {}),
   }
 }

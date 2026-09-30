@@ -7,6 +7,7 @@ import type { Evidence } from "@/lib/evidence/types"
 import { formatMetricValue } from "@/lib/presentation/formatters"
 import { CONFIDENCE_LABEL, CONFIDENCE_TOOLTIP, EvidenceSignalBadge, EvidenceTypeBadge } from "./badges"
 import { FollowupSection } from "./FollowupSection"
+import { InterpretationCaution } from "./EventPanel"
 
 // Evidence Drawer（Task 05 §27–41）：证据钻取主入口。
 // - inference：依据事实（basedOn 可点击下钻，带返回）；
@@ -153,6 +154,9 @@ export function EvidenceDrawer({
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">证据说明</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-zinc-800">{current.statement}</p>
+            <div className="mt-2">
+              <InterpretationCaution flags={current.interpretationFlags} note={current.interpretationNote} />
+            </div>
           </section>
 
           {current.type === "inference" && (

@@ -29,8 +29,16 @@ export function validateEvidenceBundle(evidence: Evidence[]): EvidenceValidation
     }
 
     if (e.type === "fact") {
-      if (e.metricIds.length < 1) {
-        violations.push({ evidenceId: e.evidenceId, rule: "fact-metric-ids", message: "FACT requires metricIds.length >= 1" })
+      // 不变量本意：每条事实都必须可追溯到来源。
+      // 指标类事实 → metricIds ≥ 1；事件类事实（Task 10，dimension=risk，非指标驱动）
+      // → 以 sourceFields（含真实接口路径与日期）作为可追溯凭据。
+      const traceableAsEvent = e.dimension === "risk" && e.sourceFields.length >= 1
+      if (e.metricIds.length < 1 && !traceableAsEvent) {
+        violations.push({
+          evidenceId: e.evidenceId,
+          rule: "fact-metric-ids",
+          message: "FACT requires metricIds.length >= 1 (or, for risk-dimension event facts, sourceFields traceability)",
+        })
       }
       if (e.basedOn.length !== 0) {
         violations.push({ evidenceId: e.evidenceId, rule: "fact-based-on", message: "FACT must not reference other evidence (basedOn must be empty)" })

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto"
 
 import { gatherStockData } from "@/lib/data/stock-data"
 import { gatherMarketContext, type MarketContext } from "@/lib/data/industry"
+import { gatherEventContext, type EventContext } from "@/lib/data/events"
 import { calculateMetrics, type MarketContextInput } from "@/lib/metrics/engine"
 import { buildEvidence } from "@/lib/evidence/engine"
 import { buildFinancialTrend } from "@/lib/metrics/trend"
@@ -134,9 +135,16 @@ export async function runDiagnosis(input: {
   }
 
   // ---------- 2. Truth Layer（不重构，直接复用）----------
-  const [dataResp, marketCtx] = await Promise.all([
+  const [dataResp, marketCtx, eventCtx] = await Promise.all([
     gatherStockData(input.stockCode),
     gatherMarketContext(input.stockCode).catch((): MarketContext => ({ csi300: [], errors: [] })),
+    gatherEventContext(input.stockCode).catch(
+      (): EventContext => ({
+        events: [],
+        coverage: { anomaly: "failed", attention: "failed", corporateAction: "failed", newsDisclosure: "unavailable" },
+        errors: [],
+      }),
+    ),
   ])
   const marketInput: MarketContextInput = {
     csi300: marketCtx.csi300,
@@ -170,6 +178,7 @@ export async function runDiagnosis(input: {
     const bundle = buildEvidence({
       metrics: metricsResp.metrics,
       trend: makeTrendLookup(dataResp.financial),
+      events: eventCtx,
       context: {
         stockCode: input.stockCode,
         stockName: dataResp.stock?.stockName ?? input.stockCode,
@@ -206,6 +215,19 @@ export async function runDiagnosis(input: {
       industry: industryMeta,
       industryValuationSampleSize,
     }
+  }
+
+  const eventSummary = {
+    items: eventCtx.events.map((e) => ({
+      eventId: e.eventId,
+      type: e.type,
+      title: e.title,
+      statement: e.statement,
+      ...(e.eventDate ? { eventDate: e.eventDate } : {}),
+      source: e.source,
+      sourceEndpoint: e.sourceEndpoint,
+    })),
+    coverage: { ...eventCtx.coverage },
   }
 
   const dimensionAvailability = computeDimensionAvailability(evidence)
@@ -287,6 +309,7 @@ export async function runDiagnosis(input: {
       industry: industryMeta,
       industryValuationSampleSize,
       evidenceSelection: packSelectionTrace(selected, pack),
+      events: eventSummary,
     }
   }
 
@@ -306,5 +329,6 @@ export async function runDiagnosis(input: {
     industry: industryMeta,
     industryValuationSampleSize,
     evidenceSelection: packSelectionTrace(selected, pack),
+    events: eventSummary,
   }
 }

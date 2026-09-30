@@ -65,7 +65,9 @@ describe("buildDimensionViews（§24–26）", () => {
     const industry = vs.find((v) => v.dimension === "industry")!
     expect(industry.hasEvidence).toBe(true)
     expect(industry.counts.unknown).toBe(1)
-    // risk 维度完全没有证据 → 信息不足
-    expect(vs.find((v) => v.dimension === "risk")!.hasEvidence).toBe(false)
+    // risk 维度现在承载新闻/公告覆盖边界 UNKNOWN（Task 10）→ 有证据
+    const risk = vs.find((v) => v.dimension === "risk")!
+    expect(risk.hasEvidence).toBe(true)
+    expect(risk.counts.unknown).toBe(1)
   })
 })

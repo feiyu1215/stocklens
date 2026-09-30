@@ -73,3 +73,26 @@ ERROR = 本应取得但本次调用失败（由 API 层 `errors[]` 透传，不�
 
 输出前强制校验：类型约束（见上表）、evidenceId 唯一、INFERENCE 引用完整性
 （broken reference → 校验失败并抛错，绝不悄悄删除引用）。
+
+---
+
+## Task 10 新增：解释护栏与事件证据
+
+**同比解释护栏**（`src/lib/metrics/interpretation.ts`，阈值集中配置）：
+`low_base`（上年同期绝对值 < 自身历史单季绝对值中位数 × 10%，样本 ≥4 才判定）、
+`sign_flip_base`（正负切换）、`extreme_change`（|YoY| ≥ 500%）。
+护栏只产出 flags + 模板化 note，**绝不修改 Metric.value**；Evidence 原样传播
+（`interpretationFlags` / `interpretationNote`），AI 必须保留该限制。
+signal 不因极端百分比自动变强（仍只有 positive/negative/conflict/neutral/unknown）。
+
+**事件证据**（dimension = `risk`，全部 signal = neutral）：
+
+| evidenceId 模式 | 来源 | 说明 |
+|---|---|---|
+| `EV_FACT_RISK_EVT_ANOMALY_*` | anomaly-analysis-stock | 异动记录：忠实转述接口 tag 与解读文本，不添加因果 |
+| `EV_FACT_RISK_EVT_ATTENTION_*` | hot-stock-rank-trend | 热榜排名变化（rank 越小越靠前；上升 ≠ 利好） |
+| `EV_FACT_RISK_EVT_CORP_ACTION_*` | corporate-actions/adjustment-factors | 分红/送股（不因分红标 positive） |
+| `EV_UNKNOWN_RISK_ANOMALY_COVERAGE` | anomaly 接口成功但无记录 | 明确"不能据此确认不存在其他事件" |
+| `EV_UNKNOWN_RISK_ANOMALY_UNAVAILABLE` | anomaly 接口失败 | 与"无记录"区分 |
+| `EV_UNKNOWN_RISK_ATTENTION_COVERAGE` | 热榜窗口内无点位 | 不解释为"完全无人关注" |
+| `EV_UNKNOWN_RISK_NEWS_DISCLOSURE` | 恒定 | 公告/新闻文本未接入——事件覆盖不是全量 |

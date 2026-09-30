@@ -11,6 +11,7 @@ import { EvidenceDrawer } from "@/components/stocklens/EvidenceDrawer"
 import { DiagnosisSummary } from "@/components/stocklens/DiagnosisSummary"
 import { TrendPanel } from "@/components/stocklens/TrendPanel"
 import { MarketContextTable } from "@/components/stocklens/MarketContextTable"
+import { EventPanel } from "@/components/stocklens/EventPanel"
 import {
   ComplianceRedirect,
   DiagnosisError,
@@ -159,6 +160,8 @@ function DiagnosisWorkspace() {
         {data.trend && data.trend.length > 0 && <TrendPanel trend={data.trend} />}
 
         <MarketContextTable metrics={data.metrics} industryLabel={data.industry?.name ?? null} />
+
+        <EventPanel data={data} />
 
         <section>
           <h2 className="text-base font-semibold text-zinc-900">值得关注的证据</h2>

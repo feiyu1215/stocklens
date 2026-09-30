@@ -66,15 +66,18 @@ describe("selectEvidenceForPlan（§16–18）", () => {
     expect(ids.has("EV_FACT_VAL_PE_TTM")).toBe(false)
   })
 
-  it("overall 诊断（5 维度）→ 除行业 UNKNOWN 外全部命中", () => {
+  it("overall 诊断（5 维度）→ 除行业/风险界限 UNKNOWN 外全部命中", () => {
     const selected = selectEvidenceForPlan(fullEvidence, {
       intent: "overall_diagnosis",
       dimensions: ["growth", "profitability", "cashflow"],
       optionalDimensions: ["valuation", "market"],
       reason: "整体诊断。",
     })
-    expect(selected).toHaveLength(fullEvidence.length - 1) // 仅行业 UNKNOWN 被排除
+    // Task 10 后：risk 维度（新闻覆盖边界 UNKNOWN）未被选中，随行业 UNKNOWN 一并排除
+    const excluded = fullEvidence.length - selected.length
+    expect(excluded).toBe(2)
     expect(selected.some((e) => e.evidenceId === "EV_UNKNOWN_INDUSTRY_COMPARISON")).toBe(false)
+    expect(selected.some((e) => e.evidenceId === "EV_UNKNOWN_RISK_NEWS_DISCLOSURE")).toBe(false)
     expect(byId("EV_INF_FIN_GROWTH_MARGIN_DIVERGENCE")).toBeDefined()
   })
 })

@@ -6,6 +6,8 @@ import { buildInferences } from "./inference-builder"
 import { EVIDENCE_RULES_VERSION } from "./rules"
 import type { Evidence, EvidenceBundle, EvidenceContext, EvidenceStats } from "./types"
 import { buildUnknowns } from "./unknown-builder"
+import { buildEventEvidence } from "./event-evidence"
+import type { EventContext } from "@/lib/data/events"
 import { EvidenceValidationError } from "./types"
 import { validateEvidenceBundle } from "./validate"
 
@@ -60,16 +62,28 @@ export function buildEvidence({
   metrics,
   context,
   trend,
+  events,
 }: {
   metrics: MetricResult[]
   context: EvidenceContext
   trend?: TrendLookup
+  events?: EventContext | null
 }): EvidenceBundle {
   const facts = buildFacts(metrics)
   const inferences = buildInferences(metrics, facts, trend)
   const unknowns = buildUnknowns(metrics, context)
+  // 事件证据（Task 10）：FACT（异动/关注/公司行为）+ 覆盖边界 UNKNOWN
+  const eventEvidence = buildEventEvidence(events ?? null)
+  const eventFacts = eventEvidence.filter((e) => e.type === "fact")
+  const eventUnknowns = eventEvidence.filter((e) => e.type !== "fact")
   // 稳定排序：fact → inference → unknown（组内保持生成顺序；最终展示选择留给 Planner）
-  const evidence: Evidence[] = [...facts, ...inferences, ...unknowns]
+  const evidence: Evidence[] = [
+    ...facts,
+    ...eventFacts,
+    ...inferences,
+    ...unknowns,
+    ...eventUnknowns,
+  ]
 
   const validation = validateEvidenceBundle(evidence)
   if (!validation.ok) {

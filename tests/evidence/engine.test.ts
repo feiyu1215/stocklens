@@ -17,10 +17,11 @@ describe("buildEvidence —— 真实数据形态 fixture（Task 02 冒烟值）
   const bundle = buildEvidence({ metrics: realLikeMetrics(), context: CTX })
   const ids = new Set(bundle.evidence.map((e) => e.evidenceId))
 
-  it("21 个 FACT + 触发的 INFERENCE + 确定性 UNKNOWN，总数一致", () => {
+  it("21 个 FACT + 触发的 INFERENCE + 确定性 UNKNOWN（含新闻覆盖边界），总数一致", () => {
     expect(bundle.stats.fact).toBe(21)
     expect(bundle.stats.inference).toBe(3)
-    expect(bundle.stats.unknown).toBe(2)
+    // 历史估值 + 行业比较 + 新闻/公告覆盖边界（Task 10 恒定 UNKNOWN）= 3
+    expect(bundle.stats.unknown).toBe(3)
     expect(bundle.stats.total).toBe(bundle.evidence.length)
   })
 
@@ -87,8 +88,8 @@ describe("buildEvidence —— 能力组聚合 UNKNOWN", () => {
       context: CTX,
     })
     expect(bundle.stats).toEqual({
-      total: 7, fact: 0, inference: 0, unknown: 7,
-      positive: 0, negative: 0, conflict: 0, neutral: 0, unknownSignal: 7,
+      total: 8, fact: 0, inference: 0, unknown: 8,
+      positive: 0, negative: 0, conflict: 0, neutral: 0, unknownSignal: 8,
     })
     const marginHistory = bundle.evidence.find((e) => e.evidenceId === "EV_UNKNOWN_FIN_MARGIN_HISTORY")!
     expect(marginHistory.statement).toContain("FIN_GROSS_MARGIN_CHANGE_YOY")

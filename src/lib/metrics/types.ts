@@ -41,6 +41,12 @@ export interface MetricResult {
   unavailableReason?: string
   /** 统计类指标的样本量（如行业 PE 中位数的有效公司数），必须随指标展示 */
   sampleSize?: number
+  /**
+   * 同比解释护栏（Task 10，additive）：低基数/正负切换/极端变化提示。
+   * 注意：只增加解释元数据，绝不修改 value。
+   */
+  interpretationFlags?: import("./interpretation").MetricInterpretationFlag[]
+  interpretationNote?: string
 }
 
 export interface MetricsSummary {

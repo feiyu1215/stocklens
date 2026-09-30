@@ -1,6 +1,7 @@
 "use client"
 
 import type { FinancialTrendPoint } from "@/lib/metrics/trend"
+import { INTERPRETATION_FLAG_LABELS } from "@/lib/metrics/interpretation"
 
 // 财务趋势（Task 08 §30–31）：轻量 SVG 折线 + 可追溯表格。
 // 数据来自后端 trend 序列（Metric Engine 计算），前端只渲染不重算。
@@ -17,6 +18,31 @@ function buildPath(
   points: { x: number; y: number }[],
 ): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+}
+
+/** 低基数/符号切换/极端变化标记：不隐藏原值，仅附加提示（Task 10 §43） */
+function FlagMark({
+  interpretation,
+}: {
+  interpretation?: { flags: string[]; note?: string; previousAbsolute?: number }
+}) {
+  if (!interpretation || interpretation.flags.length === 0) return null
+  const label = interpretation.flags
+    .map((f) => INTERPRETATION_FLAG_LABELS[f as keyof typeof INTERPRETATION_FLAG_LABELS] ?? f)
+    .join("/")
+  const title = `${interpretation.note ?? ""}${
+    typeof interpretation.previousAbsolute === "number"
+      ? `（上年同期绝对金额：${interpretation.previousAbsolute.toLocaleString("zh-CN")}）`
+      : ""
+  }`
+  return (
+    <span
+      title={title}
+      className="ml-1.5 inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-normal text-amber-700"
+    >
+      ⚠ {label}
+    </span>
+  )
 }
 
 export function TrendPanel({ trend }: { trend: FinancialTrendPoint[] }) {
@@ -104,9 +130,11 @@ export function TrendPanel({ trend }: { trend: FinancialTrendPoint[] }) {
                 <td className="py-1">{p.period}</td>
                 <td className="py-1">
                   {typeof p.revenueQuarterYoY === "number" ? p.revenueQuarterYoY.toFixed(2) : "—"}
+                  <FlagMark interpretation={p.interpretation?.revenueQuarterYoY} />
                 </td>
                 <td className="py-1">
                   {typeof p.netProfitQuarterYoY === "number" ? p.netProfitQuarterYoY.toFixed(2) : "—"}
+                  <FlagMark interpretation={p.interpretation?.netProfitQuarterYoY} />
                 </td>
               </tr>
             ))}

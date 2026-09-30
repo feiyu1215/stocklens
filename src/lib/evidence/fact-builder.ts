@@ -339,6 +339,11 @@ export function buildFacts(metrics: MetricResult[]): Evidence[] {
       sourceFields: metric.sourceFields,
       verifyStatus: "verified",
       confidenceReason: FACT_CONFIDENCE_REASON,
+      // Task 10：同比解释护栏（低基数/正负切换/极端变化）随证据传播
+      ...(metric.interpretationFlags && metric.interpretationFlags.length > 0
+        ? { interpretationFlags: metric.interpretationFlags }
+        : {}),
+      ...(metric.interpretationNote ? { interpretationNote: metric.interpretationNote } : {}),
     })
   }
   return facts

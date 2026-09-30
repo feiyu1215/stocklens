@@ -25,7 +25,7 @@ import type {
 
 export const FIELD_SIZE = { width: 1560, height: 1000 } as const
 
-export function renderField(
+export function renderEvidenceField(
   tokens: RendererTokens,
   state: EvidenceFieldRenderState,
 ): ReactNode {

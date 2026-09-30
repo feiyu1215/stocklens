@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 
-import { renderBackground, renderCompany, renderDimension, renderField, renderSuggestion } from "./kit"
+import { renderBackground, renderCompany, renderDimension, renderEvidenceField, renderSuggestion } from "./kit"
 import type {
   CompanyRenderState,
   DimensionHandlers,
@@ -37,10 +37,10 @@ export const PEARL_TOKENS: RendererTokens = {
 }
 
 export const PearlFieldRenderer: WorldRenderer = {
-  id: PEARL_TOKENS.id,
+  id: "pearl",
   tokens: PEARL_TOKENS,
   renderBackground: (): ReactNode => renderBackground(PEARL_TOKENS),
-  renderEvidenceField: (state: EvidenceFieldRenderState): ReactNode => renderField(PEARL_TOKENS, state),
+  renderEvidenceField: (state: EvidenceFieldRenderState): ReactNode => renderEvidenceField(PEARL_TOKENS, state),
   renderCompany: (state: CompanyRenderState): ReactNode => renderCompany(PEARL_TOKENS, state),
   renderDimension: (state: DimensionRenderState, handlers: DimensionHandlers): ReactNode =>
     renderDimension(PEARL_TOKENS, state, handlers),

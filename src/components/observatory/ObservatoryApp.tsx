@@ -6,8 +6,25 @@ import type { StockSearchItem } from "@/lib/data/stock-search"
 import { Discovery } from "./Discovery"
 import { FocusView } from "./FocusView"
 import { ResearchWorkspace, type WorkspaceActions } from "./ResearchWorkspace"
+import { MyWorldWorkspace } from "./MyWorldWorkspace"
 import { PearlFieldRenderer } from "./renderers/pearl"
 import { DuskRenderer } from "./renderers/dusk"
+import { TerrainRenderer } from "./renderers/terrain"
+import { CosmosRenderer } from "./renderers/cosmos"
+import type { WorldRenderer } from "./renderers/types"
+import { IDENTITY_CAMERA, type CameraState } from "@/lib/spatial/camera"
+import {
+  loadWorld,
+  saveWorld,
+  setLastRenderer,
+  toggleSavedCompany,
+  withExploredDimensions,
+  withVisitedCompany,
+  worldCompanies,
+} from "@/lib/world/my-world"
+import type { LocalResearchWorld, WorldRendererId } from "@/lib/world/types"
+import { RENDERER_LABELS } from "@/lib/world/types"
+import { getCachedSpace, setCachedSpace } from "@/lib/world/session-cache"
 import { OBSERVATORY_COLORS, type AddedDimensionResult, type ObservatoryScene, type ResearchSpacePayload } from "./theme"
 
 // Observatory 主控（Architecture §31/§85–§86 + Visual Spec §3–§5/§54–§69）：
@@ -32,7 +49,14 @@ export function ObservatoryApp({
   const [addStatus, setAddStatus] = useState<"idle" | "submitting" | "unknown" | "ready" | "error" | "redirect">("idle")
   const [addMessage, setAddMessage] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
-  const [rendererId, setRendererId] = useState<"pearl" | "dusk">("pearl")
+  const [rendererId, setRendererId] = useState<WorldRendererId>("terrain")
+  const [worldLevel, setWorldLevel] = useState<"MY_WORLD" | "COMPANY">("MY_WORLD")
+  const [localWorld, setLocalWorld] = useState<LocalResearchWorld>(() => ({ recentCompanies: [], savedCompanies: [] }))
+  const [worldCamera, setWorldCamera] = useState<CameraState>({ ...IDENTITY_CAMERA })
+  const [activeCompanyCode, setActiveCompanyCode] = useState<string | null>(null)
+  /** Company World 的交互状态提升到这里：切换 renderer 不丢失（Task 14 §56–§57） */
+  const [spaceInteractionSeed, setSpaceInteractionSeed] = useState(0)
+  const [worldHydrated, setWorldHydrated] = useState(false)
   const [workspaceActions, setWorkspaceActions] = useState<WorkspaceActions | null>(null)
   const [isCompact, setIsCompact] = useState(false)
   const [commandText, setCommandText] = useState("")
@@ -41,6 +65,14 @@ export function ObservatoryApp({
   const [activeStockCode, setActiveStockCode] = useState<string | null>(initialStockCode ?? null)
 
   const loadSpace = useCallback(async (stockCode: string) => {
+    const cached = getCachedSpace(stockCode)
+    if (cached) {
+      // 会话内复用，避免重复 LLM 调用（§66）
+      setSpace(cached)
+      setSpaceInteractionSeed((n) => n + 1)
+      setScene("SPACE_OVERVIEW")
+      return
+    }
     setScene("ASSEMBLING")
     setSpace(null)
     setError(null)
@@ -58,7 +90,9 @@ export function ObservatoryApp({
         return
       }
       const payload = (await res.json()) as ResearchSpacePayload
+      setCachedSpace(stockCode, payload)
       setSpace(payload)
+      setSpaceInteractionSeed((n) => n + 1)
       setScene("SPACE_OVERVIEW")
     } catch {
       setError("无法连接研究服务，请重试。")
@@ -102,6 +136,51 @@ export function ObservatoryApp({
   }, [fixture, initialStockCode, loadSpace])
 
   useEffect(() => {
+    if (worldHydrated) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setLocalWorld(loadWorld())
+      setWorldHydrated(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [worldHydrated])
+
+  useEffect(() => {
+    if (!worldHydrated) return
+    saveWorld(localWorld)
+  }, [localWorld, worldHydrated])
+
+  useEffect(() => {
+    if (!worldHydrated) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (!cancelled) setLocalWorld((w) => (w.lastRenderer === rendererId ? w : setLastRenderer(w, rendererId)))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [rendererId, worldHydrated])
+
+  useEffect(() => {
+    if (!worldHydrated) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      const last = localWorld.lastRenderer
+      if (!cancelled && last) setRendererId(last)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldHydrated])
+
+  useEffect(() => {
     const update = () => setIsCompact(window.innerWidth < 1024)
     update()
     window.addEventListener("resize", update)
@@ -127,6 +206,17 @@ export function ObservatoryApp({
     const timer = setTimeout(() => addInputRef.current?.focus(), 60)
     return () => clearTimeout(timer)
   }, [addLensOpen])
+
+  const rendererById: Record<WorldRendererId, WorldRenderer> = useMemo(
+    () => ({
+      pearl: PearlFieldRenderer,
+      dusk: DuskRenderer,
+      terrain: TerrainRenderer,
+      cosmos: CosmosRenderer,
+    }),
+    [],
+  )
+  const renderer = rendererById[rendererId]
 
   const selectedDimension = useMemo(
     () => space?.dimensions.find((d) => d.dimensionId === selectedDimensionId) ?? null,
@@ -187,6 +277,14 @@ export function ObservatoryApp({
     }
   }
 
+  const backToWorld = useCallback(() => {
+    if (space) {
+      setLocalWorld((w) => withExploredDimensions(w, space.company.stockCode, space.dimensions.length))
+    }
+    setWorldLevel("MY_WORLD")
+    setScene("SPACE_OVERVIEW")
+  }, [space])
+
   const commandActions = useMemo(() => {
     if (!space) return []
     const spatial = workspaceActions
@@ -201,7 +299,16 @@ export function ObservatoryApp({
         ]
       : []
     const appearance = [
-      { label: rendererId === "pearl" ? "Dusk" : "Pearl", run: () => { setCommandOpen(false); setRendererId((r) => (r === "pearl" ? "dusk" : "pearl")) } },
+      ...(["terrain", "cosmos", "pearl"] as WorldRendererId[]).map((id) => ({
+        label: `World · ${RENDERER_LABELS[id]}${rendererId === id ? " ✓" : ""}`,
+        run: () => {
+          setCommandOpen(false)
+          setRendererId(id)
+        },
+      })),
+      ...(worldLevel === "COMPANY"
+        ? [{ label: "Back to My World", run: () => { setCommandOpen(false); backToWorld() } }]
+        : []),
     ]
     if (selectedDimension) {
       return [
@@ -219,7 +326,39 @@ export function ObservatoryApp({
       ...spatial,
       ...appearance,
     ]
-  }, [space, selectedDimension, workspaceActions, rendererId])
+  }, [space, selectedDimension, workspaceActions, rendererId, worldLevel, backToWorld])
+
+  const enterResearch = useCallback(
+    (stockCode: string) => {
+      const company = worldCompanies(localWorld).find((c) => c.stockCode === stockCode)
+      setLocalWorld((w) =>
+        withVisitedCompany(
+          w,
+          {
+            stockCode,
+            stockName: company?.stockName ?? stockCode,
+            ...(company?.industryName ? { industryName: company.industryName } : {}),
+          },
+          new Date().toISOString(),
+        ),
+      )
+      setActiveStockCode(stockCode)
+      setWorldLevel("COMPANY")
+      void loadSpace(stockCode)
+    },
+    [localWorld, loadSpace],
+  )
+
+  const addCompanyToWorld = useCallback((item: StockSearchItem) => {
+    setLocalWorld((w) =>
+      withVisitedCompany(
+        w,
+        { stockCode: item.stockCode, stockName: item.stockName, ...(item.market ? {} : {}) },
+        new Date().toISOString(),
+      ),
+    )
+    setActiveCompanyCode(item.stockCode)
+  }, [])
 
   const handleSelect = (item: StockSearchItem) => {
     setActiveStockCode(item.stockCode)
@@ -230,8 +369,10 @@ export function ObservatoryApp({
     <div
       className="relative h-screen w-screen overflow-hidden"
       style={{
-        background: `radial-gradient(1200px 640px at 50% 38%, #0C1018 0%, ${OBSERVATORY_COLORS.background} 68%)`,
-        color: OBSERVATORY_COLORS.primaryText,
+        background: renderer.tokens.light
+          ? "radial-gradient(1200px 640px at 50% 38%, #F6F5F1 0%, #EFEEE9 68%)"
+          : `radial-gradient(1200px 640px at 50% 38%, #14171F 0%, ${renderer.tokens.background} 68%)`,
+        color: renderer.tokens.textPrimary,
       }}
     >
       {/* Global Chrome（§4） */}
@@ -244,11 +385,17 @@ export function ObservatoryApp({
             setSelectedDimensionId(null)
           }}
           className="pointer-events-auto font-mono text-[12px] tracking-[0.34em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-          style={{ color: scene === "DIMENSION_FOCUS" ? "#676A70" : "#A6AEC0" }}
+          style={{
+            color: scene === "DIMENSION_FOCUS"
+              ? "#676A70"
+              : renderer.tokens.light
+                ? "#5C6068"
+                : "#A6AEC0",
+          }}
         >
           STOCKLENS
         </button>
-        {space && scene !== "DIMENSION_FOCUS" && (
+        {space && scene !== "DIMENSION_FOCUS" && worldLevel === "COMPANY" && (
           <div
             className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#2A3040] bg-[#12161F]/85 px-4 py-1.5 backdrop-blur"
             title={space.company.industryName ? `所属行业：${space.company.industryName}` : undefined}
@@ -261,7 +408,21 @@ export function ObservatoryApp({
 
       {/* Scenes */}
       <div className="absolute inset-0">
-        {scene === "DISCOVERY" && (
+        {worldLevel === "MY_WORLD" && (
+          <MyWorldWorkspace
+            renderer={renderer}
+            companies={worldCompanies(localWorld)}
+            activeCode={activeCompanyCode}
+            camera={worldCamera}
+            onCameraChange={setWorldCamera}
+            onActiveChange={setActiveCompanyCode}
+            onEnterResearch={enterResearch}
+            onToggleSaved={(code) => setLocalWorld((w) => toggleSavedCompany(w, code))}
+            onAddCompany={addCompanyToWorld}
+          />
+        )}
+
+        {worldLevel === "COMPANY" && scene === "DISCOVERY" && (
           <div className="flex h-full w-full items-center justify-center">
             <div className="h-[720px] w-full max-w-[1100px]">
               {error && (
@@ -274,7 +435,7 @@ export function ObservatoryApp({
           </div>
         )}
 
-        {scene === "ASSEMBLING" && (
+        {worldLevel === "COMPANY" && scene === "ASSEMBLING" && (
           <div className="flex h-full w-full flex-col items-center justify-center gap-6">
             {activeStockCode && (
               <div
@@ -305,10 +466,11 @@ export function ObservatoryApp({
           </div>
         )}
 
-        {scene === "SPACE_OVERVIEW" && space && !isCompact && (
+        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && !isCompact && (
           <ResearchWorkspace
+            key={`${space.company.stockCode}:${spaceInteractionSeed}`}
             space={space}
-            renderer={rendererId === "pearl" ? PearlFieldRenderer : DuskRenderer}
+            renderer={renderer}
             onOpenDimension={(id) => {
               setSelectedDimensionId(id)
               setScene("DIMENSION_FOCUS")
@@ -322,7 +484,7 @@ export function ObservatoryApp({
           />
         )}
 
-        {scene === "SPACE_OVERVIEW" && space && isCompact && (
+        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && isCompact && (
           <div className="flex h-full w-full flex-col justify-center gap-4 overflow-x-auto px-5">
             <div className="text-center">
               <div className="text-[18px] font-medium" style={{ color: "#F1F3F5" }}>{space.company.stockName}</div>
@@ -345,7 +507,7 @@ export function ObservatoryApp({
           </div>
         )}
 
-        {scene === "DIMENSION_FOCUS" && space && selectedDimension && (
+        {worldLevel === "COMPANY" && scene === "DIMENSION_FOCUS" && space && selectedDimension && (
           <FocusView
             space={space}
             dimension={selectedDimension}

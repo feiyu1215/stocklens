@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 
-import { renderBackground, renderCompany, renderDimension, renderField, renderSuggestion } from "./kit"
+import { renderBackground, renderCompany, renderDimension, renderEvidenceField, renderSuggestion } from "./kit"
 import type {
   CompanyRenderState,
   DimensionHandlers,
@@ -37,10 +37,10 @@ export const DUSK_TOKENS: RendererTokens = {
 }
 
 export const DuskRenderer: WorldRenderer = {
-  id: DUSK_TOKENS.id,
+  id: "dusk",
   tokens: DUSK_TOKENS,
   renderBackground: (): ReactNode => renderBackground(DUSK_TOKENS),
-  renderEvidenceField: (state: EvidenceFieldRenderState): ReactNode => renderField(DUSK_TOKENS, state),
+  renderEvidenceField: (state: EvidenceFieldRenderState): ReactNode => renderEvidenceField(DUSK_TOKENS, state),
   renderCompany: (state: CompanyRenderState): ReactNode => renderCompany(DUSK_TOKENS, state),
   renderDimension: (state: DimensionRenderState, handlers: DimensionHandlers): ReactNode => renderDimension(DUSK_TOKENS, state, handlers),
   renderSuggestion: (state: SuggestionRenderState, handlers: SuggestionHandlers): ReactNode => renderSuggestion(DUSK_TOKENS, state, handlers),

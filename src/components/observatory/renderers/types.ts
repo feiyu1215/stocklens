@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 
 import type { Evidence } from "@/lib/evidence/types"
+import type { WorldCompany, WorldRendererId } from "@/lib/world/types"
 import type { ResearchDimension } from "@/lib/research/dimension-schema"
 import type { DimensionLayout } from "@/lib/presentation/constellation-layout"
 
@@ -60,6 +61,8 @@ export interface EvidenceFieldRenderState {
   evidence: Evidence[]
   highlightedDimensionId: string | null
   hoveredEvidenceId: string | null
+  /** Terrain 渲染区域几何所需的世界坐标（其它 renderer 忽略） */
+  dimensionLayouts?: { dimension: ResearchDimension; x: number; y: number; width: number }[]
 }
 
 export interface CompanyRenderState {
@@ -86,12 +89,26 @@ export interface SuggestionHandlers {
   onDismiss: (e: import("react").MouseEvent) => void
 }
 
+/** My World 世界层渲染状态（Task 14 §19–§22/§58–§65） */
+export interface WorldMapRenderState {
+  companies: WorldCompany[]
+  positions: { stockCode: string; x: number; y: number }[]
+  activeCode: string | null
+  /** 每个公司的视觉层级（active/neighbor/distant）；只表达研究状态 */
+  tierOf: (stockCode: string) => "active" | "neighbor" | "distant"
+  /** 进入研究（点击/Enter 时由 Interaction 层调用，Renderer 仅触发） */
+  onEnter: (stockCode: string) => void
+  onToggleSaved: (stockCode: string) => void
+}
+
 export interface WorldRenderer {
-  id: string
+  id: WorldRendererId
   tokens: RendererTokens
   renderBackground(): ReactNode
   renderEvidenceField(state: EvidenceFieldRenderState): ReactNode
   renderCompany(state: CompanyRenderState): ReactNode
   renderDimension(state: DimensionRenderState, handlers: DimensionHandlers): ReactNode
   renderSuggestion(state: SuggestionRenderState, handlers: SuggestionHandlers): ReactNode
+  /** My World 世界层（可选能力；Pearl/Dusk 提供简化版本，Terrain/Cosmos 完整实现） */
+  renderWorld?(state: WorldMapRenderState): ReactNode
 }

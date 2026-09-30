@@ -7,7 +7,7 @@ AI Native 个股多维诊断与证据验证工具（题目 03 交付）。
 > 并让每一个结论都能点回原始数据。
 
 - **公开访问（正式）**：https://stocklens-blush.vercel.app （Vercel 生产部署；源码 https://github.com/feiyu1215/stocklens ）
-- **研究对象**：美的集团 000333.SZ（P0 固定标的，不做全市场搜索）
+- **研究对象**：任意 A 股（真实搜索接入）；美的集团 000333.SZ 为默认演示标的
 
 ## 目标用户
 
@@ -27,7 +27,7 @@ Question → Compliance Pre-check → AI Planner（选维度，看不到数据�
 
 | 层 | 职责 | 纪律 |
 |---|---|---|
-| **Truth Layer** | 数据适配、39 个确定性指标（含基准/行业/趋势）、40 条证据（fact/inference/unknown） | LLM 禁入；缺失=null；真实 0 不改写；单季/累计口径分离 |
+| **Truth Layer** | 数据适配、39+ 确定性指标（含基准/行业/趋势）、42+ 条证据（fact/inference/unknown） | LLM 禁入；缺失=null；真实 0 不改写；单季/累计口径分离 |
 | **Intelligence Layer** | Planner 选维度；Synthesizer/Followup 组织与解释证据 | 只能引用已有 Evidence ID；输出全过确定性校验，伪造 ID 整体拒绝 |
 | **Experience Layer** | 诊断工作台、Evidence Drawer、追问 | 只呈现/组织/格式化/钻取，不产生新金融结论 |
 
@@ -71,7 +71,7 @@ cp .env.example .env.local   # 填入 FUYAO_API_KEY 与 DEEPSEEK_API_KEY
 npm run dev                  # http://localhost:3000
 ```
 
-命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，253 个）/ npm run lint。
+命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，309 个）/ npm run lint。
 
 正式部署（Vercel，已完成）：
 

@@ -4,6 +4,8 @@
     "midea-overview",
     "midea-valuation",
     "one-other-industry",
-    "unknown-dimension"
-  ]
+    "unknown-dimension",
+    "midea-artdirection"
+  ],
+  "note": "live /api/research/* responses on 2026-09-30 (redacted ids/timestamps)；midea-artdirection = midea-overview + 真实 unknown 维度响应形态（Task 12/15 实录），仅供 art-direction 原型"
 }

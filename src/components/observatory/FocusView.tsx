@@ -281,6 +281,7 @@ export function FocusView({
   onReturnToClaim,
   embedded = false,
   claimRevealBaseDelayMs = 0,
+  hideBackLink = false,
 }: {
   space: ResearchSpacePayload
   dimension: ResearchDimension
@@ -297,6 +298,8 @@ export function FocusView({
   embedded?: boolean
   /** claims reveal 的基础延迟（ms）＝ morph 时长 × 0.55（Frame 4） */
   claimRevealBaseDelayMs?: number
+  /** 编辑部式宿主（如 editorial lab）自带返回入口时隐藏内链（默认不变） */
+  hideBackLink?: boolean
 }) {
   const dimensionEvidence = useMemo(
     () =>
@@ -415,14 +418,16 @@ export function FocusView({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onBack}
-          title="返回区域（面包屑为语义主入口）"
-          className="mt-5 self-start font-mono text-[10.5px] text-[#9A9BA0] transition hover:text-[#676A70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-        >
-          ← terrain
-        </button>
+        {!hideBackLink && (
+          <button
+            type="button"
+            onClick={onBack}
+            title="返回区域（面包屑为语义主入口）"
+            className="mt-5 self-start font-mono text-[10.5px] text-[#9A9BA0] transition hover:text-[#676A70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+          >
+            ← terrain
+          </button>
+        )}
 
         <div className="mt-6 border-t border-black/10 pt-3">
           <div className="font-mono text-[10px] tracking-wider text-[#676A70]">OTHER DIMENSIONS</div>

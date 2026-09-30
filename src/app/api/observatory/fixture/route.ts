@@ -5,7 +5,14 @@ import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-const ALLOWED = new Set(["midea-overview", "midea-valuation", "one-other-industry", "unknown-dimension"])
+const ALLOWED = new Set([
+  "midea-overview",
+  "midea-valuation",
+  "one-other-industry",
+  "unknown-dimension",
+  // Task 15.2 art-direction 原型：midea-overview + 真实 unknown 维度响应形态（见 index.json note）
+  "midea-artdirection",
+])
 
 /**
  * 前端开发用的 canonical fixture（Task 12 §51–§54）：

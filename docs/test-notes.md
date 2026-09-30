@@ -98,3 +98,24 @@
 - 语义事实一致性（模型绑定合法 ID 但文字与证据矛盾）无自动校验——以 Eval Bad Case 固化为已知局限（tests/ai/diagnosis-validation.test.ts 末组）；
 - CI 不依赖外网模型：LLM 行为以 mock 脚本测试 + Live smoke 人工记录双重覆盖；
 - 隧道/部署 URL 存活依赖进程，测试脚本可在任意可访问实例上重跑。
+
+## Semantic Zoom（Task 15）
+
+新增 `tests/experience.test.ts`（25 cases，纯确定性、无网络）：
+
+| 组 | 覆盖 |
+|---|---|
+| Semantic transition table | world→company 合法性、非法转换静默忽略、逐级前进/反向导航、clear_evidence 只退一层、zoom_out |
+| 缩放不改层级 | scale 变化只改 detail level，ExperienceState 不变（§85） |
+| Semantic location indicator | 面包屑段与回退事件、world 层不产生面包屑 |
+| Information density | detail level 映射（micro/compact/expanded）、Evidence Field 预算 12/16、label 阈值 |
+| Degradation 本地化 | 页面级失败门（composer 失败不算页面失败）、解释降级但证据可用、主 UI 违禁词扫描（含组件源码扫描） |
+| Object state machines | dimension / suggestion / company 三套视觉状态优先级 |
+| Context commands | 五层各自的命令表 + 非空 |
+| 载荷守卫 | 真实 fixture：完整载荷接受、`unknown-dimension`（别的 API 载荷）拒绝、空值/缺字段/错类型拒绝 |
+| Renderer 独立性 | experience 模块不得 import renderer/视觉隐喻；ExperienceState 只能由 ObservatoryApp 持有（源码扫描） |
+
+全量：`npx vitest run` → 26 files / 356 tests PASS；`npx tsc --noEmit` 与 `npx eslint src tests` 无错。
+
+浏览器验收（真实数据 + 真实 fixture）见 `docs/semantic-zoom.md` §7：Flows A–G 全 PASS，
+截图 `docs/screenshots/t15/`。

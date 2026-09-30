@@ -68,19 +68,22 @@ export function renderEvidenceField(
       height={FIELD_SIZE.height}
       viewBox={`${-FIELD_SIZE.width / 2} ${-FIELD_SIZE.height / 2} ${FIELD_SIZE.width} ${FIELD_SIZE.height}`}
     >
-      {edges.map((edge) => (
-        <line
-          key={edge.key}
-          x1={edge.x1}
-          y1={edge.y1}
-          x2={edge.x2}
-          y2={edge.y2}
-          stroke={edge.color}
-          strokeWidth={edge.conflict ? 1.4 : 0.85}
-          strokeDasharray={edge.conflict ? "4 3" : tokens.light ? "2 4" : undefined}
-          opacity={tokens.light ? 0.5 : 0.6}
-        />
-      ))}
+      {/* Task 15 §92：远距离只画冲突/强关系边，近距离才画全部 links */}
+      {edges
+        .filter((edge) => (state.showLabels ?? false) || edge.conflict)
+        .map((edge) => (
+          <line
+            key={edge.key}
+            x1={edge.x1}
+            y1={edge.y1}
+            x2={edge.x2}
+            y2={edge.y2}
+            stroke={edge.color}
+            strokeWidth={edge.conflict ? 1.4 : 0.85}
+            strokeDasharray={edge.conflict ? "4 3" : tokens.light ? "2 4" : undefined}
+            opacity={tokens.light ? 0.5 : 0.6}
+          />
+        ))}
       {nodes.map((node) => {
         const e = byId.get(node.evidenceId)
         if (!e) return null
@@ -202,6 +205,7 @@ export function renderDimension(
   const { dimension, layout } = state
   const isUnknown = dimension.status === "unknown"
   const isPartial = dimension.status === "partial"
+  const detail = state.detailLevel
   const x = state.dragPosition?.x ?? layout.x
   const y = state.dragPosition?.y ?? layout.y
   const border = state.selected
@@ -223,36 +227,71 @@ export function renderDimension(
       onMouseLeave={handlers.onMouseLeave}
       onFocus={(e) => handlers.onMouseEnter(e as unknown as import("react").MouseEvent)}
       onBlur={handlers.onMouseLeave}
-      className="absolute left-0 top-0 cursor-grab rounded-2xl px-4 py-3 text-left outline-none focus-visible:ring-2 active:cursor-grabbing"
+      data-detail-level={detail}
+      className={`absolute left-0 top-0 cursor-grab text-left outline-none focus-visible:ring-2 active:cursor-grabbing ${
+        detail === "micro" ? "rounded-lg px-2.5 py-1.5" : "px-3 py-2"
+      }`}
       style={{
-        width: layout.width,
-        minHeight: layout.height,
+        width: detail === "micro" ? Math.min(layout.width, 132) : layout.width,
+        minHeight: detail === "micro" ? undefined : layout.height,
         transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${
           (state.dimmed ? 0.94 : 1) * layout.scale
         })`,
         opacity: state.dimmed ? 0.1 : 1,
-        border,
-        background: tokens.light
-          ? "rgba(255,255,255,0.88)"
-          : isUnknown
-            ? "rgba(12,15,22,0.42)"
-            : isPartial
-              ? "linear-gradient(160deg, rgba(154,123,255,0.08), rgba(12,15,22,0.72))"
-              : "rgba(12,15,22,0.72)",
-        backdropFilter: "blur(3px)",
-        boxShadow: state.hovered
-          ? tokens.light
-            ? "0 8px 28px rgba(24,26,32,0.14)"
-            : "0 0 34px rgba(69,184,255,0.16)"
-          : tokens.light
-            ? "0 2px 10px rgba(24,26,32,0.06)"
-            : "none",
+        // Task 15 §36/§46：默认更轻薄（label + contour + focus ring），不是 card wall；
+        // hover/selected/expanded 之外不给实心背景
+        // §36/§K：只有 hover / selected / expanded 才聚合成「面」；idle 是对象（刻度 + 文本），不是卡片
+        border:
+          detail === "micro"
+            ? isUnknown
+              ? `1px dashed ${tokens.unknown}`
+              : `1px solid ${tokens.surfaceBorder}`
+            : state.hovered || state.selected || detail === "expanded"
+              ? border
+              : "none",
+        borderRadius: 3,
+        background:
+          state.hovered || state.selected || detail === "expanded"
+            ? tokens.light
+              ? "rgba(255,255,255,0.9)"
+              : isUnknown
+                ? "rgba(12,15,22,0.55)"
+                : "rgba(12,15,22,0.78)"
+            : "transparent",
+        backdropFilter:
+          detail === "micro" || !(state.hovered || state.selected || detail === "expanded")
+            ? undefined
+            : "blur(3px)",
+        boxShadow:
+          detail === "micro"
+            ? "none"
+            : state.hovered || detail === "expanded"
+              ? tokens.light
+                ? "0 6px 22px rgba(24,26,32,0.10)"
+                : "0 0 30px rgba(69,184,255,0.14)"
+              : "none",
         pointerEvents: state.dimmed ? "none" : "auto",
         transition: state.dragPosition
           ? "opacity 200ms ease-out, box-shadow 200ms ease-out"
           : "opacity 200ms ease-out, box-shadow 200ms ease-out, transform 460ms cubic-bezier(0.22,1,0.36,1)",
       }}
     >
+      {detail !== "micro" && (
+        <span
+          aria-hidden
+          className="mb-1.5 block"
+          style={{
+            width: 16,
+            height: 2,
+            background: isUnknown
+              ? `repeating-linear-gradient(90deg, ${tokens.unknown} 0 3px, transparent 3px 5px)`
+              : isPartial
+                ? `linear-gradient(90deg, ${tokens.unknown} 0%, ${tokens.accent} 100%)`
+                : tokens.accent,
+            opacity: 0.85,
+          }}
+        />
+      )}
       <div className="flex items-start justify-between gap-2">
         <span
           className="text-[16px] leading-snug"
@@ -264,11 +303,29 @@ export function renderDimension(
           <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full" style={{ background: tokens.accent }} aria-hidden />
         )}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px]" style={{ color: tokens.textSecondary }}>
-        <span>{state.dimension.evidenceIds.length} evidence</span>
-        {state.conflictCount > 0 && <span style={{ color: tokens.conflict }}>{state.conflictCount} conflict</span>}
-        {isUnknown && <span style={{ color: tokens.unknown }}>incomplete</span>}
-      </div>
+      {/* compact：subtle status；expanded：summary + top claims（§13/§14/§89） */}
+      {detail !== "micro" && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px]" style={{ color: tokens.textSecondary }}>
+          <span>{state.dimension.evidenceIds.length} evidence</span>
+          {state.conflictCount > 0 && <span style={{ color: tokens.conflict }}>{state.conflictCount} conflict</span>}
+          {isUnknown && <span style={{ color: tokens.unknown }}>incomplete</span>}
+          {state.degraded && (
+            <span style={{ color: tokens.textFaint }}>AI interpretation unavailable</span>
+          )}
+        </div>
+      )}
+      {detail === "expanded" && state.expandedSummary && (
+        <div className="mt-2 border-t pt-1.5 text-[12px] leading-relaxed" style={{ borderColor: tokens.surfaceBorder, color: tokens.textSecondary }}>
+          {state.expandedSummary}
+          {state.expandedClaims && state.expandedClaims.length > 0 && (
+            <ul className="mt-1 space-y-0.5">
+              {state.expandedClaims.slice(0, 3).map((c, i) => (
+                <li key={i}>· {c}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </button>
   )
 }
@@ -280,6 +337,7 @@ export function renderSuggestion(
 ): ReactNode {
   return (
     <div
+      key={state.label}
       data-suggestion-label={state.label}
       className="absolute left-0 top-0 select-none"
       style={{

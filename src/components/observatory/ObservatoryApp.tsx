@@ -25,7 +25,20 @@ import {
 import type { LocalResearchWorld, WorldRendererId } from "@/lib/world/types"
 import { RENDERER_LABELS } from "@/lib/world/types"
 import { getCachedSpace, setCachedSpace } from "@/lib/world/session-cache"
-import { OBSERVATORY_COLORS, type AddedDimensionResult, type ObservatoryScene, type ResearchSpacePayload } from "./theme"
+import { isResearchSpace } from "@/lib/world/payload-guard"
+import {
+  INITIAL_EXPERIENCE,
+  MOTION,
+  breadcrumbSegments,
+  shouldShowGlobalError,
+  transition,
+  type ExperienceEvent,
+  type ExperienceState,
+  type SemanticLevel,
+} from "@/lib/experience/state"
+import { contextCommands } from "@/lib/experience/detail"
+import { COPY } from "@/lib/experience/copy"
+import type { AddedDimensionResult, ObservatoryScene, ResearchSpacePayload } from "./theme"
 
 // Observatory 主控（Architecture §31/§85–§86 + Visual Spec §3–§5/§54–§69）：
 //   状态机 DISCOVERY → ASSEMBLING → SPACE_OVERVIEW → DIMENSION_FOCUS
@@ -50,7 +63,17 @@ export function ObservatoryApp({
   const [addMessage, setAddMessage] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [rendererId, setRendererId] = useState<WorldRendererId>("terrain")
-  const [worldLevel, setWorldLevel] = useState<"MY_WORLD" | "COMPANY">("MY_WORLD")
+  // Task 15 §7/§10：语义层级只有一个所有者，组件不得各自决定 transition
+  const [experience, setExperience] = useState<ExperienceState>(
+    initialStockCode
+      ? { level: "company", activeCompany: initialStockCode, transitionSource: "click" }
+      : INITIAL_EXPERIENCE,
+  )
+  /** §26–§29：My World 中被 Explore 的 company object（morph 期间保持可见） */
+  const [enteringCompany, setEnteringCompany] = useState<string | null>(null)
+  const [experienceDebug, setExperienceDebug] = useState(false)
+  /** Company World 的空间 camera（仅用于 debug 面板显示，§99） */
+  const [spaceCamera, setSpaceCamera] = useState<CameraState>({ ...IDENTITY_CAMERA })
   const [localWorld, setLocalWorld] = useState<LocalResearchWorld>(() => ({ recentCompanies: [], savedCompanies: [] }))
   const [worldCamera, setWorldCamera] = useState<CameraState>({ ...IDENTITY_CAMERA })
   const [activeCompanyCode, setActiveCompanyCode] = useState<string | null>(null)
@@ -63,6 +86,30 @@ export function ObservatoryApp({
   const addInputRef = useRef<HTMLInputElement>(null)
   const commandInputRef = useRef<HTMLInputElement>(null)
   const [activeStockCode, setActiveStockCode] = useState<string | null>(initialStockCode ?? null)
+
+  const worldLevel: "MY_WORLD" | "COMPANY" = experience.level === "world" ? "MY_WORLD" : "COMPANY"
+
+  const dispatchExperience = useCallback((event: ExperienceEvent) => {
+    setExperience((prev) => transition(prev, event))
+  }, [])
+
+  /** 面包屑跳级：反向 semantic transition（§24/§107） */
+  const jumpToLevel = useCallback((target: SemanticLevel, stockCode?: string) => {
+    setExperience((prev) => {
+      if (prev.level === target) return prev
+      if (target === "world") return transition(prev, { type: "zoom_out" })
+      if (target === "company" && prev.level === "world" && stockCode) {
+        return transition(prev, { type: "select_company", stockCode, source: "back" })
+      }
+      let next = prev
+      for (let i = 0; i < 4 && next.level !== target; i += 1) next = transition(next, { type: "back" })
+      return next
+    })
+    if (target === "company" || target === "world") {
+      setScene("SPACE_OVERVIEW")
+      setSelectedDimensionId(null)
+    }
+  }, [])
 
   const loadSpace = useCallback(async (stockCode: string) => {
     const cached = getCachedSpace(stockCode)
@@ -89,13 +136,18 @@ export function ObservatoryApp({
         setScene("DISCOVERY")
         return
       }
-      const payload = (await res.json()) as ResearchSpacePayload
+      const payload: unknown = await res.json()
+      if (!isResearchSpace(payload)) {
+        setError("研究空间未能建立，请重试。")
+        setScene("SPACE_OVERVIEW")
+        return
+      }
       setCachedSpace(stockCode, payload)
       setSpace(payload)
       setSpaceInteractionSeed((n) => n + 1)
       setScene("SPACE_OVERVIEW")
     } catch {
-      setError("无法连接研究服务，请重试。")
+      setError("研究服务暂时未响应，请重试。")
       setScene("DISCOVERY")
     }
   }, [])
@@ -107,20 +159,26 @@ export function ObservatoryApp({
       try {
         const res = await fetch(`/api/observatory/fixture?name=${encodeURIComponent(fixture)}`)
         if (!res.ok) throw new Error(`fixture ${fixture} not found`)
-        const payload = (await res.json()) as ResearchSpacePayload
+        const payload: unknown = await res.json()
         if (cancelled) return
+        if (!isResearchSpace(payload)) {
+          setError(`fixture 不可用：${fixture}`)
+          setScene("SPACE_OVERVIEW")
+          return
+        }
         setSpace(payload)
+        dispatchExperience({ type: "select_company", stockCode: payload.company.stockCode, source: "click" })
         setScene("SPACE_OVERVIEW")
       } catch {
         if (cancelled) return
-        setError(`fixture 加载失败：${fixture}`)
+        setError(`fixture 不可用：${fixture}`)
         setScene("DISCOVERY")
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [fixture])
+  }, [fixture, dispatchExperience])
 
   useEffect(() => {
     if (fixture || !initialStockCode) return
@@ -181,6 +239,20 @@ export function ObservatoryApp({
   }, [worldHydrated])
 
   useEffect(() => {
+    // ?experienceDebug=1：仅开发/评审用，展示 semantic level 与对象 detail level（§99）
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve() // 异步边界：避免 effect 内同步 setState
+      if (cancelled) return
+      const params = new URLSearchParams(window.location.search)
+      if (params.get("experienceDebug") === "1") setExperienceDebug(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     const update = () => setIsCompact(window.innerWidth < 1024)
     update()
     window.addEventListener("resize", update)
@@ -218,6 +290,15 @@ export function ObservatoryApp({
   )
   const renderer = rendererById[rendererId]
 
+  const globalUnavailable = useMemo(() => {
+    if (!space) return false
+    return shouldShowGlobalError({
+      companyResolved: Boolean(space.company?.stockCode),
+      truthAvailable: space.evidence.length > 0,
+      aiStatus: space.ai.status,
+    })
+  }, [space])
+
   const selectedDimension = useMemo(
     () => space?.dimensions.find((d) => d.dimensionId === selectedDimensionId) ?? null,
     [space, selectedDimensionId],
@@ -246,7 +327,7 @@ export function ObservatoryApp({
       }
       if (!body.dimension) {
         setAddStatus("error")
-        setAddMessage("维度创建失败，请重试。")
+        setAddMessage("该研究角度暂未加入，请稍后重试。")
         return
       }
       // 新对象以 outline 形式先进入空间（assembling → 结果状态）
@@ -273,7 +354,7 @@ export function ObservatoryApp({
       // 保持 Lens 打开以展示结果（ready/unknown 提示），用户自行关闭
     } catch {
       setAddStatus("error")
-      setAddMessage("无法连接研究服务。")
+      setAddMessage("研究服务暂时未响应。")
     }
   }
 
@@ -281,12 +362,82 @@ export function ObservatoryApp({
     if (space) {
       setLocalWorld((w) => withExploredDimensions(w, space.company.stockCode, space.dimensions.length))
     }
-    setWorldLevel("MY_WORLD")
+    dispatchExperience({ type: "zoom_out" })
     setScene("SPACE_OVERVIEW")
-  }, [space])
+  }, [space, dispatchExperience])
+
+  const enterResearch = useCallback(
+    (stockCode: string) => {
+      const company = worldCompanies(localWorld).find((c) => c.stockCode === stockCode)
+      setLocalWorld((w) =>
+        withVisitedCompany(
+          w,
+          {
+            stockCode,
+            stockName: company?.stockName ?? stockCode,
+            ...(company?.industryName ? { industryName: company.industryName } : {}),
+          },
+          new Date().toISOString(),
+        ),
+      )
+      setActiveStockCode(stockCode)
+      setEnteringCompany(stockCode)
+      // 先让 company object 完成 morph（760ms），数据在后台并行解析（§61：不产生空白等待）
+      void loadSpace(stockCode)
+      window.setTimeout(() => {
+        setEnteringCompany(null)
+        dispatchExperience({ type: "select_company", stockCode, source: "click" })
+      }, Number.parseInt(MOTION.companyToCompanyWorld, 10))
+    },
+    [localWorld, loadSpace, dispatchExperience],
+  )
 
   const commandActions = useMemo(() => {
     if (!space) return []
+    const focusedClaim = experience.activeClaim ?? selectedDimension?.claimIds?.[0] ?? null
+    const contextual = contextCommands(experience.level).map((spec) => ({
+      label: spec.label,
+      run: () => {
+        setCommandOpen(false)
+        switch (spec.id) {
+          case "explore_company":
+            if (activeCompanyCode) enterResearch(activeCompanyCode)
+            break
+          case "explore_dimension":
+            if (selectedDimensionId) {
+              dispatchExperience({ type: "open_dimension", dimensionId: selectedDimensionId, source: "command" })
+              setScene("SPACE_OVERVIEW")
+            }
+            break
+          case "open_research":
+            if (selectedDimensionId) {
+              dispatchExperience({ type: "open_research", dimensionId: selectedDimensionId, source: "command" })
+              setScene("DIMENSION_FOCUS")
+            }
+            break
+          case "inspect_evidence":
+            if (focusedClaim) {
+              dispatchExperience({ type: "select_claim", claimId: focusedClaim, source: "command" })
+              setScene("DIMENSION_FOCUS")
+            }
+            break
+          case "return_to_claim":
+            dispatchExperience({ type: "clear_evidence", source: "command" })
+            setScene("DIMENSION_FOCUS")
+            break
+          case "add_research_angle":
+            setAddLensOpen(true)
+            break
+          case "search_company":
+            setSpace(null)
+            setExperience({ ...INITIAL_EXPERIENCE })
+            setScene("DISCOVERY")
+            break
+          default:
+            break
+        }
+      },
+    }))
     const spatial = workspaceActions
       ? [
           { label: "Gather", run: () => { setCommandOpen(false); workspaceActions.gather() } },
@@ -310,44 +461,20 @@ export function ObservatoryApp({
         ? [{ label: "Back to My World", run: () => { setCommandOpen(false); backToWorld() } }]
         : []),
     ]
-    if (selectedDimension) {
-      return [
-        { label: `Ask about ${selectedDimension.label}`, run: () => { setCommandOpen(false) } },
-        { label: "Inspect evidence", run: () => { setCommandOpen(false); setScene("DIMENSION_FOCUS") } },
-        { label: "Add related dimension", run: () => { setCommandOpen(false); setAddLensOpen(true) } },
-        ...spatial,
-        ...appearance,
-      ]
-    }
-    return [
-      { label: "Ask about this company", run: () => { setCommandOpen(false) } },
-      { label: "Add dimension", run: () => { setCommandOpen(false); setAddLensOpen(true) } },
-      { label: "Search another company", run: () => { setCommandOpen(false); setScene("DISCOVERY"); setSpace(null) } },
-      ...spatial,
-      ...appearance,
-    ]
-  }, [space, selectedDimension, workspaceActions, rendererId, worldLevel, backToWorld])
-
-  const enterResearch = useCallback(
-    (stockCode: string) => {
-      const company = worldCompanies(localWorld).find((c) => c.stockCode === stockCode)
-      setLocalWorld((w) =>
-        withVisitedCompany(
-          w,
-          {
-            stockCode,
-            stockName: company?.stockName ?? stockCode,
-            ...(company?.industryName ? { industryName: company.industryName } : {}),
-          },
-          new Date().toISOString(),
-        ),
-      )
-      setActiveStockCode(stockCode)
-      setWorldLevel("COMPANY")
-      void loadSpace(stockCode)
-    },
-    [localWorld, loadSpace],
-  )
+    return [...contextual, ...spatial, ...appearance]
+  }, [
+    space,
+    selectedDimension,
+    selectedDimensionId,
+    workspaceActions,
+    rendererId,
+    worldLevel,
+    backToWorld,
+    experience,
+    activeCompanyCode,
+    enterResearch,
+    dispatchExperience,
+  ])
 
   const addCompanyToWorld = useCallback((item: StockSearchItem) => {
     setLocalWorld((w) =>
@@ -362,6 +489,7 @@ export function ObservatoryApp({
 
   const handleSelect = (item: StockSearchItem) => {
     setActiveStockCode(item.stockCode)
+    dispatchExperience({ type: "select_company", stockCode: item.stockCode, source: "click" })
     void loadSpace(item.stockCode)
   }
 
@@ -380,9 +508,11 @@ export function ObservatoryApp({
         <button
           type="button"
           onClick={() => {
-            setScene("DISCOVERY")
+            setScene("SPACE_OVERVIEW")
             setSpace(null)
             setSelectedDimensionId(null)
+            setError(null)
+            setExperience({ ...INITIAL_EXPERIENCE })
           }}
           className="pointer-events-auto font-mono text-[12px] tracking-[0.34em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
           style={{
@@ -395,6 +525,34 @@ export function ObservatoryApp({
         >
           STOCKLENS
         </button>
+        {space && worldLevel === "COMPANY" && scene !== "DIMENSION_FOCUS" && (
+          <nav
+            aria-label="Semantic location"
+            className="pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center gap-2 font-mono text-[11px]"
+            style={{ color: renderer.tokens.textSecondary }}
+          >
+            {breadcrumbSegments(experience, {
+              company: space.company.stockName,
+              dimension: space.dimensions.find((d) => d.dimensionId === experience.activeDimension)?.label,
+              claim: experience.activeClaim
+                ? (space.claims.find((c) => c.claimId === experience.activeClaim)?.text ?? "").slice(0, 26)
+                : undefined,
+            }).map((seg, i) => (
+              <span key={`${seg.level}-${i}`} className="flex items-center gap-2">
+                {i > 0 && <span style={{ opacity: 0.45 }}>/</span>}
+                <button
+                  type="button"
+                  onClick={() => jumpToLevel(seg.level, space.company.stockCode)}
+                  className="transition hover:opacity-75 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+                  style={{ color: i === 0 ? renderer.tokens.textPrimary : renderer.tokens.textSecondary }}
+                >
+                  {seg.label}
+                </button>
+              </span>
+            ))}
+          </nav>
+        )}
+
         {space && scene !== "DIMENSION_FOCUS" && worldLevel === "COMPANY" && (
           <div
             className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#2A3040] bg-[#12161F]/85 px-4 py-1.5 backdrop-blur"
@@ -419,6 +577,7 @@ export function ObservatoryApp({
             onEnterResearch={enterResearch}
             onToggleSaved={(code) => setLocalWorld((w) => toggleSavedCompany(w, code))}
             onAddCompany={addCompanyToWorld}
+            enteringCode={enteringCompany}
           />
         )}
 
@@ -448,7 +607,7 @@ export function ObservatoryApp({
                 <span className="font-mono text-[12px] text-[#8C94A8]">{activeStockCode}</span>
               </div>
             )}
-            <div className="text-[12px] text-[#8C94A8]">Building your evidence space…</div>
+            <div className="text-[12px] text-[#8C94A8]">{COPY.resolvingRegions}</div>
             {/* 抽象场：模糊 dots + 网格，不代表真实 Evidence（§16） */}
             <div
               aria-hidden
@@ -466,13 +625,57 @@ export function ObservatoryApp({
           </div>
         )}
 
-        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && !isCompact && (
+        {worldLevel === "COMPANY" && !space && error && (
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="max-w-[420px] border-t border-[#2A3040] px-5 pt-4 text-center">
+              <div className="text-[13px] text-[#F1F3F5]">{error}</div>
+              <div className="mt-1 text-[11.5px] text-[#8C94A8]">数据不可用时不会生成任何结论。</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setSpace(null)
+                  setExperience({ ...INITIAL_EXPERIENCE })
+                  setScene("SPACE_OVERVIEW")
+                }}
+                className="mt-3 rounded-md border border-[#2A3040] px-3 py-1.5 text-[11.5px] text-[#F1F3F5] transition hover:bg-white/5"
+              >
+                回到 My World
+              </button>
+            </div>
+          </div>
+        )}
+
+        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && globalUnavailable && (
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="max-w-[420px] border-t border-[#2A3040] px-5 pt-4 text-center">
+              <div className="text-[13px] text-[#F1F3F5]">{COPY.worldUnavailable}</div>
+              <div className="mt-1 text-[11.5px] text-[#8C94A8]">
+                没有可用证据时不会生成任何结论。
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setExperience({ ...INITIAL_EXPERIENCE })
+                  setScene("DISCOVERY")
+                  setSpace(null)
+                }}
+                className="mt-3 rounded-md border border-[#2A3040] px-3 py-1.5 text-[11.5px] text-[#F1F3F5] transition hover:bg-white/5"
+              >
+                Search another company
+              </button>
+            </div>
+          </div>
+        )}
+
+        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && !globalUnavailable && !isCompact && (
           <ResearchWorkspace
             key={`${space.company.stockCode}:${spaceInteractionSeed}`}
             space={space}
             renderer={renderer}
             onOpenDimension={(id) => {
               setSelectedDimensionId(id)
+              dispatchExperience({ type: "open_research", dimensionId: id, source: "click" })
               setScene("DIMENSION_FOCUS")
             }}
             onAddDimension={() => setAddLensOpen(true)}
@@ -481,10 +684,13 @@ export function ObservatoryApp({
             dismissedSuggestions={dismissedSuggestions}
             addLensOpen={addLensOpen}
             registerActions={setWorkspaceActions}
+            semanticState={experience}
+            onSemanticEvent={dispatchExperience}
+            onCameraSample={setSpaceCamera}
           />
         )}
 
-        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && isCompact && (
+        {worldLevel === "COMPANY" && scene === "SPACE_OVERVIEW" && space && !globalUnavailable && isCompact && (
           <div className="flex h-full w-full flex-col justify-center gap-4 overflow-x-auto px-5">
             <div className="text-center">
               <div className="text-[18px] font-medium" style={{ color: "#F1F3F5" }}>{space.company.stockName}</div>
@@ -495,7 +701,11 @@ export function ObservatoryApp({
                 <button
                   key={d.dimensionId}
                   type="button"
-                  onClick={() => { setSelectedDimensionId(d.dimensionId); setScene("DIMENSION_FOCUS") }}
+                  onClick={() => {
+                    setSelectedDimensionId(d.dimensionId)
+                    dispatchExperience({ type: "open_research", dimensionId: d.dimensionId, source: "click" })
+                    setScene("DIMENSION_FOCUS")
+                  }}
                   className="min-w-[160px] shrink-0 rounded-xl border border-[#232838] bg-[#12161F]/85 px-3.5 py-3 text-left"
                 >
                   <div className="text-[14px] text-[#F1F3F5]" style={{ wordBreak: "keep-all" }}>{d.label}</div>
@@ -512,7 +722,20 @@ export function ObservatoryApp({
             space={space}
             dimension={selectedDimension}
             metrics={space.metrics}
-            onBack={() => setScene("SPACE_OVERVIEW")}
+            activeClaimId={experience.activeClaim ?? null}
+            activeEvidenceId={experience.activeEvidence ?? null}
+            onClaimFocus={(claimId) =>
+              dispatchExperience({ type: "select_claim", claimId, source: "click" })
+            }
+            onEvidenceFocus={(evidenceId, claimId) => {
+              dispatchExperience({ type: "select_claim", claimId, source: "click" })
+              dispatchExperience({ type: "select_evidence", evidenceId, source: "click" })
+            }}
+            onReturnToClaim={() => dispatchExperience({ type: "clear_evidence", source: "back" })}
+            onBack={() => {
+              dispatchExperience({ type: "back" })
+              setScene("SPACE_OVERVIEW")
+            }}
           />
         )}
       </div>
@@ -616,7 +839,7 @@ export function ObservatoryApp({
               aria-label="打开命令面板（Command Lens）"
             >
               <span className="font-mono text-[12px] text-[#A6AEC0]">⌘K</span>
-              <span className="text-[13px] text-[#8C94A8]">Ask · Focus · Add</span>
+              <span className="text-[13px] text-[#8C94A8]">{`Ask · Explore · Add`}</span>
             </button>
           ) : (
             <div
@@ -654,6 +877,28 @@ export function ObservatoryApp({
         </div>
       )}
 
+      {experienceDebug && (
+        <div
+          className="pointer-events-none absolute bottom-24 right-6 z-40 rounded border border-[#2A3040] px-3 py-2 font-mono text-[10px] leading-relaxed text-[#8C94A8]"
+          style={{ background: "rgba(10,12,17,0.9)" }}
+        >
+          <div>semanticLevel: {experience.level}</div>
+          <div>company: {experience.activeCompany ?? "—"}</div>
+          <div>dimension: {experience.activeDimension ?? "—"}</div>
+          <div>claim: {experience.activeClaim ?? "—"}</div>
+          <div>evidence: {experience.activeEvidence ?? "—"}</div>
+          <div>renderer: {rendererId}</div>
+          <div>
+            camera:{" "}
+            {(worldLevel === "COMPANY" ? spaceCamera.scale : worldCamera.scale).toFixed(2)} @{" "}
+            {Math.round(worldLevel === "COMPANY" ? spaceCamera.x : worldCamera.x)},
+            {Math.round(worldLevel === "COMPANY" ? spaceCamera.y : worldCamera.y)}
+          </div>
+          <div>objectDetail: {spaceCamera.scale < 0.8 ? "micro" : spaceCamera.scale >= 1.15 ? "expanded-capable" : "compact"}</div>
+          <div>transitionSource: {experience.transitionSource}</div>
+        </div>
+      )}
+
       <style jsx global>{`
         @keyframes observatory-zoom {
           from { transform: scale(0.86); opacity: 0.4; }
@@ -662,6 +907,19 @@ export function ObservatoryApp({
         @keyframes observatory-breathe {
           0%, 100% { opacity: 0.5; }
           50% { opacity: 0.85; }
+        }
+        @keyframes observatory-recede {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes observatory-morph-outward {
+          from { transform: scale(0.34); opacity: 0.9; }
+          to { transform: scale(1.34); opacity: 0; }
+        }
+        @keyframes observatory-hold {
+          0% { opacity: 0; transform: translateY(8px); }
+          24% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0.9; }
         }
         @keyframes observatory-expand {
           from { transform: scale(0.96) translateY(6px); opacity: 0; }

@@ -30,6 +30,7 @@ export function MyWorldWorkspace({
   onEnterResearch,
   onToggleSaved,
   onAddCompany,
+  enteringCode = null,
 }: {
   renderer: WorldRenderer
   companies: WorldCompany[]
@@ -40,6 +41,8 @@ export function MyWorldWorkspace({
   onEnterResearch: (stockCode: string) => void
   onToggleSaved: (stockCode: string) => void
   onAddCompany: (item: StockSearchItem) => void
+  /** §26–§29：正在 morph 进 Company World 的对象（其他对象收紧让位，§58） */
+  enteringCode?: string | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerRect, setContainerRect] = useState({ left: 0, top: 0, width: 1440, height: 900 })
@@ -200,6 +203,60 @@ export function MyWorldWorkspace({
             })
           : null}
       </div>
+
+      {/* Company → Company World morph（§26–§29/§57–§58）：
+          记录 source object 的屏幕位置，光晕从该对象扩张；其他对象收拢变暗。
+          数据在背后解析，morph 结束才切换 Level（§61）。 */}
+      {enteringCode && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-20">
+          <div
+            className="absolute inset-0"
+            style={{
+              background: renderer.tokens.light ? "rgba(246,245,241,0.55)" : "rgba(7,9,14,0.55)",
+              animation: "observatory-recede 760ms ease-out forwards",
+            }}
+          />
+          {(() => {
+            const pos = positions.find((p) => p.stockCode === enteringCode)
+            if (!pos) return null
+            const screen = worldToScreen(camera, viewport, pos.x, pos.y)
+            const company = companies.find((c) => c.stockCode === enteringCode)
+            return (
+              <>
+                <div
+                  className="absolute rounded-full"
+                  style={{
+                    left: screen.x,
+                    top: screen.y,
+                    width: 220,
+                    height: 220,
+                    marginLeft: -110,
+                    marginTop: -110,
+                    border: `1px solid ${renderer.tokens.accent}`,
+                    background: `radial-gradient(circle, ${renderer.tokens.accent}22 0%, transparent 62%)`,
+                    animation: "observatory-morph-outward 760ms cubic-bezier(0.22,1,0.36,1) forwards",
+                  }}
+                />
+                {/* 标签与对象同位：由 scrim 压暗的原标签 → morph 标签，读作「标签从地形上抬起」 */}
+                <div
+                  className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
+                  style={{
+                    left: screen.x,
+                    top: screen.y,
+                    color: renderer.tokens.textPrimary,
+                    animation: "observatory-hold 760ms ease-out forwards",
+                  }}
+                >
+                  <div className="text-[15px] font-medium">{company?.stockName ?? enteringCode}</div>
+                  <div className="mt-0.5 font-mono text-[11px]" style={{ color: renderer.tokens.textSecondary }}>
+                    {enteringCode}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+        </div>
+      )}
 
       {/* Active company 轻提示（§64）+ Enter research（唯一 API 触发点，§12） */}
       {activeCompany && (

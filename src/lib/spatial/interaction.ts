@@ -129,6 +129,8 @@ export interface PinnedSummary {
   claims: { text: string; type: string; signal: string }[]
   status: string
   position: { x: number; y: number }
+  /** Task 15 §48：可折叠为 label，减少 workspace clutter */
+  collapsed?: boolean
 }
 
 export const MAX_PINNED_SUMMARIES = 3

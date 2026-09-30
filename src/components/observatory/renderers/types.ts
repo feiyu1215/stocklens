@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 
 import type { Evidence } from "@/lib/evidence/types"
 import type { WorldCompany, WorldRendererId } from "@/lib/world/types"
+import type { ObjectDetailLevel } from "@/lib/experience/detail"
 import type { ResearchDimension } from "@/lib/research/dimension-schema"
 import type { DimensionLayout } from "@/lib/presentation/constellation-layout"
 
@@ -43,6 +44,13 @@ export interface DimensionRenderState {
   focused: boolean
   dimmed: boolean
   hovered: boolean
+  /** Task 15：信息密度（Experience Model 决定，Renderer 只消费） */
+  detailLevel: ObjectDetailLevel
+  /** §49 局部降级：证据可用但 AI 解释暂缺 */
+  degraded: boolean
+  /** expanded 密度下的摘要与 top claims（§89） */
+  expandedSummary?: string
+  expandedClaims?: string[]
   /** 拖动中的实时位置覆盖（世界坐标） */
   dragPosition?: { x: number; y: number }
 }
@@ -61,8 +69,16 @@ export interface EvidenceFieldRenderState {
   evidence: Evidence[]
   highlightedDimensionId: string | null
   hoveredEvidenceId: string | null
+  /** Task 15 §92–§93：证据节点预算随 camera scale（12–16） */
+  nodeBudget?: number
+  /** Task 15 §92：近距离显示 labels / links */
+  showLabels?: boolean
   /** Terrain 渲染区域几何所需的世界坐标（其它 renderer 忽略） */
   dimensionLayouts?: { dimension: ResearchDimension; x: number; y: number; width: number }[]
+  /** Task 15 §37–§39：Terrain Region 自身作为 hit target（DOM button 仍作可访问性代理） */
+  onRegionPointerEnter?: (dimensionId: string) => void
+  onRegionPointerLeave?: () => void
+  onRegionClick?: (dimensionId: string) => void
 }
 
 export interface CompanyRenderState {

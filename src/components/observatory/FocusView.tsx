@@ -7,6 +7,7 @@ import type { MetricResult } from "@/lib/metrics/types"
 import type { ResearchClaim } from "@/lib/research/claims"
 import type { ResearchDimension } from "@/lib/research/dimension-schema"
 import { formatMetricValue } from "@/lib/presentation/formatters"
+import { COPY } from "@/lib/experience/copy"
 import {
   OBSERVATORY_COLORS,
   STATUS_LABEL,
@@ -41,12 +42,18 @@ function EvidenceRail({
   pinnedId,
   previewId,
   onPin,
+  claimContext,
+  onReturnToClaim,
 }: {
   evidence: Evidence[]
   metrics: MetricResult[]
   pinnedId: string | null
   previewId: string | null
   onPin: (id: string | null) => void
+  /** evidence level 时保持 claim 上下文可见（§22） */
+  claimContext?: string | null
+  /** §95：Evidence Rail 的 Return to claim */
+  onReturnToClaim?: () => void
 }) {
   const id = previewId ?? pinnedId ?? evidence[0]?.evidenceId ?? null
   const current = evidence.find((e) => e.evidenceId === id) ?? null
@@ -84,14 +91,21 @@ function EvidenceRail({
         </span>
       </div>
 
+      {claimContext && (
+        <div className="border-b border-black/10 bg-black/[0.03] px-5 py-2 leading-relaxed">
+          <div className="font-mono text-[9.5px] tracking-[0.16em] text-[#9A9BA0]">CLAIM CONTEXT</div>
+          <div className="mt-0.5 text-[11px] text-[#4A4E57]">{claimContext}</div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-5 py-4">
         <div className="text-[14px] font-medium text-[#14161B]">{current.title}</div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-[#3A3D45]">{current.statement}</p>
 
         {current.interpretationNote && (
           <div
-            className="mt-3 rounded-lg border px-3 py-2 text-[11px] leading-relaxed"
-            style={{ borderColor: "rgba(234,185,95,0.5)", background: "rgba(234,185,95,0.10)", color: "#7A5A16" }}
+            className="mt-3 border-l pl-3 text-[11px] leading-relaxed"
+            style={{ borderColor: "rgba(234,185,95,0.75)", color: "#7A5A16" }}
           >
             <div className="font-mono text-[10px] tracking-wider">INTERPRETATION CAUTION</div>
             <div className="mt-1">{current.interpretationNote}</div>
@@ -102,10 +116,15 @@ function EvidenceRail({
         {linkedMetrics.length > 0 && (
           <div className="mt-4 space-y-2">
             {linkedMetrics.map((metric) => (
-              <div key={metric.metricId} className="rounded-lg border border-black/10 bg-white/60 px-3 py-2">
+              <div key={metric.metricId} className="border-t border-black/10 pt-2">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-[11.5px] text-[#3A3D45]">{metric.name}</span>
-                  <span className="font-mono text-[14px] text-[#14161B]">{formatMetricValue(metric)}</span>
+                  <span
+                    className="font-mono text-[16px] text-[#14161B]"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {formatMetricValue(metric)}
+                  </span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-3 font-mono text-[10px] text-[#676A70]">
                   {metric.period && <span>{metric.period}</span>}
@@ -149,6 +168,15 @@ function EvidenceRail({
           >
             {pinnedId === id ? "Unpin" : "Pin evidence"}
           </button>
+          {onReturnToClaim && (
+            <button
+              type="button"
+              onClick={onReturnToClaim}
+              className="rounded-md border border-black/15 px-2.5 py-1 text-[11px] text-[#3A3D45] transition hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+            >
+              ← Return to claim
+            </button>
+          )}
         </div>
       </div>
     </aside>
@@ -238,11 +266,23 @@ export function FocusView({
   dimension,
   onBack,
   metrics,
+  activeClaimId = null,
+  activeEvidenceId = null,
+  onClaimFocus,
+  onEvidenceFocus,
+  onReturnToClaim,
 }: {
   space: ResearchSpacePayload
   dimension: ResearchDimension
   onBack: () => void
   metrics: MetricResult[]
+  /** claim level：当前被阅读的 claim（§21：其余成为 dimmed mirror） */
+  activeClaimId?: string | null
+  /** evidence level：正在核查的证据（§21/§94） */
+  activeEvidenceId?: string | null
+  onClaimFocus?: (claimId: string) => void
+  onEvidenceFocus?: (evidenceId: string, claimId: string) => void
+  onReturnToClaim?: () => void
 }) {
   const dimensionEvidence = useMemo(
     () =>
@@ -311,10 +351,10 @@ export function FocusView({
       if (body.synthesis) {
         setThread({ ...thread, status: "success", answer: body.synthesis })
       } else {
-        setThread({ ...thread, status: "failed", message: "追问生成失败，已验证证据仍可查看。" })
+        setThread({ ...thread, status: "failed", message: "追问暂不可用，已验证证据仍可查看。" })
       }
     } catch {
-      setThread({ ...thread, status: "failed", message: "无法连接追问服务。" })
+      setThread({ ...thread, status: "failed", message: "追问服务暂时未响应，已验证证据仍可查看。" })
     }
   }
 
@@ -326,6 +366,17 @@ export function FocusView({
         <div className="mt-0.5 font-mono text-[11px] text-[#676A70]">{space.company.stockCode}</div>
         <div className="mt-3 text-[13px] text-[#3A3D45]">{dimension.label}</div>
         <div className="mt-0.5 text-[11px] text-[#676A70]">{dimension.researchQuestion}</div>
+
+        {/* §22/§94：claim level 时保持「正在读哪一条」可见 */}
+        {activeClaimId && (
+          <div className="mt-3 border-l border-[#2E9BE0]/60 pl-2 font-mono text-[10px] leading-relaxed text-[#676A70]">
+            READING{" "}
+            {String(
+              claims.findIndex((c) => c.claimId === activeClaimId) + 1,
+            ).padStart(2, "0")}
+            {activeEvidenceId ? " · EVIDENCE" : ""}
+          </div>
+        )}
 
         <button
           type="button"
@@ -370,7 +421,17 @@ export function FocusView({
             const isThreadOpen = thread?.claimId === claim.claimId
             const isChallenging = challengeClaimId === claim.claimId
             return (
-              <li key={claim.claimId} className="group">
+              <li
+                key={claim.claimId}
+                className="group"
+                data-claim-id={claim.claimId}
+                data-active={activeClaimId === claim.claimId ? "1" : undefined}
+                style={{
+                  opacity:
+                    activeClaimId && activeClaimId !== claim.claimId ? (activeEvidenceId ? 0.34 : 0.6) : 1,
+                  transition: "opacity 280ms ease-out",
+                }}
+              >
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 font-mono text-[11px] text-[#676A70]">{String(index + 1).padStart(2, "0")}</span>
                   <div className="flex-1">
@@ -382,7 +443,12 @@ export function FocusView({
                         </span>
                       )}
                     </div>
-                    <p className="mt-1.5 text-[15px] leading-relaxed text-[#14161B]">{claim.text}</p>
+                    <p
+                      className="mt-1.5 cursor-text text-[15px] leading-relaxed text-[#14161B]"
+                      onClick={() => onClaimFocus?.(claim.claimId)}
+                    >
+                      {claim.text}
+                    </p>
                     <div className="mt-1.5 flex items-center gap-2">
                       {anchors.map((n) => (
                         <button
@@ -390,8 +456,14 @@ export function FocusView({
                           type="button"
                           onMouseEnter={() => setPreviewId(claim.evidenceIds[anchors.indexOf(n)] ?? null)}
                           onMouseLeave={() => setPreviewId(null)}
-                          onClick={() => setPinnedId(claim.evidenceIds[anchors.indexOf(n)] ?? null)}
+                          onFocus={() => onClaimFocus?.(claim.claimId)}
+                          onClick={() => {
+                            const evidenceId = claim.evidenceIds[anchors.indexOf(n)] ?? null
+                            setPinnedId(evidenceId)
+                            if (evidenceId) onEvidenceFocus?.(evidenceId, claim.claimId)
+                          }}
                           aria-label={`查看证据 ${n}`}
+                          aria-pressed={activeEvidenceId === (claim.evidenceIds[anchors.indexOf(n)] ?? null)}
                           className="font-mono text-[15px] text-[#2E9BE0] transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
                           title="hover 预览 / 点击固定"
                         >
@@ -444,7 +516,7 @@ export function FocusView({
                           </button>
                         </form>
                         {thread.status === "failed" && (
-                          <p className="mt-2 text-[12px] text-[#9A7B16]">{thread.message ?? "追问失败"}</p>
+                          <p className="mt-2 text-[12px] text-[#9A7B16]">{thread.message ?? "追问暂不可用"}</p>
                         )}
                         {thread.status === "redirect" && (
                           <p className="mt-2 text-[12px] text-[#676A70]">{thread.message}</p>
@@ -530,8 +602,8 @@ export function FocusView({
         )}
 
         {dimension.status === "unknown" && (
-          <div className="mt-8 rounded-xl border border-dashed px-4 py-4" style={{ borderColor: "rgba(234,185,95,0.6)", background: "rgba(234,185,95,0.08)" }}>
-            <div className="text-[13px] font-medium text-[#7A5A16]">Current evidence is incomplete.</div>
+          <div className="mt-8 border-l border-dashed pl-4" style={{ borderColor: "rgba(234,185,95,0.75)" }}>
+            <div className="text-[13px] font-medium text-[#7A5A16]">{COPY.evidenceIncomplete}</div>
             {dimension.missingInformation && dimension.missingInformation.length > 0 && (
               <>
                 <div className="mt-2 font-mono text-[10px] tracking-wider text-[#7A5A16]">Currently missing:</div>
@@ -559,6 +631,12 @@ export function FocusView({
         pinnedId={pinnedId}
         previewId={previewId}
         onPin={setPinnedId}
+        claimContext={
+          activeEvidenceId
+            ? (claims.find((c) => c.claimId === activeClaimId)?.text ?? null)
+            : null
+        }
+        {...(activeEvidenceId ? { onReturnToClaim } : {})}
       />
     </div>
   )

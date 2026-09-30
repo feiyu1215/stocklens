@@ -48,6 +48,8 @@ AI Research Framer 依据公司、行业、用户问题与真实 Capability Mani
 grounded claims；用户可直接添加研究角度（无数据支撑时生成 UNKNOWN 维度并列出缺失数据，
 绝不编造），沿 Claim 的 ①②③ 证据锚点 hover 预览 / 点击固定右侧 Evidence Rail，
 并在 Claim 下就地追问（复用 /api/followup）。V1（/、/diagnosis、/api/diagnosis）完整保留。
+语义层级（world → company → dimension → claim → evidence，缩放只改信息密度不改层级、
+失败局部降级而非页面级报错）：[`docs/semantic-zoom.md`](./docs/semantic-zoom.md)。
 设计与实现细节：[`docs/observatory-architecture.md`](./docs/observatory-architecture.md) ·
 [`docs/observatory-visual-spec.md`](./docs/observatory-visual-spec.md)。
 
@@ -92,10 +94,11 @@ npx vercel deploy --prod                         # https://stocklens-blush.verce
 
 ## 测试与质量记录
 
-- 253 个自动化测试（含打包预算、事件护栏、研究视图）；
+- 356 个自动化测试（含打包预算、事件护栏、研究视图、语义层级与载荷守卫）；
 - Production smoke（公网 5 路径）：scripts/production_smoke.py → scripts/production-smoke-results.json；
 - 交付文档：docs/test-notes.md · docs/ai-usage-record.md · docs/demo-script.md ·
-  docs/metric-catalog.md · docs/evidence-rules.md · docs/ai-architecture.md。
+  docs/metric-catalog.md · docs/evidence-rules.md · docs/ai-architecture.md ·
+  docs/semantic-zoom.md（Task 15 语义层 + 截图索引）。
 
 ## 已知边界与未做事项
 

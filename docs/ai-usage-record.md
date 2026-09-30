@@ -96,3 +96,19 @@ AI 只做组织与解释，UI 只做格式化与钻取。
    8 条真实证据 + 6 条 grounded claims。
 8. **行业归属不做常识猜测**：通过官方成分股接口扫描 90 个一级行业指数（0 错误、唯一命中）
    后才写入 verified mapping，并保留 source/verifiedAt/verificationMethod 溯源字段。
+
+9. **语义层级重构中的三处真实修正（Task 15，均为实测暴露）**：
+   (a) **深链失效**：把 `worldLevel` 改成由 ExperienceState 派生后，`?stockCode=000333.SZ`
+   会落在 My World 而不是公司研究空间——用浏览器实测发现，修正为"带 stockCode 初始化即 company 层"，
+   并在 fixture / Discovery 选择路径同样写入语义层。
+   (b) **残缺载荷崩溃**：`?fixture=unknown-dimension`（该文件其实是"新增维度结果"API 的载荷）
+   触发 `Cannot read properties of undefined (reading 'find')`。修正：新增 `isResearchSpace` 载荷守卫，
+   结构不完整走"无法建立 World"出口；并把该 fixture 固化为守卫的负例测试。
+   (c) **内容重复**：expanded 对象的 summary 与其 top claims 首条是同一句；peek 打开后对象与 peek
+   同时展示同一段摘要。修正：列表从第二条开始、peek 打开时对象回落 compact。
+   以上三处都不是"AI 生成错误"，而是**表达层状态分散导致的真实缺陷**，正是 Task 15 要收敛的问题。
+10. **降级不是靠想象，而是抓到了真实样本**：本次本地跑 `/api/research/init` 时 DeepSeek 两次返回
+    无 claims 的降级响应（真实发生，未人为制造）。产品表现符合 Task 15 §1–§4：6 个维度各自显示
+    `AI interpretation unavailable`，证据节点照常可见，页面级只有一行弱文案，**没有任何页面级失败视觉**。
+    该真实载荷已固化为 `tests/fixtures/observatory/one-other-industry.json`，截图见
+    `docs/screenshots/t15/25-degraded-localized.png`。

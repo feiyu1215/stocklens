@@ -46,6 +46,9 @@ import {
   type PinnedSummary,
 } from "@/lib/spatial/interaction"
 import type { ResearchSpacePayload } from "./theme"
+import { degradationForDimension } from "@/lib/experience/state"
+import { getObjectDetailLevel, evidenceNodeBudget, shouldShowEvidenceLabels } from "@/lib/experience/detail"
+import { COPY } from "@/lib/experience/copy"
 import type { DimensionHandlers, SuggestionHandlers, WorldRenderer } from "./renderers/types"
 
 // ResearchWorkspace（Task 13 §1）：Camera / SpatialState / Layout / Interaction / Objects / Renderer。
@@ -85,6 +88,9 @@ export function ResearchWorkspace({
   dismissedSuggestions,
   onSuggestionDismiss,
   registerActions,
+  onCameraSample,
+  semanticState,
+  onSemanticEvent,
   addLensOpen = false,
 }: {
   space: ResearchSpacePayload
@@ -95,6 +101,11 @@ export function ResearchWorkspace({
   dismissedSuggestions: string[]
   onSuggestionDismiss: (label: string) => void
   registerActions?: (actions: WorkspaceActions) => void
+  /** 仅开发/评审：把空间 camera 采样给 ?experienceDebug=1 面板（§99） */
+  onCameraSample?: (camera: import("@/lib/spatial/camera").CameraState) => void
+  /** Task 15：语义状态由 App 单一持有（§10），workspace 只派发事件 */
+  semanticState?: import("@/lib/experience/state").ExperienceState
+  onSemanticEvent?: (event: import("@/lib/experience/state").ExperienceEvent) => void
   addLensOpen?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -109,6 +120,7 @@ export function ResearchWorkspace({
   const [focus, setFocus] = useState<FocusSetState>({ selected: [], focused: [] })
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null)
   const [hoveredSuggestion, setHoveredSuggestion] = useState<string | null>(null)
+  const [selectedSummaryId, setSelectedSummaryId] = useState<string | null>(null)
   const [peekDimensionId, setPeekDimensionId] = useState<string | null>(null)
   const [summaries, setSummaries] = useState<PinnedSummary[]>([])
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -247,6 +259,18 @@ export function ResearchWorkspace({
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
+
+  useEffect(() => {
+    if (!onCameraSample) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (!cancelled) onCameraSample(camera)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [camera, onCameraSample])
 
   // ---- 指针事件：仲裁（§9） ----
   const pickObjectAt = (target: EventTarget | null): string | null => {
@@ -543,6 +567,20 @@ export function ResearchWorkspace({
               ? space.dimensions.find((d) => d.dimensionId === hoveredDimensionId)?.label ?? null
               : null,
           hoveredEvidenceId: null,
+          // Task 15 §92–§93：密度随 camera scale
+          nodeBudget: evidenceNodeBudget(camera.scale),
+          showLabels: shouldShowEvidenceLabels(camera.scale),
+          // Terrain Region 作为 hit target（§37–§39；DOM button 仍是可访问性代理）
+          dimensionLayouts: visibleDimensions.map((dim) => {
+            const l = layoutById.get(dim.dimensionId)
+            return { dimension: dim, x: l?.x ?? 0, y: l?.y ?? 0, width: l?.width ?? 176 }
+          }),
+          onRegionPointerEnter: (dimensionId) => setHoveredDimensionId(dimensionId),
+          onRegionPointerLeave: () => setHoveredDimensionId(null),
+          onRegionClick: (dimensionId) => {
+            setPeekDimensionId((prev) => (prev === dimensionId ? null : dimensionId))
+            onSemanticEvent?.({ type: "open_dimension", dimensionId, source: "click" })
+          },
         })}
 
         {/* Company Core */}
@@ -562,6 +600,10 @@ export function ResearchWorkspace({
           if (!layout) return null
           const claims = space.claims.filter((c) => c.dimensionId === dim.dimensionId)
           const dragging = dragPosition?.dimensionId === dim.dimensionId
+          // Task 15 §27：进入 claim/evidence level 时，其他 Dimension 退到空间边缘（语义 zoom，不是 camera zoom）
+          const semanticReceded =
+            (semanticState?.level === "claim" || semanticState?.level === "evidence") &&
+            semanticState.activeDimension !== dim.dimensionId
           return renderer.renderDimension(
             {
               dimension: dim,
@@ -571,8 +613,20 @@ export function ResearchWorkspace({
               unknownCount: claims.filter((c) => c.type === "unknown").length,
               selected: focus.selected.includes(dim.dimensionId),
               focused: focus.focused.includes(dim.dimensionId),
-              dimmed: focus.focused.length > 0 && !focus.focused.includes(dim.dimensionId),
+              dimmed: (focus.focused.length > 0 && !focus.focused.includes(dim.dimensionId)) || semanticReceded,
               hovered: hoveredDimensionId === dim.dimensionId,
+              // Task 15：信息密度由 Experience Model 决定；局部降级状态本地化（§3/§49）
+              // peek 打开时由 peek 承载内容，对象回到 compact（否则同一段 summary 会出现两次）
+              detailLevel: getObjectDetailLevel({
+                cameraScale: camera.scale,
+                hovered: hoveredDimensionId === dim.dimensionId && peekDimensionId !== dim.dimensionId,
+                selected: focus.selected.includes(dim.dimensionId),
+              }),
+              degraded: degradationForDimension(claims.length > 0, space.ai.status).interpretation === "unavailable",
+              // §89：expanded 时给 summary + top claims；内容常备，是否呈现由 detailLevel 决定（kit 侧 gate）
+              expandedSummary: (claims[0]?.text ?? dim.researchQuestion).slice(0, 96),
+              // summary 已是 claims[0]，列表从第二条开始，避免同一句话出现两次
+              expandedClaims: claims.slice(1, 4).map((c) => c.text.slice(0, 56)),
               ...(dragging && dragPosition ? { dragPosition: { x: dragPosition.x, y: dragPosition.y } } : {}),
             },
             dimensionHandlers,
@@ -702,13 +756,14 @@ export function ResearchWorkspace({
             <button
               type="button"
               onClick={() => {
+                onSemanticEvent?.({ type: "open_research", dimensionId: peekDimension.dimensionId, source: "click" })
                 onOpenDimension(peekDimension.dimensionId)
                 setPeekDimensionId(null)
               }}
               className="font-medium"
               style={{ color: tokens.accent }}
             >
-              Open research →
+              Explore region →
             </button>
             <button
               type="button"
@@ -760,48 +815,105 @@ export function ResearchWorkspace({
           <div
             key={s.id}
             data-summary-id={s.id}
-            className="absolute z-20 w-[250px] cursor-grab rounded-xl border p-3 active:cursor-grabbing"
+            className="absolute z-20 cursor-grab active:cursor-grabbing"
             style={{
               left: screen.x,
               top: screen.y,
-              borderColor: tokens.surfaceBorder,
-              background: tokens.light ? "rgba(255,255,255,0.95)" : "rgba(16,20,28,0.95)",
+              width: s.collapsed ? 150 : 244,
+              // Task 15 §46：flat paper / 小圆角 / 强排版 / 极弱阴影 —— research note 而非 SaaS popover
+              borderRadius: 4,
+              border: `1px solid ${tokens.surfaceBorder}`,
+              background: tokens.light ? "rgba(252,251,248,0.97)" : "rgba(16,20,28,0.94)",
               color: tokens.textPrimary,
-              backdropFilter: "blur(6px)",
-              transition: drag?.kind === "summary" ? "none" : "box-shadow 200ms ease-out",
+              boxShadow: drag?.kind === "summary" ? "0 10px 30px rgba(0,0,0,0.18)" : "0 1px 3px rgba(0,0,0,0.08)",
+              padding: "10px 12px",
+              transition: drag?.kind === "summary" ? "none" : "width 200ms ease-out, box-shadow 200ms ease-out",
             }}
             onPointerDown={(e) => {
               e.stopPropagation()
               const rect = getContainerRect()
               const world = toWorld(e.clientX - rect.left, e.clientY - rect.top)
+              setSelectedSummaryId(s.id)
               setDragState({ kind: "summary", summaryId: s.id, offset: { x: world.x - s.position.x, y: world.y - s.position.y } })
             }}
           >
-            <div className="font-mono text-[9.5px] tracking-[0.18em]" style={{ color: tokens.textFaint }}>
-              PINNED SUMMARY
-            </div>
-            <div className="mt-1 text-[13.5px] font-medium">{s.label}</div>
-            <ul className="mt-1.5 space-y-1">
-              {s.claims.map((c, i) => (
-                <li key={i} className="text-[11px] leading-snug" style={{ color: tokens.textSecondary }}>
-                  {c.text.slice(0, 54)}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-2 flex items-center justify-between text-[10.5px]" style={{ color: tokens.textFaint }}>
-              <span>{s.status}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div
+                className="font-mono text-[9.5px] tracking-[0.16em]"
+                style={{ color: tokens.textFaint }}
+              >
+                {s.collapsed ? s.label : "RESEARCH NOTE"}
+              </div>
               <button
                 type="button"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setSummaries((prev) => prev.filter((x) => x.id !== s.id))
+                  setSummaries((prev) => prev.map((x) => (x.id === s.id ? { ...x, collapsed: !x.collapsed } : x)))
                 }}
-                className="transition hover:opacity-80"
+                aria-label={s.collapsed ? "展开研究笔记" : "折叠研究笔记"}
+                className="text-[10px] transition hover:opacity-80"
+                style={{ color: tokens.textFaint }}
               >
-                Unpin
+                {s.collapsed ? "▢" : "—"}
               </button>
             </div>
+            {!s.collapsed && (
+              <>
+                <div className="mt-1 text-[13.5px] font-medium tracking-tight">{s.label}</div>
+                <ul className="mt-1.5 space-y-1">
+                  {s.claims.map((c, i) => (
+                    <li key={i} className="text-[11px] leading-snug" style={{ color: tokens.textSecondary }}>
+                      {c.text.slice(0, 54)}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex items-center justify-between text-[10.5px]" style={{ color: tokens.textFaint }}>
+                  <span>{s.status}</span>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSummaries((prev) => prev.filter((x) => x.id !== s.id))
+                    }}
+                    className="transition hover:opacity-80"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </>
+            )}
+            {/* §47：仅选中该 note 时绘制极弱 annotation tether 指向来源 Dimension */}
+            {selectedSummaryId === s.id && (
+              <svg
+                aria-hidden
+                className="pointer-events-none absolute left-1/2 top-1/2"
+                width={400}
+                height={400}
+                style={{ overflow: "visible" }}
+              >
+                {(() => {
+                  const source = layoutById.get(s.dimensionId)
+                  if (!source) return null
+                  const from = toScreen(source.x, source.y)
+                  const dx = from.x - screen.x - 8
+                  const dy = from.y - screen.y - 8
+                  return (
+                    <line
+                      x1={8}
+                      y1={8}
+                      x2={dx}
+                      y2={dy}
+                      stroke={tokens.textFaint}
+                      strokeWidth={0.8}
+                      strokeDasharray="2 4"
+                      opacity={0.7}
+                    />
+                  )
+                })()}
+              </svg>
+            )}
           </div>
         )
       })}
@@ -956,13 +1068,14 @@ export function ResearchWorkspace({
         </div>
       )}
 
-      {/* AI status（partial/failed 如实呈现） */}
+      {/* Task 15 §2/§3/§49：AI 部分失败不再产生页面级失败视觉；
+          降级信息以最小状态出现在对应对象上（见 dimension footer），此处仅保留一句轻提示（无 banner 容器） */}
       {space.ai.status !== "success" && (
         <div
-          className="absolute left-8 top-24 z-20 max-w-[280px] rounded-lg border px-3.5 py-2.5 text-[11.5px] leading-relaxed"
-          style={{ borderColor: `${tokens.unknown}66`, background: `${tokens.unknown}12`, color: tokens.unknown }}
+          className="pointer-events-none absolute left-1/2 top-6 z-20 -translate-x-1/2 text-[11.5px]"
+          style={{ color: tokens.textFaint }}
         >
-          Research space could not be completed. Evidence objects are still available.
+          {COPY.interpretationTemporarilyUnavailable}
         </div>
       )}
 

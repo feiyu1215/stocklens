@@ -76,6 +76,13 @@ function renderTerrainField(state: EvidenceFieldRenderState): ReactNode {
                 stroke={isUnknown ? TERRAIN_TOKENS.unknown : CONTOUR}
                 strokeWidth={isUnknown ? 1.4 : 1.6}
                 strokeDasharray={isUnknown ? "5 5" : isPartial ? "10 4" : undefined}
+                style={{ pointerEvents: "auto", cursor: "pointer" }}
+                onPointerEnter={() => state.onRegionPointerEnter?.(dimension.dimensionId)}
+                onPointerLeave={() => state.onRegionPointerLeave?.()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  state.onRegionClick?.(dimension.dimensionId)
+                }}
               />
               {geometry.rings.map((ring, i) => (
                 <path key={i} d={ring} fill="none" stroke={CONTOUR_SOFT} strokeWidth={0.7} opacity={0.8} />
@@ -161,29 +168,43 @@ function TerrainWorld({ state }: { state: WorldMapRenderState }): ReactNode {
                 e.stopPropagation()
                 state.onEnter(p.stockCode)
               }}
-              className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#2F6FB0]/70"
+              className="outline-none focus-visible:ring-2 focus-visible:ring-[#2F6FB0]/70"
             >
-              <div
-                className="text-[17px] tracking-wide"
+              {/* 标签落在等高线上会互相切割：用径向 scrim 把文字从地形里「抬」出来（§K 可读性） */}
+              <span
+                className="block px-5 py-2.5"
                 style={{
-                  color: TERRAIN_TOKENS.textPrimary,
-                  fontWeight: tier === "active" ? 600 : 400,
-                  wordBreak: "keep-all",
+                  background: `radial-gradient(closest-side, rgba(246,245,241,0.94) 62%, rgba(246,245,241,0) 100%)`,
                 }}
               >
-                {company.stockName}
-              </div>
-              {tier !== "distant" && (
-                <div className="mt-1 font-mono text-[11px]" style={{ color: TERRAIN_TOKENS.textFaint }}>
-                  {company.stockCode}
-                  {company.industryName ? ` · ${company.industryName}` : ""}
-                </div>
-              )}
-              {tier === "active" && (
-                <div className="mt-1.5 text-[12px]" style={{ color: TERRAIN_TOKENS.accent }}>
-                  Enter research →
-                </div>
-              )}
+                <span
+                  className="block text-[17px] tracking-wide"
+                  style={{
+                    color: TERRAIN_TOKENS.textPrimary,
+                    fontWeight: tier === "active" ? 600 : 400,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {company.stockName}
+                </span>
+                {tier !== "distant" && (
+                  <span
+                    className="mt-1 block font-mono text-[11px]"
+                    style={{ color: TERRAIN_TOKENS.textFaint, whiteSpace: "nowrap" }}
+                  >
+                    {company.stockCode}
+                    {company.industryName ? ` · ${company.industryName}` : ""}
+                  </span>
+                )}
+                {tier === "active" && (
+                  <span
+                    className="mt-1.5 block text-[12px]"
+                    style={{ color: TERRAIN_TOKENS.accent, whiteSpace: "nowrap" }}
+                  >
+                    Enter research →
+                  </span>
+                )}
+              </span>
             </button>
             <button
               type="button"

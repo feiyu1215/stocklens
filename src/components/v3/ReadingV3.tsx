@@ -42,6 +42,7 @@ export default function ReadingV3({
   initialClaimId,
   initialEvidenceId,
   onEvidenceFocus,
+  onAsk,
   onBack,
 }: {
   space: SpaceLike
@@ -51,6 +52,8 @@ export default function ReadingV3({
   initialEvidenceId?: string | null
   /** Reading 内点击证据锚点 → 通知 Canvas 高亮同一证据（§24） */
   onEvidenceFocus?: (evidenceId: string | null) => void
+  /** §24/§26：ASK 统一聚焦全局 AI Lens（单 composer），不再内联第二套输入框 */
+  onAsk?: (claimId: string) => void
   onBack: () => void
 }) {
   const claims = useMemo(
@@ -250,6 +253,10 @@ export default function ReadingV3({
                         type="button"
                         onClick={() => {
                           setActiveClaimId(claim.claimId)
+                          if (onAsk) {
+                            onAsk(claim.claimId)
+                            return
+                          }
                           setThread({ claimId: claim.claimId, question: "", status: "idle" })
                         }}
                         className="font-mono text-[10.5px] tracking-[0.18em] transition hover:opacity-70"

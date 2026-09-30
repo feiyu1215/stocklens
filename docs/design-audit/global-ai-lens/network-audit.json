@@ -1,0 +1,43 @@
+{
+  "capturedAt": "2026-09-30T20:56:56.580Z",
+  "viewport": "1440x900",
+  "note": "AI Lens scopes: company / dimension / evidence (claim via Reading ASK)",
+  "calls": [
+    {
+      "endpoint": "/api/followup",
+      "method": "POST",
+      "ms": 4795,
+      "ok": true,
+      "scopeTag": "6 evidence",
+      "status": 200,
+      "t": "2026-09-30T20:56:03.089Z"
+    },
+    {
+      "endpoint": "/api/followup",
+      "method": "POST",
+      "ms": 4628,
+      "ok": true,
+      "scopeTag": "5 evidence",
+      "status": 200,
+      "t": "2026-09-30T20:56:27.908Z"
+    },
+    {
+      "endpoint": "/__nextjs_original-stack-frames",
+      "method": "POST",
+      "ms": 17,
+      "ok": true,
+      "scopeTag": null,
+      "status": 200,
+      "t": "2026-09-30T20:56:55.047Z"
+    },
+    {
+      "endpoint": "/__nextjs_original-stack-frames",
+      "method": "POST",
+      "ms": 10,
+      "ok": true,
+      "scopeTag": null,
+      "status": 200,
+      "t": "2026-09-30T20:56:55.537Z"
+    }
+  ]
+}

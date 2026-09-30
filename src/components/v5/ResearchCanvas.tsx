@@ -52,6 +52,48 @@ interface PinnedNote {
   y: number
 }
 
+type AiScopeType = "company" | "dimension" | "claim" | "evidence"
+
+interface AiScope {
+  type: AiScopeType
+  dimensionId?: string
+  claimId?: string
+  evidenceId?: string
+}
+
+interface AiEntry {
+  id: string
+  question: string
+  scopeType: AiScopeType
+  scopeLabel: string
+  status: "loading" | "done" | "failed"
+  summary?: string
+  confirmed?: string[]
+  unknowns?: string[]
+  evidenceIds: string[]
+  message?: string
+}
+
+function aiSuggestionsFor(scope: AiScope, payload: ResearchSpacePayload | null): string[] {
+  if (!payload) return []
+  if (scope.type === "dimension") {
+    const dim = payload.dimensions.find((d) => d.dimensionId === scope.dimensionId)
+    const dimClaims = payload.claims.filter((c) => c.dimensionId === scope.dimensionId)
+    const out: string[] = []
+    if (dimClaims.some((c) => c.signal === "conflict")) out.push("这个冲突主要来自什么？")
+    out.push("为什么利润增速弱于收入？", "有哪些证据还缺失？")
+    void dim
+    return out.slice(0, 3)
+  }
+  if (scope.type === "claim") return ["这个结论最关键的依据是什么？", "有哪些反向信号？"].slice(0, 3)
+  if (scope.type === "evidence") return ["这个数值是如何计算的？", "它的口径与期间是什么？"].slice(0, 3)
+  return [
+    `${payload.company.stockName}现在最值得关注什么？`,
+    "估值处于什么位置？",
+    "目前有哪些证据不足？",
+  ].slice(0, 3)
+}
+
 interface AskState {
   anchorId: string
   question: string
@@ -71,6 +113,15 @@ export default function ResearchCanvas() {
   /** §5：click → Focus Aperture（替代原先的原地堆叠 Peek） */
   const [apertureId, setApertureId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  /** §20：thread 按公司隔离（Map<stockCode, entries>） */
+  const [aiThreads, setAiThreads] = useState<Record<string, AiEntry[]>>({})
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiInput, setAiInput] = useState("")
+  const [aiStatus, setAiStatus] = useState<"idle" | "loading">("idle")
+  /** §6：scope 自动来自 activeCompany / dimension / claim / evidence */
+  const [aiScopeOverride, setAiScopeOverride] = useState<AiScope | null>(null)
+  const [aiDebugOn, setAiDebugOn] = useState(false)
+  const aiInputRef = useRef<HTMLTextAreaElement>(null)
   /** 最近一次 Aperture 的客观度量（§43/§49：碰撞前后数量、位移对象数） */
   const [apertureMetrics, setApertureMetrics] = useState<{
     rect: Rect
@@ -121,6 +172,7 @@ export default function ResearchCanvas() {
       if (cancelled) return
       const params = new URLSearchParams(window.location.search)
       setHitAreas(params.get("hitAreas") === "1")
+      setAiDebugOn(params.get("aiDebug") === "1")
       try {
         const res =
           params.get("live") === "1"
@@ -281,11 +333,16 @@ export default function ResearchCanvas() {
         setLensOpen((v) => !v)
       }
       if (e.key === "Escape") {
-        setLensOpen(false)
+        if (lensOpen) { setLensOpen(false); return }
+        if (aiOpen) { setAiOpen(false); return }
         closeAperture()
         setSuggestOpen(null)
         setAsk(null)
         setAddAngle(null)
+      }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault()
+        focusAiLens(null)
       }
       if (e.key === " " && !e.repeat) {
         spaceRef.current = true
@@ -591,6 +648,130 @@ export default function ResearchCanvas() {
     },
     [anchorPos],
   )
+
+  // ---------- §7/§8：scope 自动推导 + 唯一 handleAskAI ----------
+  const aiScope: AiScope = useMemo(() => {
+    if (aiScopeOverride) return aiScopeOverride
+    if (readingEvidenceId) return { type: "evidence", evidenceId: readingEvidenceId }
+    if (readingId) return { type: "dimension", dimensionId: readingId }
+    if (apertureId) return { type: "dimension", dimensionId: apertureId }
+    return { type: "company" }
+  }, [aiScopeOverride, readingEvidenceId, readingId, apertureId])
+
+  const scopeEvidenceIds = useCallback(
+    (scope: AiScope): string[] => {
+      if (!payload) return []
+      if (scope.type === "evidence" && scope.evidenceId) return [scope.evidenceId]
+      if (scope.type === "claim" && scope.claimId) {
+        return payload.claims.find((c) => c.claimId === scope.claimId)?.evidenceIds ?? []
+      }
+      if (scope.type === "dimension" && scope.dimensionId) {
+        return payload.dimensions.find((d) => d.dimensionId === scope.dimensionId)?.evidenceIds.slice(0, 6) ?? []
+      }
+      return payload.evidence.slice(0, 6).map((e) => e.evidenceId)
+    },
+    [payload],
+  )
+
+  const scopeLabel = useCallback(
+    (scope: AiScope): string => {
+      if (!payload) return ""
+      const company = payload.company.stockName
+      if (scope.type === "evidence" && scope.evidenceId) {
+        const dim = payload.evidence.find((e) => e.evidenceId === scope.evidenceId)?.dimension
+        return `${dim ? dim + " / " : ""}Evidence`
+      }
+      if (scope.type === "claim" && scope.claimId) {
+        const claim = payload.claims.find((c) => c.claimId === scope.claimId)
+        const label = claim ? payload.dimensions.find((d) => d.dimensionId === claim.dimensionId)?.label ?? "" : ""
+        return `${label} / Claim`
+      }
+      if (scope.type === "dimension" && scope.dimensionId) {
+        return `${company} / ${payload.dimensions.find((d) => d.dimensionId === scope.dimensionId)?.label ?? ""}`
+      }
+      return company
+    },
+    [payload],
+  )
+
+  const scopePlaceholder = useCallback((): string => {
+    if (!payload) return "问 StockLens…"
+    if (aiScope.type === "evidence") return "询问这条证据…"
+    if (aiScope.type === "claim") return "追问这条结论…"
+    if (aiScope.type === "dimension") {
+      const label = payload.dimensions.find((d) => d.dimensionId === aiScope.dimensionId)?.label ?? ""
+      return `追问「${label}」…`
+    }
+    return `问 StockLens 关于${payload.company.stockName}的问题…`
+  }, [payload, aiScope])
+
+  /** §8：唯一 AI handler。§9：直接复用 POST /api/followup（无 /api/v5、无 mock） */
+  const handleAskAI = useCallback(
+    async (question: string, scope: AiScope) => {
+      const q = question.trim()
+      if (!payload || q.length === 0) return
+      const stockCode = payload.company.stockCode
+      const evidenceIds = scopeEvidenceIds(scope)
+      const entry: AiEntry = {
+        id: `ai-${Date.now()}`,
+        question: q,
+        scopeType: scope.type,
+        scopeLabel: scopeLabel(scope),
+        status: "loading",
+        evidenceIds,
+      }
+      setAiThreads((t) => ({ ...t, [stockCode]: [...(t[stockCode] ?? []), entry] }))
+      setAiInput("")
+      setAiStatus("loading")
+      setAiOpen(true)
+      try {
+        const res = await fetch("/api/followup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stockCode, question: q, evidenceIds }),
+        })
+        const body = await res.json()
+        const patch = (updates: Partial<AiEntry>) =>
+          setAiThreads((t) => ({
+            ...t,
+            [stockCode]: (t[stockCode] ?? []).map((x) => (x.id === entry.id ? { ...x, ...updates } : x)),
+          }))
+        if (!res.ok) {
+          patch({ status: "failed", message: body?.error ?? `服务返回 ${res.status}` })
+          return
+        }
+        if (body.mode === "compliance_redirect") {
+          patch({ status: "done", summary: body.compliance?.message ?? "不提供买卖建议。" })
+          return
+        }
+        const syn = body.synthesis
+        patch({
+          status: "done",
+          summary: syn?.summary?.text,
+          confirmed: (syn?.confirmedFacts ?? []).map((x: { text: string; evidenceIds?: string[] }) => x.text),
+          unknowns: (syn?.unknowns ?? []).map((x: { text: string }) => x.text),
+        })
+      } catch {
+        setAiThreads((t) => ({
+          ...t,
+          [stockCode]: (t[stockCode] ?? []).map((x) =>
+            x.id === entry.id ? { ...x, status: "failed", message: "AI interpretation is temporarily unavailable." } : x,
+          ),
+        }))
+      } finally {
+        setAiStatus("idle")
+      }
+    },
+    [payload, scopeEvidenceIds, scopeLabel],
+  )
+
+  /** §23–§25：所有 Ask 入口只改变 scope 并聚焦同一个 Lens */
+  const focusAiLens = useCallback((scope: AiScope | null, preset?: string) => {
+    setAiScopeOverride(scope)
+    setAiOpen(true)
+    if (preset !== undefined) setAiInput(preset)
+    window.setTimeout(() => aiInputRef.current?.focus(), 60)
+  }, [])
 
   const closeReading = useCallback(() => {
     setReadingId(null)
@@ -1062,7 +1243,7 @@ export default function ResearchCanvas() {
                   >
                     {[
                       { label: "Pin summary", key: "pin", run: () => pinNote(a) },
-                      { label: "Ask about this", key: "ask", run: () => setAsk({ anchorId: a.dimensionId, question: "", status: "idle" }) },
+                      { label: "Ask about this", key: "ask", run: () => focusAiLens({ type: "dimension", dimensionId: a.dimensionId }) },
                       { label: "Park", key: "park", run: () => park(a.dimensionId) },
                     ].map((item) => (
                       <button
@@ -1256,6 +1437,7 @@ export default function ResearchCanvas() {
             initialClaimId={null}
             initialEvidenceId={readingEvidenceId}
             onEvidenceFocus={setReadingEvidenceId}
+            onAsk={(claimId) => focusAiLens({ type: "claim", claimId })}
             onBack={closeReading}
           />
         </div>
@@ -1344,26 +1526,204 @@ export default function ResearchCanvas() {
           : "—"}
       </div>
 
-      <button
-        type="button"
+      {/* §2/§37：AI Research Lens（真输入框；与 Command Palette 分离） */}
+      <div
         data-ui
-        data-lens-trigger
-        onClick={() => setLensOpen(true)}
-        className="absolute bottom-6 z-50 -translate-x-1/2 rounded-full border px-5 backdrop-blur"
-        style-panel="1"
+        data-ai-lens
+        className="absolute bottom-6 z-[55] flex items-center gap-3 rounded-full border px-4 backdrop-blur"
         style={{
-          borderColor: C.hair,
-          background: "rgba(255,255,255,0.8)",
-          color: C.secondary,
-          minHeight: 40,
-          fontFamily: "ui-monospace, monospace",
-          fontSize: 11,
-          letterSpacing: "0.18em",
           left: readingId ? panelW / 2 : viewport.width / 2,
+          transform: "translateX(-50%)",
+          width: 580,
+          height: 50,
+          borderColor: C.hair,
+          background: "rgba(255,255,255,0.86)",
         }}
       >
-        ⌘K&nbsp;&nbsp;Explore · Focus · Add
-      </button>
+        <span aria-hidden style={{ color: C.blue }}>
+          ✦
+        </span>
+        <span className="font-mono text-[10px] tracking-[0.14em]" style={{ color: C.secondary, whiteSpace: "nowrap" }}>
+          {payload ? scopeLabel(aiScope) : ""}
+        </span>
+        <textarea
+          ref={aiInputRef}
+          rows={1}
+          value={aiInput}
+          onChange={(e) => setAiInput(e.target.value)}
+          onFocus={() => setAiOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault()
+              void handleAskAI(aiInput, aiScope)
+            }
+            if (e.key === "Enter" && e.shiftKey) return
+          }}
+          placeholder={scopePlaceholder()}
+          className="min-w-0 flex-1 resize-none bg-transparent py-3 text-[12.5px] outline-none"
+          style={{ color: C.ink, maxHeight: 44 }}
+          aria-label="AI Research Lens"
+        />
+        <button
+          type="button"
+          data-ai-send
+          onClick={() => void handleAskAI(aiInput, aiScope)}
+          className="font-mono text-[12px]"
+          style={{ color: aiInput.trim() ? C.blue : C.secondary, minWidth: 28, minHeight: 36 }}
+          title="Send (Enter)"
+        >
+          ↵
+        </button>
+        <button
+          type="button"
+          data-command-hint
+          onClick={() => setLensOpen(true)}
+          className="font-mono text-[10px] tracking-[0.12em]"
+          style={{ color: C.secondary, opacity: 0.75, minHeight: 36, whiteSpace: "nowrap" }}
+        >
+          ⌘K Commands
+        </button>
+      </div>
+
+      {/* §30：聚焦后的建议问题（最多 3，随 scope 变化） */}
+      {aiOpen && aiInput.length === 0 && aiStatus === "idle" && (
+        <div
+          data-ui
+          data-ai-suggestions
+          className="absolute z-[55] flex flex-col gap-1"
+          style={{ left: readingId ? panelW / 2 : viewport.width / 2, transform: "translateX(-50%)", bottom: 68, width: 580 }}
+        >
+          {aiSuggestionsFor(aiScope, payload).map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => focusAiLens(aiScope, q)}
+              className="w-fit rounded-full border px-3 text-left font-mono text-[11px] backdrop-blur"
+              style={{ borderColor: C.hair, background: "rgba(255,255,255,0.8)", color: C.secondary, minHeight: 30 }}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* §14/§15：Research Thread（editorial；向上展开；单一 thread 模型） */}
+      {aiOpen && payload && (aiThreads[payload.company.stockCode]?.length ?? 0) > 0 && (
+        <div
+          data-ui
+          data-ai-thread
+          className="absolute z-[54] overflow-y-auto border px-5 py-4"
+          style={{
+            left: readingId ? Math.min(panelW / 2, viewport.width / 2 - 300) : viewport.width / 2 - 320,
+            bottom: 108,
+            width: 640,
+            maxHeight: 366,
+            borderColor: C.hair,
+            background: "rgba(255,255,255,0.94)",
+          }}
+        >
+          {aiThreads[payload.company.stockCode].map((entry, i, arr) => (
+            <div key={entry.id} className="mb-4 last:mb-0">
+              {i > 0 && arr[i - 1].scopeLabel !== entry.scopeLabel && (
+                <div className="mb-2 font-mono text-[9.5px] tracking-[0.18em]" style={{ color: C.secondary, opacity: 0.8 }}>
+                  CONTEXT CHANGED → {entry.scopeLabel}
+                </div>
+              )}
+              <p className="text-[13px] font-medium" style={{ color: C.ink }}>
+                {entry.question}
+              </p>
+              <div className="mt-1.5 h-px w-full" style={{ background: C.hair }} />
+              {entry.status === "loading" && (
+                <p className="mt-2 font-mono text-[11px]" style={{ color: C.secondary }}>
+                  Reviewing current evidence…
+                </p>
+              )}
+              {entry.status === "failed" && (
+                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: C.secondary }}>
+                  AI interpretation is temporarily unavailable. Current evidence remains available.
+                </p>
+              )}
+              {entry.status === "done" && (
+                <div className="mt-2 space-y-2 text-[12.5px] leading-relaxed" style={{ color: C.secondary }}>
+                  {entry.summary && <p style={{ color: C.ink }}>{entry.summary}</p>}
+                  {entry.confirmed?.length ? (
+                    <div>
+                      <div className="font-mono text-[9.5px] tracking-[0.18em]">可以确认</div>
+                      {entry.confirmed.slice(0, 3).map((c, j) => (
+                        <p key={j} className="mt-0.5">
+                          {c}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {entry.unknowns?.length ? (
+                    <div>
+                      <div className="font-mono text-[9.5px] tracking-[0.18em]">暂时不能确认</div>
+                      {entry.unknowns.slice(0, 2).map((c, j) => (
+                        <p key={j} className="mt-0.5">
+                          {c}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {/* §16：回答内 Evidence anchors 可点 → Canvas 高亮 + Inspector */}
+                  {entry.evidenceIds.length > 0 && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      {entry.evidenceIds.slice(0, 4).map((id, j) => (
+                        <button
+                          key={id}
+                          type="button"
+                          data-ai-anchor={id}
+                          onClick={() => {
+                            setReadingEvidenceId(id)
+                            const ev = payload.evidence.find((e) => e.evidenceId === id)
+                            if (ev) {
+                              const dim = payload.dimensions.find((d) => d.label === ev.dimension)
+                              if (dim) {
+                                setReadingId(dim.dimensionId)
+                                return
+                              }
+                            }
+                          }}
+                          className="font-mono text-[13px]"
+                          style={{ color: C.blue, minWidth: 24, minHeight: 28 }}
+                          title={id}
+                        >
+                          {["①", "②", "③", "④"][j]}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setAiOpen(false)}
+                        className="ml-auto font-mono text-[10px]"
+                        style={{ color: C.secondary, minHeight: 28 }}
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* §52：?aiDebug=1 */}
+      {aiDebugOn && (
+        <div
+          className="pointer-events-none absolute bottom-24 left-8 z-[70] rounded border px-3 py-2 font-mono text-[10px] leading-relaxed"
+          data-ai-debug
+          style={{ borderColor: C.hair, background: "rgba(255,255,255,0.92)", color: C.secondary }}
+        >
+          <div>scope: {aiScope.type}</div>
+          <div>stockCode: {payload?.company.stockCode ?? "—"}</div>
+          <div>dimensionId: {aiScope.dimensionId ?? "—"}</div>
+          <div>claimId: {aiScope.claimId ?? "—"}</div>
+          <div>evidenceId: {aiScope.evidenceId ?? "—"}</div>
+          <div>followup: {aiStatus === "loading" ? "in-flight" : (aiThreads[payload?.company.stockCode ?? ""]?.slice(-1)[0]?.status ?? "idle")}</div>
+        </div>
+      )}
 
       <div
         data-ui

@@ -9,7 +9,7 @@
         "stockName": "美的集团",
         "market": "深交所"
       },
-      "ms": 2632
+      "ms": 2231
     },
     "02-midea-observatory": {
       "ok": true,
@@ -24,21 +24,21 @@
         "股东回报与公司行为"
       ],
       "claims": 23,
-      "ms": 17772
+      "ms": 17006
     },
     "03-different-industry": {
       "ok": true,
       "industry": "白酒",
       "dims": [
-        "盈利质量与护城河",
-        "增长韧性",
-        "现金转化与经营质量",
-        "估值与行业相对定位",
-        "市场相对表现与波动",
-        "股东回报与公司行为"
+        "品牌定价权与盈利护城河",
+        "增长动能与需求韧性",
+        "现金创造与股东回报",
+        "估值水平与行业相对定位",
+        "市场表现与相对强度",
+        "事件与风险信号"
       ],
-      "ai": "success",
-      "ms": 17072
+      "ai": "partial_failure",
+      "ms": 28369
     },
     "04-dimension-focus": {
       "ok": true,
@@ -54,40 +54,40 @@
       "period": "2026-Q2"
     },
     "06-add-dimension": {
-      "ok": false,
+      "ok": true,
       "label": "分红能力",
       "status": "partial",
-      "claims": 0,
+      "claims": 5,
       "ev": 8,
-      "ms": 11491
+      "ms": 6537
     },
     "07-unknown-dimension": {
       "ok": true,
       "status": "unknown",
-      "missing": 6,
+      "missing": 5,
       "hallucination": [],
-      "ms": 6220
+      "ms": 5783
     },
     "08-inline-followup": {
       "ok": true,
       "ai": "success",
-      "ms": 7343
+      "ms": 7448
     },
     "09-compliance": {
       "ok": true,
       "mode": "compliance_redirect",
-      "ms": 693
+      "ms": 669
     },
     "10-legacy-diagnosis": {
       "ok": true,
       "status": 200,
-      "ms": 746
+      "ms": 767
     },
     "11-observatory-page": {
       "ok": true,
       "status": 200,
-      "ms": 702
+      "ms": 634
     }
   },
-  "allPass": false
+  "allPass": true
 }

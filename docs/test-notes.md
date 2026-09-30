@@ -74,6 +74,25 @@
 - AI 失败降级：synthesis=null 时证据照常展示 +「AI 解释暂不可用」提示（Live 实录）；
 - 追问闭环：Drawer 内输入问题 → 分层回答 + 证据锚点（04-followup.png）。
 
+## Observatory Production Smoke（Task 12）
+
+执行：`HTTPS_PROXY=http://127.0.0.1:7890 python scripts/observatory_smoke.py https://stocklens-blush.vercel.app`
+（本机 DNS 对 *.vercel.app 存在污染，直连不通，需走本地代理；结果：`scripts/observatory-smoke-results.json`）
+
+| 项 | 结果 |
+|---|---|
+| 01 公司搜索 | PASS（美的集团/深交所） |
+| 02 美的 Observatory | PASS（ai=success，6 动态维度，23 claims） |
+| 03 不同行业 Observatory | PASS（白酒，维度与美的真实不同） |
+| 04 Dimension Focus | PASS（claims 全部 grounded） |
+| 05 Evidence Rail | PASS（真实证据+来源字段） |
+| 06 Add Dimension | PASS（分红能力 partial，5 claims） |
+| 07 Unknown Dimension | PASS（海外业务 unknown，missing≥3，零幻觉） |
+| 08 Inline Follow-up | PASS（复用 /api/followup） |
+| 09 Compliance | PASS（投资建议输入拦截，零 LLM） |
+| 10 Legacy /diagnosis | PASS |
+| 11 /observatory 页面 | PASS |
+
 ## 已知测试边界
 
 - 语义事实一致性（模型绑定合法 ID 但文字与证据矛盾）无自动校验——以 Eval Bad Case 固化为已知局限（tests/ai/diagnosis-validation.test.ts 末组）；

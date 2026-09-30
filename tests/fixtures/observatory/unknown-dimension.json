@@ -1,0 +1,50 @@
+{
+  "mode": "dimension",
+  "dimensionId": "DIM_USER_01_海外业务",
+  "dimension": {
+    "dimensionId": "DIM_USER_01_海外业务",
+    "label": "海外业务",
+    "researchQuestion": "美的集团海外收入占比、增速与区域分布如何，海外业务对整体增长与盈利的贡献是否可持续？",
+    "description": "从海外收入规模与占比、区域结构、海外毛利率与增速等角度评估公司全球化经营的成色与风险。",
+    "origin": "user",
+    "capabilityRefs": [
+      "financial_growth",
+      "profitability",
+      "industry_market",
+      "risk"
+    ],
+    "status": "unknown",
+    "rationale": "现有能力仅覆盖整体财务与行业行情，无法拆分海外收入与区域结构，缺少分地区收入、海外毛利率等关键数据，难以验证海外业务的真实贡献与可持续性。",
+    "priority": 99,
+    "evidenceIds": [],
+    "claimIds": [
+      "DIM_USER_01_海外业务_C01"
+    ],
+    "missingInformation": [
+      "分地区营业收入及占比",
+      "海外业务毛利率",
+      "海外分区域（如北美/欧洲/东南亚）收入与增速",
+      "海外自有品牌与代工（OEM）收入结构",
+      "海外产能与生产基地分布",
+      "汇率变动对海外收入的影响"
+    ]
+  },
+  "claims": [
+    {
+      "claimId": "DIM_USER_01_海外业务_C01",
+      "dimensionId": "DIM_USER_01_海外业务",
+      "text": "当前证据不足以验证「海外业务」这一研究方向。",
+      "type": "unknown",
+      "signal": "unknown",
+      "evidenceIds": []
+    }
+  ],
+  "evidence": [],
+  "ai": {
+    "status": "success",
+    "model": "deepseek-chat",
+    "promptVersion": "dimension_framer_v1",
+    "latencyMs": 1735
+  },
+  "errors": []
+}

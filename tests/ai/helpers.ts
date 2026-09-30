@@ -101,15 +101,25 @@ export function stubFetch(): { fetchMock: Mock; deepseekCalls: DeepseekCall[]; s
       const system = body.messages[0]?.content ?? ""
       const user = body.messages[1]?.content ?? ""
       const call: DeepseekCall = { system, user, rawBody: body }
-      const isPlanner = system.includes("研究规划器")
-      const queue = isPlanner ? script.planner : script.synthesizer
-      const taskIndex = deepseekCalls.filter((c) => c.system.includes(isPlanner ? "研究规划器" : "证据综合器")).length
+      // 任务分类（Task 12 后新增 Framer/Composer/维度设计器/维度综合器）
+      const PLANNER_MARKERS = ["研究规划器", "研究框架设计器", "维度设计器"]
+      const SYNTH_MARKERS = ["证据综合器", "Research Space Composer", "维度综合器"]
+      const isPlanner = PLANNER_MARKERS.some((m) => system.includes(m))
+      const family: "planner" | "synthesizer" = isPlanner ? "planner" : "synthesizer"
+      const queueForIndex = script[family]
+      const taskIndex = deepseekCalls.filter((c) =>
+        PLANNER_MARKERS.some((m) => c.system.includes(m)),
+      ).length
+      const synthIndex = deepseekCalls.filter((c) =>
+        SYNTH_MARKERS.some((m) => c.system.includes(m)),
+      ).length
+      const indexInFamily = family === "planner" ? taskIndex : synthIndex
       deepseekCalls.push(call)
 
-      const next = queue
-        ? taskIndex < queue.length
-          ? queue[taskIndex]
-          : queue[queue.length - 1]
+      const next = queueForIndex
+        ? indexInFamily < queueForIndex.length
+          ? queueForIndex[indexInFamily]
+          : queueForIndex[queueForIndex.length - 1]
         : undefined
       if (next === "timeout") {
         throw new Error("The operation was aborted due to timeout")

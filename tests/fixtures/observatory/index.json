@@ -1,0 +1,9 @@
+{
+  "generatedFrom": "live /api/research/* responses on 2026-09-30 (redacted ids/timestamps)",
+  "fixtures": [
+    "midea-overview",
+    "midea-valuation",
+    "one-other-industry",
+    "unknown-dimension"
+  ]
+}

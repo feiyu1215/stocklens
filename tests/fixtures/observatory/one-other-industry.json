@@ -1,0 +1,2007 @@
+{
+  "spaceId": "FIXTURE_ONE-OTHER-INDUSTRY",
+  "company": {
+    "stockCode": "600519.SH",
+    "stockName": "贵州茅台",
+    "industryName": "白酒",
+    "industryIndexCode": "881273.TI",
+    "industrySource": "fuyao",
+    "industryVerifiedAt": "2026-09-30",
+    "capabilities": [
+      {
+        "key": "financial_growth",
+        "status": "ready",
+        "description": "营收/归母净利润的累计与单季同比、单季差分趋势序列"
+      },
+      {
+        "key": "profitability",
+        "status": "ready",
+        "description": "毛利率、净利率、ROE 及其同比变化（百分点）"
+      },
+      {
+        "key": "cashflow",
+        "status": "ready",
+        "description": "经营活动现金流同比、经营现金流/归母净利润、现金流单季趋势"
+      },
+      {
+        "key": "valuation",
+        "status": "ready",
+        "description": "PE TTM / PB MRQ 快照、与行业中位数比较（含有效样本数）"
+      },
+      {
+        "key": "market_price",
+        "status": "ready",
+        "description": "个股区间收益（20/60/120 交易日）、年化波动率、最大回撤"
+      },
+      {
+        "key": "market_benchmark",
+        "status": "ready",
+        "description": "沪深300 同口径区间收益与个股相对表现（百分点差）"
+      },
+      {
+        "key": "industry_market",
+        "status": "ready",
+        "description": "所属行业指数区间收益与个股相对行业表现（需已解析行业）"
+      },
+      {
+        "key": "industry_valuation",
+        "status": "ready",
+        "description": "行业成分股 PE/PB 中位数（含有效样本数）"
+      },
+      {
+        "key": "event",
+        "status": "ready",
+        "description": "个股异动记录（接口原文）、热榜关注度排名变化"
+      },
+      {
+        "key": "corporate_action",
+        "status": "ready",
+        "description": "分红/送股等公司行为记录（12 个月）"
+      },
+      {
+        "key": "risk",
+        "status": "partial",
+        "reason": "coverage boundaries only (no news/disclosure text source)",
+        "description": "事件覆盖边界（异动无记录、公告/新闻未接入）等风险维度证据"
+      }
+    ],
+    "availableCapabilities": [
+      "financial_growth",
+      "profitability",
+      "cashflow",
+      "valuation",
+      "market_price",
+      "market_benchmark",
+      "industry_market",
+      "industry_valuation",
+      "event",
+      "corporate_action"
+    ],
+    "partialCapabilities": [
+      "risk"
+    ],
+    "unavailableCapabilities": []
+  },
+  "frame": {
+    "intent": "为贵州茅台（白酒行业龙头）在开放探索模式下构建默认研究空间：以品牌护城河支撑的盈利质量与现金创造能力为核心，结合估值相对位置、行业相对表现、股东回报行为与风险边界，形成对高端白酒龙头的研究框架。",
+    "dimensions": [
+      {
+        "label": "盈利质量与护城河",
+        "researchQuestion": "公司的毛利率、净利率与ROE处于什么水平，其变动是否反映高端白酒定价权与品牌护城河的稳固程度？",
+        "description": "从毛利率、净利率、ROE及其同比变化（百分点）观察盈利能力的绝对水平与趋势方向，判断高端白酒龙头的定价权与成本结构是否稳定。",
+        "capabilityRefs": [
+          "profitability"
+        ],
+        "rationale": "白酒龙头的核心研究价值在于品牌溢价带来的高盈利水平，需先确认盈利能力的稳固性与变化方向。"
+      },
+      {
+        "label": "增长韧性",
+        "researchQuestion": "公司营收与归母净利润的累计及单季同比、单季差分趋势，是否显示增长动能稳定或出现边际变化？",
+        "description": "通过营收/归母净利润的累计与单季同比、单季差分趋势序列，观察增长节奏与边际变化，评估在行业周期中的增长韧性。",
+        "capabilityRefs": [
+          "financial_growth"
+        ],
+        "rationale": "白酒行业景气度与公司增长节奏密切相关，需区分累计增速与单季边际变化以判断增长质量。"
+      },
+      {
+        "label": "现金转化与分红能力",
+        "researchQuestion": "经营活动现金流与归母净利润的匹配度如何，现金流趋势与分红行为是否支持股东回报的可持续性？",
+        "description": "结合经营现金流同比、经营现金流/归母净利润及现金流单季趋势，并参考分红/送股等公司行为记录，评估利润的现金含量与股东回报能力。",
+        "capabilityRefs": [
+          "cashflow",
+          "corporate_action"
+        ],
+        "rationale": "白酒企业预收款与现金流特征独特，现金转化效率与分红政策是判断盈利真实性与股东回报的关键。"
+      },
+      {
+        "label": "估值相对位置",
+        "researchQuestion": "公司PE TTM/PB MRQ与行业中位数相比处于什么位置，估值是否偏离行业常态？",
+        "description": "通过PE TTM/PB MRQ快照及与行业中位数比较（含有效样本数），并参考行业成分股PE/PB中位数，判断个股估值的相对高低。",
+        "capabilityRefs": [
+          "valuation",
+          "industry_valuation"
+        ],
+        "rationale": "作为行业龙头，茅台估值通常享有溢价，需结合行业估值中位数判断溢价是否处于合理区间。"
+      },
+      {
+        "label": "行业相对表现与市场情绪",
+        "researchQuestion": "公司区间收益相对沪深300与白酒行业指数的表现如何，波动与回撤特征及市场关注度是否出现异动？",
+        "description": "结合个股区间收益（20/60/120交易日）、年化波动率、最大回撤，与沪深300及行业指数同口径收益对比，并参考个股异动记录与热榜关注度排名变化。",
+        "capabilityRefs": [
+          "market_price",
+          "market_benchmark",
+          "industry_market",
+          "event"
+        ],
+        "rationale": "龙头股的市场表现既受大盘影响也受行业情绪驱动，需从相对表现与关注度变化中识别市场预期。"
+      },
+      {
+        "label": "风险边界",
+        "researchQuestion": "在现有事件覆盖范围内，是否存在异动无记录、公告/新闻未接入等证据缺口，可能影响对风险的完整判断？",
+        "description": "基于事件覆盖边界（异动无记录、公告/新闻未接入）等风险维度证据，识别当前研究框架中风险信息的不完整性。",
+        "capabilityRefs": [
+          "risk"
+        ],
+        "rationale": "风险维度证据部分可用，需明确信息边界以避免对风险状况做出过度推断。"
+      }
+    ],
+    "suggestedDimensions": [
+      {
+        "label": "渠道与库存动态",
+        "researchQuestion": "公司渠道库存、批价与动销情况如何，是否反映终端需求变化？",
+        "description": "探索性角度：白酒行业渠道库存与批价是领先指标，但当前系统未接入渠道调研或批价数据。",
+        "capabilityRefs": [
+          "industry_market"
+        ],
+        "rationale": "渠道库存与批价对白酒龙头需求判断至关重要，可借助行业市场数据间接观察，但缺乏直接渠道数据，建议作为探索方向。"
+      },
+      {
+        "label": "产品结构与提价节奏",
+        "researchQuestion": "公司产品结构升级与提价节奏如何影响收入与利润率？",
+        "description": "探索性角度：产品结构（如高端占比）与提价行为影响盈利，但当前系统未提供产品线或价格调整明细数据。",
+        "capabilityRefs": [
+          "financial_growth"
+        ],
+        "rationale": "产品结构与提价是白酒企业增长的重要驱动，可结合财务增长数据间接推断，但缺乏细分数据支持，建议作为探索方向。"
+      },
+      {
+        "label": "宏观消费与政策环境",
+        "researchQuestion": "宏观消费景气与行业政策变化对公司需求端有何潜在影响？",
+        "description": "探索性角度：白酒消费与宏观环境、政策（如消费税、限制三公消费）相关，但当前系统未接入宏观或政策数据。",
+        "capabilityRefs": [
+          "event"
+        ],
+        "rationale": "宏观与政策因素对高端白酒需求有重要影响，可借助事件数据捕捉政策相关信号，但缺乏宏观数据能力，建议作为探索方向。"
+      }
+    ],
+    "framingReason": "贵州茅台作为白酒行业龙头，其研究核心在于品牌护城河支撑的盈利质量与现金创造能力，同时需结合估值相对位置、行业相对表现与股东回报行为。由于用户未提出具体问题，本框架以盈利质量与增长韧性为起点，延伸至现金转化、估值、市场表现与风险边界，并补充渠道、产品、宏观等当前数据能力未完全覆盖的探索性角度，形成兼顾现有数据与未来扩展的研究空间。"
+  },
+  "dimensions": [
+    {
+      "dimensionId": "DIM_AI_INITIAL_01_盈利质量与护城河",
+      "label": "盈利质量与护城河",
+      "researchQuestion": "公司的毛利率、净利率与ROE处于什么水平，其变动是否反映高端白酒定价权与品牌护城河的稳固程度？",
+      "description": "从毛利率、净利率、ROE及其同比变化（百分点）观察盈利能力的绝对水平与趋势方向，判断高端白酒龙头的定价权与成本结构是否稳定。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "profitability"
+      ],
+      "status": "ready",
+      "rationale": "白酒龙头的核心研究价值在于品牌溢价带来的高盈利水平，需先确认盈利能力的稳固性与变化方向。",
+      "priority": 1,
+      "evidenceIds": [
+        "EV_INF_FIN_GROWTH_MARGIN_DIVERGENCE",
+        "EV_FACT_FIN_GROSS_MARGIN_CHANGE_YOY",
+        "EV_FACT_FIN_NET_MARGIN_CHANGE_YOY",
+        "EV_FACT_FIN_ROE_CHANGE_YOY",
+        "EV_FACT_FIN_GROSS_MARGIN"
+      ],
+      "claimIds": []
+    },
+    {
+      "dimensionId": "DIM_AI_INITIAL_02_增长韧性",
+      "label": "增长韧性",
+      "researchQuestion": "公司营收与归母净利润的累计及单季同比、单季差分趋势，是否显示增长动能稳定或出现边际变化？",
+      "description": "通过营收/归母净利润的累计与单季同比、单季差分趋势序列，观察增长节奏与边际变化，评估在行业周期中的增长韧性。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "financial_growth"
+      ],
+      "status": "ready",
+      "rationale": "白酒行业景气度与公司增长节奏密切相关，需区分累计增速与单季边际变化以判断增长质量。",
+      "priority": 2,
+      "evidenceIds": [
+        "EV_INF_FIN_QUARTER_YTD_GROWTH_DIVERGENCE",
+        "EV_INF_FIN_REVENUE_PROFIT_DIVERGENCE",
+        "EV_INF_TREND_REVENUE_QUARTER_REVERSAL",
+        "EV_FACT_FIN_NET_PROFIT_YOY_QUARTER",
+        "EV_FACT_FIN_NET_PROFIT_YOY_YTD"
+      ],
+      "claimIds": []
+    },
+    {
+      "dimensionId": "DIM_AI_INITIAL_03_现金转化与分红能力",
+      "label": "现金转化与分红能力",
+      "researchQuestion": "经营活动现金流与归母净利润的匹配度如何，现金流趋势与分红行为是否支持股东回报的可持续性？",
+      "description": "结合经营现金流同比、经营现金流/归母净利润及现金流单季趋势，并参考分红/送股等公司行为记录，评估利润的现金含量与股东回报能力。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "cashflow",
+        "corporate_action"
+      ],
+      "status": "ready",
+      "rationale": "白酒企业预收款与现金流特征独特，现金转化效率与分红政策是判断盈利真实性与股东回报的关键。",
+      "priority": 3,
+      "evidenceIds": [
+        "EV_UNKNOWN_RISK_ANOMALY_COVERAGE",
+        "EV_UNKNOWN_RISK_NEWS_DISCLOSURE",
+        "EV_FACT_FIN_OCF_YOY_QUARTER",
+        "EV_FACT_FIN_OCF_YOY_YTD",
+        "EV_FACT_FIN_CFO_TO_NET_PROFIT_YTD"
+      ],
+      "claimIds": []
+    },
+    {
+      "dimensionId": "DIM_AI_INITIAL_04_估值相对位置",
+      "label": "估值相对位置",
+      "researchQuestion": "公司PE TTM/PB MRQ与行业中位数相比处于什么位置，估值是否偏离行业常态？",
+      "description": "通过PE TTM/PB MRQ快照及与行业中位数比较（含有效样本数），并参考行业成分股PE/PB中位数，判断个股估值的相对高低。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "valuation",
+        "industry_valuation"
+      ],
+      "status": "ready",
+      "rationale": "作为行业龙头，茅台估值通常享有溢价，需结合行业估值中位数判断溢价是否处于合理区间。",
+      "priority": 4,
+      "evidenceIds": [
+        "EV_UNKNOWN_INDUSTRY_PEER_FINANCIALS",
+        "EV_UNKNOWN_VAL_HISTORICAL_PERCENTILE",
+        "EV_FACT_IND_RETURN_120D",
+        "EV_FACT_IND_RETURN_20D",
+        "EV_FACT_MKT_RELATIVE_INDUSTRY_60D",
+        "EV_FACT_IND_RETURN_60D"
+      ],
+      "claimIds": []
+    },
+    {
+      "dimensionId": "DIM_AI_INITIAL_05_行业相对表现与市场情绪",
+      "label": "行业相对表现与市场情绪",
+      "researchQuestion": "公司区间收益相对沪深300与白酒行业指数的表现如何，波动与回撤特征及市场关注度是否出现异动？",
+      "description": "结合个股区间收益（20/60/120交易日）、年化波动率、最大回撤，与沪深300及行业指数同口径收益对比，并参考个股异动记录与热榜关注度排名变化。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "market_price",
+        "market_benchmark",
+        "industry_market",
+        "event"
+      ],
+      "status": "ready",
+      "rationale": "龙头股的市场表现既受大盘影响也受行业情绪驱动，需从相对表现与关注度变化中识别市场预期。",
+      "priority": 5,
+      "evidenceIds": [
+        "EV_UNKNOWN_INDUSTRY_PEER_FINANCIALS",
+        "EV_UNKNOWN_RISK_ANOMALY_COVERAGE",
+        "EV_UNKNOWN_RISK_NEWS_DISCLOSURE",
+        "EV_FACT_IND_RETURN_120D",
+        "EV_FACT_IND_RETURN_20D",
+        "EV_FACT_MKT_CSI300_RETURN_120D"
+      ],
+      "claimIds": []
+    },
+    {
+      "dimensionId": "DIM_AI_INITIAL_06_风险边界",
+      "label": "风险边界",
+      "researchQuestion": "在现有事件覆盖范围内，是否存在异动无记录、公告/新闻未接入等证据缺口，可能影响对风险的完整判断？",
+      "description": "基于事件覆盖边界（异动无记录、公告/新闻未接入）等风险维度证据，识别当前研究框架中风险信息的不完整性。",
+      "origin": "ai_initial",
+      "capabilityRefs": [
+        "risk"
+      ],
+      "status": "partial",
+      "rationale": "风险维度证据部分可用，需明确信息边界以避免对风险状况做出过度推断。",
+      "priority": 6,
+      "evidenceIds": [
+        "EV_UNKNOWN_RISK_ANOMALY_COVERAGE",
+        "EV_UNKNOWN_RISK_NEWS_DISCLOSURE",
+        "EV_FACT_RISK_ATTENTION_20260930",
+        "EV_FACT_RISK_CORP_ACTION_20251219_DIVIDEND",
+        "EV_FACT_RISK_CORP_ACTION_20260626_DIVIDEND"
+      ],
+      "claimIds": []
+    }
+  ],
+  "claims": [],
+  "evidence": [
+    {
+      "evidenceId": "EV_FACT_FIN_NET_PROFIT_YOY_YTD",
+      "dimension": "growth",
+      "title": "归母净利润累计同比",
+      "statement": "最新报告期 2026-Q2 归母净利润累计同比下降 1.95%。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_NET_PROFIT_YOY_YTD"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_NET_PROFIT_YOY_QUARTER",
+      "dimension": "growth",
+      "title": "归母净利润单季同比",
+      "statement": "最新报告期 2026-Q2 单季归母净利润同比下降 6.90%。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_NET_PROFIT_YOY_QUARTER"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q1"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_OCF_YOY_YTD",
+      "dimension": "cashflow",
+      "title": "经营活动现金流净额累计同比",
+      "statement": "最新报告期 2026-Q2 经营活动现金流净额累计同比增长 438.84%。",
+      "type": "fact",
+      "signal": "positive",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_OCF_YOY_YTD"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_OCF_YOY_QUARTER",
+      "dimension": "cashflow",
+      "title": "经营活动现金流净额单季同比",
+      "statement": "最新报告期 2026-Q2 单季经营活动现金流净额同比增长 915.83%。",
+      "type": "fact",
+      "signal": "positive",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_OCF_YOY_QUARTER"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q1"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）",
+      "interpretationFlags": [
+        "extreme_change"
+      ],
+      "interpretationNote": "该同比变动幅度极大，百分比结果需要谨慎解释，建议结合绝对金额与业务背景观察。"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_CFO_TO_NET_PROFIT_YTD",
+      "dimension": "cashflow",
+      "title": "经营现金流净额 / 归母净利润（累计）",
+      "statement": "最新报告期 2026-Q2 经营活动现金流净额累计为归母净利润的 1.59 倍。",
+      "type": "fact",
+      "signal": "neutral",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_CFO_TO_NET_PROFIT_YTD"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_GROSS_MARGIN",
+      "dimension": "profitability",
+      "title": "销售毛利率（当期）",
+      "statement": "最新报告期 2026-Q2 销售毛利率为 89.56%。",
+      "type": "fact",
+      "signal": "neutral",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_GROSS_MARGIN"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2026-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_GROSS_MARGIN_CHANGE_YOY",
+      "dimension": "profitability",
+      "title": "毛利率同比变化",
+      "statement": "最新报告期 2026-Q2 销售毛利率较上年同期下降 1.74 个百分点。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_GROSS_MARGIN_CHANGE_YOY"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_NET_MARGIN_CHANGE_YOY",
+      "dimension": "profitability",
+      "title": "净利率同比变化",
+      "statement": "最新报告期 2026-Q2 销售净利率较上年同期下降 1.81 个百分点。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_NET_MARGIN_CHANGE_YOY"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_net_interest_ratio",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_net_interest_ratio",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_FIN_ROE_CHANGE_YOY",
+      "dimension": "profitability",
+      "title": "ROE 同比变化",
+      "statement": "最新报告期 2026-Q2 加权平均净资产收益率较上年同期下降 1.14 个百分点。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "FIN_ROE_CHANGE_YOY"
+      ],
+      "basedOn": [],
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:index_weighted_avg_roe",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:index_weighted_avg_roe",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_MKT_CSI300_RETURN_120D",
+      "dimension": "market",
+      "title": "沪深300 120 交易日区间收益率",
+      "statement": "最近 120 个交易日沪深300 指数区间收益率为 -5.18%。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "MKT_CSI300_RETURN_120D"
+      ],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_IND_RETURN_20D",
+      "dimension": "industry",
+      "title": "所属行业指数 20 交易日区间收益率",
+      "statement": "最近 20 个交易日，所属行业指数区间收益率为 -4.67%。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "IND_RETURN_20D"
+      ],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_IND_RETURN_60D",
+      "dimension": "industry",
+      "title": "所属行业指数 60 交易日区间收益率",
+      "statement": "最近 60 个交易日，所属行业指数区间收益率为 7.05%。",
+      "type": "fact",
+      "signal": "positive",
+      "confidence": "high",
+      "metricIds": [
+        "IND_RETURN_60D"
+      ],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_IND_RETURN_120D",
+      "dimension": "industry",
+      "title": "所属行业指数 120 交易日区间收益率",
+      "statement": "最近 120 个交易日，所属行业指数区间收益率为 -15.39%。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "IND_RETURN_120D"
+      ],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_MKT_RELATIVE_INDUSTRY_60D",
+      "dimension": "industry",
+      "title": "个股相对所属行业表现（60 日，百分点差）",
+      "statement": "最近 60 个交易日，个股区间收益率较所属行业指数低 1.18 个百分点。",
+      "type": "fact",
+      "signal": "negative",
+      "confidence": "high",
+      "metricIds": [
+        "MKT_RELATIVE_INDUSTRY_60D"
+      ],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇真实数据的确定性指标计算结果（Metric Engine，可追溯到原始字段与报告期）"
+    },
+    {
+      "evidenceId": "EV_FACT_RISK_ATTENTION_20260930",
+      "dimension": "risk",
+      "title": "市场关注度（热榜排名）变化",
+      "statement": "最近 30 天热榜排名由 2026-08-31 的约第 172 名上升至 2026-09-30 的约第 66 名（期间最好约第 46 名）。",
+      "type": "fact",
+      "signal": "neutral",
+      "confidence": "high",
+      "metricIds": [],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "/api/a-share/special-data/hot-stock-rank-trend",
+          "date": "2026-09-30"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇特色数据接口的真实记录（含接口原文与数据日期），非分析推断"
+    },
+    {
+      "evidenceId": "EV_FACT_RISK_CORP_ACTION_20260626_DIVIDEND",
+      "dimension": "risk",
+      "title": "公司行为：现金分红（除权除息日 2026-06-26）",
+      "statement": "接口记录公司在 2026-06-26 发生现金分红事件：每股现金分红 28.02423 元。",
+      "type": "fact",
+      "signal": "neutral",
+      "confidence": "high",
+      "metricIds": [],
+      "basedOn": [],
+      "period": "2026-06-26",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "/api/a-share/corporate-actions/adjustment-factors",
+          "date": "2026-06-26"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇特色数据接口的真实记录（含接口原文与数据日期），非分析推断"
+    },
+    {
+      "evidenceId": "EV_FACT_RISK_CORP_ACTION_20251219_DIVIDEND",
+      "dimension": "risk",
+      "title": "公司行为：现金分红（除权除息日 2025-12-19）",
+      "statement": "接口记录公司在 2025-12-19 发生现金分红事件：每股现金分红 23.957 元。",
+      "type": "fact",
+      "signal": "neutral",
+      "confidence": "high",
+      "metricIds": [],
+      "basedOn": [],
+      "period": "2025-12-19",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "/api/a-share/corporate-actions/adjustment-factors",
+          "date": "2025-12-19"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "来自扶摇特色数据接口的真实记录（含接口原文与数据日期），非分析推断"
+    },
+    {
+      "evidenceId": "EV_INF_FIN_REVENUE_PROFIT_DIVERGENCE",
+      "dimension": "growth",
+      "title": "收入增长但利润下降",
+      "statement": "最新报告期营业收入累计同比增长 1.47%，但归母净利润累计同比下降 1.95%。",
+      "type": "inference",
+      "signal": "conflict",
+      "confidence": "medium",
+      "metricIds": [
+        "FIN_REVENUE_YOY_YTD",
+        "FIN_NET_PROFIT_YOY_YTD"
+      ],
+      "basedOn": [
+        "EV_FACT_FIN_REVENUE_YOY_YTD",
+        "EV_FACT_FIN_NET_PROFIT_YOY_YTD"
+      ],
+      "ruleId": "RULE_FIN_REVENUE_PROFIT_DIVERGENCE",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "由确定性规则组合多个已验证 FACT 得出：关系确定成立，但业务含义需在后续解释环节进一步展开"
+    },
+    {
+      "evidenceId": "EV_INF_FIN_GROWTH_MARGIN_DIVERGENCE",
+      "dimension": "profitability",
+      "title": "收入增长但毛利率下降",
+      "statement": "最新报告期营业收入累计同比增长 1.47%，但销售毛利率较上年同期下降 1.74 个百分点。",
+      "type": "inference",
+      "signal": "conflict",
+      "confidence": "medium",
+      "metricIds": [
+        "FIN_REVENUE_YOY_YTD",
+        "FIN_GROSS_MARGIN_CHANGE_YOY"
+      ],
+      "basedOn": [
+        "EV_FACT_FIN_REVENUE_YOY_YTD",
+        "EV_FACT_FIN_GROSS_MARGIN_CHANGE_YOY"
+      ],
+      "ruleId": "RULE_FIN_GROWTH_MARGIN_DIVERGENCE",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "由确定性规则组合多个已验证 FACT 得出：关系确定成立，但业务含义需在后续解释环节进一步展开"
+    },
+    {
+      "evidenceId": "EV_INF_FIN_QUARTER_YTD_GROWTH_DIVERGENCE",
+      "dimension": "growth",
+      "title": "单季收入增长方向与累计表现不同",
+      "statement": "最新报告期营业收入累计同比增长 1.47%，而单季营业收入同比下降 5.14%，两者方向不同。",
+      "type": "inference",
+      "signal": "conflict",
+      "confidence": "medium",
+      "metricIds": [
+        "FIN_REVENUE_YOY_YTD",
+        "FIN_REVENUE_YOY_QUARTER"
+      ],
+      "basedOn": [
+        "EV_FACT_FIN_REVENUE_YOY_YTD",
+        "EV_FACT_FIN_REVENUE_YOY_QUARTER"
+      ],
+      "ruleId": "RULE_FIN_QUARTER_YTD_GROWTH_DIVERGENCE",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q1"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "由确定性规则组合多个已验证 FACT 得出：关系确定成立，但业务含义需在后续解释环节进一步展开"
+    },
+    {
+      "evidenceId": "EV_INF_TREND_REVENUE_QUARTER_REVERSAL",
+      "dimension": "growth",
+      "title": "最新单季收入同比方向反转",
+      "statement": "2026-Q2 单季营业收入同比由正转负（2026-Q1：6.54% → 2026-Q2：-5.14%）。",
+      "type": "inference",
+      "signal": "conflict",
+      "confidence": "medium",
+      "metricIds": [
+        "FIN_REVENUE_YOY_QUARTER",
+        "FIN_REVENUE_YOY_YTD"
+      ],
+      "basedOn": [
+        "EV_FACT_FIN_REVENUE_YOY_QUARTER",
+        "EV_FACT_FIN_REVENUE_YOY_YTD"
+      ],
+      "ruleId": "RULE_TREND_REVENUE_QUARTER_REVERSAL",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        }
+      ],
+      "verifyStatus": "verified",
+      "confidenceReason": "由确定性规则组合多个已验证 FACT 得出：关系确定成立，但业务含义需在后续解释环节进一步展开"
+    },
+    {
+      "evidenceId": "EV_UNKNOWN_VAL_HISTORICAL_PERCENTILE",
+      "dimension": "valuation",
+      "title": "历史估值位置暂无法验证",
+      "statement": "当前仅取得 PE/PB 估值快照，尚未接入可靠历史估值序列，因此不能判断当前估值处于历史高位或低位。",
+      "type": "unknown",
+      "signal": "unknown",
+      "confidence": "low",
+      "metricIds": [],
+      "basedOn": [],
+      "period": "2026-09-30",
+      "sourceFields": [],
+      "verifyStatus": "unverified",
+      "confidenceReason": "当前数据能力尚不支持该项验证，属正式的研究边界陈述",
+      "unavailableReason": "historical valuation percentile unavailable because valuation history is not yet connected"
+    },
+    {
+      "evidenceId": "EV_UNKNOWN_INDUSTRY_PEER_FINANCIALS",
+      "dimension": "industry",
+      "title": "同行财务位置暂无法验证",
+      "statement": "当前未接入同行公司财务数据，因此不能判断公司的盈利能力或增长水平在「白酒」行业中处于什么位置。",
+      "type": "unknown",
+      "signal": "unknown",
+      "confidence": "low",
+      "metricIds": [],
+      "basedOn": [],
+      "sourceFields": [],
+      "verifyStatus": "unverified",
+      "confidenceReason": "当前数据能力尚不支持该项验证，属正式的研究边界陈述",
+      "unavailableReason": "peer financial data not connected"
+    },
+    {
+      "evidenceId": "EV_UNKNOWN_RISK_ANOMALY_COVERAGE",
+      "dimension": "risk",
+      "title": "异动数据未返回匹配记录",
+      "statement": "当前异动数据源未返回该股票的匹配记录，这不能用于确认今日不存在其他市场事件。",
+      "type": "unknown",
+      "signal": "unknown",
+      "confidence": "low",
+      "metricIds": [],
+      "basedOn": [],
+      "sourceFields": [],
+      "verifyStatus": "unverified",
+      "confidenceReason": "数据能力边界说明（接口成功但无匹配记录）",
+      "unavailableReason": "anomaly endpoint returned no matching records for this stock"
+    },
+    {
+      "evidenceId": "EV_UNKNOWN_RISK_NEWS_DISCLOSURE",
+      "dimension": "risk",
+      "title": "公告与新闻文本覆盖边界",
+      "statement": "当前版本尚未接入可靠公告与新闻文本源，因此无法完整判断近期公司层面的所有重要事件。",
+      "type": "unknown",
+      "signal": "unknown",
+      "confidence": "low",
+      "metricIds": [],
+      "basedOn": [],
+      "sourceFields": [],
+      "verifyStatus": "unverified",
+      "confidenceReason": "数据能力边界说明（新闻/公告文本源未接入）",
+      "unavailableReason": "news / disclosure text sources not connected"
+    }
+  ],
+  "suggestions": [
+    {
+      "label": "渠道与库存动态",
+      "researchQuestion": "公司渠道库存、批价与动销情况如何，是否反映终端需求变化？",
+      "rationale": "渠道库存与批价对白酒龙头需求判断至关重要，可借助行业市场数据间接观察，但缺乏直接渠道数据，建议作为探索方向。",
+      "capabilityRefs": [
+        "industry_market"
+      ]
+    },
+    {
+      "label": "产品结构与提价节奏",
+      "researchQuestion": "公司产品结构升级与提价节奏如何影响收入与利润率？",
+      "rationale": "产品结构与提价是白酒企业增长的重要驱动，可结合财务增长数据间接推断，但缺乏细分数据支持，建议作为探索方向。",
+      "capabilityRefs": [
+        "financial_growth"
+      ]
+    },
+    {
+      "label": "宏观消费与政策环境",
+      "researchQuestion": "宏观消费景气与行业政策变化对公司需求端有何潜在影响？",
+      "rationale": "宏观与政策因素对高端白酒需求有重要影响，可借助事件数据捕捉政策相关信号，但缺乏宏观数据能力，建议作为探索方向。",
+      "capabilityRefs": [
+        "event"
+      ]
+    }
+  ],
+  "trend": [
+    {
+      "period": "2024-Q3",
+      "revenueQuarter": null,
+      "netProfitQuarter": null,
+      "operatingCashflowQuarter": null,
+      "revenueQuarterYoY": null,
+      "netProfitQuarterYoY": null,
+      "operatingCashflowQuarterYoY": null
+    },
+    {
+      "period": "2024-Q4",
+      "revenueQuarter": 50123020401.649994,
+      "netProfitQuarter": 25400594303.109993,
+      "operatingCashflowQuarter": 48042305950.979996,
+      "revenueQuarterYoY": null,
+      "netProfitQuarterYoY": null,
+      "operatingCashflowQuarterYoY": null
+    },
+    {
+      "period": "2025-Q1",
+      "revenueQuarter": 50600957885.78,
+      "netProfitQuarter": 26847474238.76,
+      "operatingCashflowQuarter": 8809195646.38,
+      "revenueQuarterYoY": null,
+      "netProfitQuarterYoY": null,
+      "operatingCashflowQuarterYoY": null
+    },
+    {
+      "period": "2025-Q2",
+      "revenueQuarter": 38788396531.06,
+      "netProfitQuarter": 18555488059.34,
+      "operatingCashflowQuarter": 4309865384.950001,
+      "revenueQuarterYoY": null,
+      "netProfitQuarterYoY": null,
+      "operatingCashflowQuarterYoY": null
+    },
+    {
+      "period": "2025-Q3",
+      "revenueQuarter": 39064353239.020004,
+      "netProfitQuarter": 19223784414.08,
+      "operatingCashflowQuarter": 25077741123.939995,
+      "revenueQuarterYoY": null,
+      "netProfitQuarterYoY": null,
+      "operatingCashflowQuarterYoY": null
+    },
+    {
+      "period": "2025-Q4",
+      "revenueQuarter": 40384394858.93001,
+      "netProfitQuarter": 17693320389.499992,
+      "operatingCashflowQuarter": 23325402834.08,
+      "revenueQuarterYoY": -19.42944671865665,
+      "netProfitQuarterYoY": -30.342888129457425,
+      "operatingCashflowQuarterYoY": -51.448203052784145
+    },
+    {
+      "period": "2026-Q1",
+      "revenueQuarter": 53909252220.51,
+      "netProfitQuarter": 27242512886.45,
+      "operatingCashflowQuarter": 26909891269.13,
+      "revenueQuarterYoY": 6.538007328236195,
+      "netProfitQuarterYoY": 1.47141829498314,
+      "operatingCashflowQuarterYoY": 205.47500985732108
+    },
+    {
+      "period": "2026-Q2",
+      "revenueQuarter": 36794008743.96999,
+      "netProfitQuarter": 17274367535.41,
+      "operatingCashflowQuarter": 43780858849.92999,
+      "revenueQuarterYoY": -5.14171238167318,
+      "netProfitQuarterYoY": -6.904267458948032,
+      "operatingCashflowQuarterYoY": 915.8289166713242,
+      "interpretation": {
+        "operatingCashflowQuarterYoY": {
+          "flags": [
+            "extreme_change"
+          ],
+          "note": "该同比变动幅度极大，百分比结果需要谨慎解释，建议结合绝对金额与业务背景观察。",
+          "previousAbsolute": 4309865384.950001
+        }
+      }
+    }
+  ],
+  "metrics": [
+    {
+      "metricId": "FIN_REVENUE_YOY_YTD",
+      "dimension": "growth",
+      "name": "营业收入同比（累计/YTD）",
+      "status": "available",
+      "value": 1.4698691541198405,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "(2026-Q2 cumulative operating_income / 2025-Q2 cumulative operating_income - 1) × 100"
+    },
+    {
+      "metricId": "FIN_NET_PROFIT_YOY_YTD",
+      "dimension": "growth",
+      "name": "归母净利润同比（累计/YTD）",
+      "status": "available",
+      "value": -1.9515948550279494,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "(2026-Q2 cumulative parent_holder_net_profit / 2025-Q2 cumulative parent_holder_net_profit - 1) × 100"
+    },
+    {
+      "metricId": "FIN_OCF_YOY_YTD",
+      "dimension": "growth",
+      "name": "经营活动现金流净额同比（累计/YTD）",
+      "status": "available",
+      "value": 438.8400126368909,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "(2026-Q2 cumulative act_cash_flow_net / 2025-Q2 cumulative act_cash_flow_net - 1) × 100"
+    },
+    {
+      "metricId": "FIN_REVENUE_YOY_QUARTER",
+      "dimension": "growth",
+      "name": "营业收入同比（单季）",
+      "status": "available",
+      "value": -5.14171238167318,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "operating_income",
+          "period": "2025-Q1"
+        }
+      ],
+      "calculationMethod": "((2026-Q2 cumulative - previous-quarter cumulative) / (2025-Q2 cumulative - previous-quarter cumulative) - 1) × 100"
+    },
+    {
+      "metricId": "FIN_NET_PROFIT_YOY_QUARTER",
+      "dimension": "growth",
+      "name": "归母净利润同比（单季）",
+      "status": "available",
+      "value": -6.904267458948032,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2025-Q1"
+        }
+      ],
+      "calculationMethod": "((2026-Q2 cumulative - previous-quarter cumulative) / (2025-Q2 cumulative - previous-quarter cumulative) - 1) × 100"
+    },
+    {
+      "metricId": "FIN_OCF_YOY_QUARTER",
+      "dimension": "growth",
+      "name": "经营活动现金流净额同比（单季）",
+      "status": "available",
+      "value": 915.8289166713242,
+      "unit": "%",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q1"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2025-Q1"
+        }
+      ],
+      "calculationMethod": "((2026-Q2 cumulative - previous-quarter cumulative) / (2025-Q2 cumulative - previous-quarter cumulative) - 1) × 100",
+      "interpretationFlags": [
+        "extreme_change"
+      ],
+      "interpretationNote": "该同比变动幅度极大，百分比结果需要谨慎解释，建议结合绝对金额与业务背景观察。"
+    },
+    {
+      "metricId": "FIN_CFO_TO_NET_PROFIT_YTD",
+      "dimension": "cashflow",
+      "name": "经营现金流净额 / 归母净利润（累计）",
+      "status": "available",
+      "value": 1.5879538154777648,
+      "unit": "x",
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "act_cash_flow_net",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "parent_holder_net_profit",
+          "period": "2026-Q2"
+        }
+      ],
+      "calculationMethod": "2026-Q2 cumulative act_cash_flow_net / 2026-Q2 cumulative parent_holder_net_profit"
+    },
+    {
+      "metricId": "FIN_GROSS_MARGIN",
+      "dimension": "profitability",
+      "name": "销售毛利率",
+      "status": "available",
+      "value": 89.5552,
+      "unit": "%",
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2026-Q2"
+        }
+      ],
+      "calculationMethod": "sale_gross_margin from fuyao financials/indicators (report 2026-2), taken as-is"
+    },
+    {
+      "metricId": "FIN_NET_MARGIN",
+      "dimension": "profitability",
+      "name": "销售净利率",
+      "status": "available",
+      "value": 50.7516,
+      "unit": "%",
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_net_interest_ratio",
+          "period": "2026-Q2"
+        }
+      ],
+      "calculationMethod": "sale_net_interest_ratio from fuyao financials/indicators (report 2026-2), taken as-is"
+    },
+    {
+      "metricId": "FIN_ROE",
+      "dimension": "profitability",
+      "name": "加权平均净资产收益率",
+      "status": "available",
+      "value": 16.75,
+      "unit": "%",
+      "period": "2026-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:index_weighted_avg_roe",
+          "period": "2026-Q2"
+        }
+      ],
+      "calculationMethod": "index_weighted_avg_roe from fuyao financials/indicators (report 2026-2), taken as-is"
+    },
+    {
+      "metricId": "FIN_GROSS_MARGIN_CHANGE_YOY",
+      "dimension": "profitability",
+      "name": "毛利率同比变化",
+      "status": "available",
+      "value": -1.744100000000003,
+      "unit": "pct",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_gross_margin",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "sale_gross_margin(2026-Q2) - sale_gross_margin(2025-Q2), in percentage points"
+    },
+    {
+      "metricId": "FIN_NET_MARGIN_CHANGE_YOY",
+      "dimension": "profitability",
+      "name": "净利率同比变化",
+      "status": "available",
+      "value": -1.8125,
+      "unit": "pct",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_net_interest_ratio",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:sale_net_interest_ratio",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "sale_net_interest_ratio(2026-Q2) - sale_net_interest_ratio(2025-Q2), in percentage points"
+    },
+    {
+      "metricId": "FIN_ROE_CHANGE_YOY",
+      "dimension": "profitability",
+      "name": "ROE 同比变化",
+      "status": "available",
+      "value": -1.1400000000000006,
+      "unit": "pct",
+      "period": "2026-Q2",
+      "comparisonPeriod": "2025-Q2",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:index_weighted_avg_roe",
+          "period": "2026-Q2"
+        },
+        {
+          "source": "fuyao",
+          "domain": "financial",
+          "field": "indicators:index_weighted_avg_roe",
+          "period": "2025-Q2"
+        }
+      ],
+      "calculationMethod": "index_weighted_avg_roe(2026-Q2) - index_weighted_avg_roe(2025-Q2), in percentage points"
+    },
+    {
+      "metricId": "VAL_PE_TTM",
+      "dimension": "valuation",
+      "name": "市盈率（TTM）",
+      "status": "available",
+      "value": 19.320898,
+      "unit": "x",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "pe_ttm",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "pe_ttm from fuyao valuations/snapshot, taken as-is"
+    },
+    {
+      "metricId": "VAL_PB_MRQ",
+      "dimension": "valuation",
+      "name": "市净率（MRQ）",
+      "status": "available",
+      "value": 6.26211,
+      "unit": "x",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "pb_mrq",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "pb_mrq from fuyao valuations/snapshot, taken as-is"
+    },
+    {
+      "metricId": "VAL_PE_VS_INDUSTRY_MEDIAN",
+      "dimension": "valuation",
+      "name": "PE TTM 相对白酒行业中位数（倍数差）",
+      "status": "available",
+      "value": -6.282372500000001,
+      "unit": "x",
+      "period": "2026-09-30",
+      "sampleSize": 14,
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "pe_ttm/pb_mrq",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "industry_median",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "current multiple - industry median (valid samples only: PE>0, finite; median over constituents)"
+    },
+    {
+      "metricId": "VAL_PB_VS_INDUSTRY_MEDIAN",
+      "dimension": "valuation",
+      "name": "PB MRQ 相对白酒行业中位数（倍数差）",
+      "status": "available",
+      "value": 3.966825,
+      "unit": "x",
+      "period": "2026-09-30",
+      "sampleSize": 14,
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "pe_ttm/pb_mrq",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "valuation",
+          "field": "industry_median",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "current multiple - industry median (valid samples only: PE>0, finite; median over constituents)"
+    },
+    {
+      "metricId": "MKT_RETURN_20D",
+      "dimension": "market",
+      "name": "20 个交易日区间收益率",
+      "status": "available",
+      "value": -3.1502970236079952,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest close / close 20 trading days earlier - 1) × 100"
+    },
+    {
+      "metricId": "MKT_RETURN_60D",
+      "dimension": "market",
+      "name": "60 个交易日区间收益率",
+      "status": "available",
+      "value": 5.8731493943472435,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest close / close 60 trading days earlier - 1) × 100"
+    },
+    {
+      "metricId": "MKT_RETURN_120D",
+      "dimension": "market",
+      "name": "120 个交易日区间收益率",
+      "status": "available",
+      "value": -12.413103345460797,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest close / close 120 trading days earlier - 1) × 100"
+    },
+    {
+      "metricId": "MKT_VOLATILITY_20D",
+      "dimension": "market",
+      "name": "20 日年化波动率",
+      "status": "available",
+      "value": 15.311054519783877,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "annualized standard deviation of daily log returns, 252 trading days, sample std (n-1), last 20 returns"
+    },
+    {
+      "metricId": "MKT_VOLATILITY_60D",
+      "dimension": "market",
+      "name": "60 日年化波动率",
+      "status": "available",
+      "value": 23.61573298080697,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "annualized standard deviation of daily log returns, 252 trading days, sample std (n-1), last 60 returns"
+    },
+    {
+      "metricId": "MKT_MAX_DRAWDOWN_120D",
+      "dimension": "market",
+      "name": "120 交易日最大回撤",
+      "status": "available",
+      "value": -18.815583814932847,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "min(price / running_peak - 1) × 100 over last 120 trading days, output as negative percentage"
+    },
+    {
+      "metricId": "MKT_CSI300_RETURN_20D",
+      "dimension": "market",
+      "name": "沪深300 20 个交易日区间收益率",
+      "status": "available",
+      "value": -5.504137536214282,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 20 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_20D"
+    },
+    {
+      "metricId": "MKT_CSI300_RETURN_60D",
+      "dimension": "market",
+      "name": "沪深300 60 个交易日区间收益率",
+      "status": "available",
+      "value": -9.069624769941543,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 60 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_60D"
+    },
+    {
+      "metricId": "MKT_CSI300_RETURN_120D",
+      "dimension": "market",
+      "name": "沪深300 120 个交易日区间收益率",
+      "status": "available",
+      "value": -5.177606211212571,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 120 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_120D"
+    },
+    {
+      "metricId": "MKT_RELATIVE_CSI300_20D",
+      "dimension": "market",
+      "name": "个股 20 日收益率相对沪深300（百分点差）",
+      "status": "available",
+      "value": 2.3538405126062867,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_20D - MKT_CSI300_RETURN_20D, in percentage points (subtraction, never division)"
+    },
+    {
+      "metricId": "MKT_RELATIVE_CSI300_60D",
+      "dimension": "market",
+      "name": "个股 60 日收益率相对沪深300（百分点差）",
+      "status": "available",
+      "value": 14.942774164288785,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_60D - MKT_CSI300_RETURN_60D, in percentage points (subtraction, never division)"
+    },
+    {
+      "metricId": "MKT_RELATIVE_CSI300_120D",
+      "dimension": "market",
+      "name": "个股 120 日收益率相对沪深300（百分点差）",
+      "status": "available",
+      "value": -7.235497134248226,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "000300.SH:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_120D - MKT_CSI300_RETURN_120D, in percentage points (subtraction, never division)"
+    },
+    {
+      "metricId": "IND_RETURN_20D",
+      "dimension": "market",
+      "name": "白酒指数 20 个交易日区间收益率",
+      "status": "available",
+      "value": -4.670282186820041,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 20 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_20D"
+    },
+    {
+      "metricId": "IND_RETURN_60D",
+      "dimension": "market",
+      "name": "白酒指数 60 个交易日区间收益率",
+      "status": "available",
+      "value": 7.052277404412877,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 60 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_60D"
+    },
+    {
+      "metricId": "IND_RETURN_120D",
+      "dimension": "market",
+      "name": "白酒指数 120 个交易日区间收益率",
+      "status": "available",
+      "value": -15.389082939051157,
+      "unit": "%",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "(latest index close / close 120 trading days earlier - 1) × 100, same window discipline as MKT_RETURN_120D"
+    },
+    {
+      "metricId": "MKT_RELATIVE_INDUSTRY_20D",
+      "dimension": "market",
+      "name": "个股 20 日收益率相对白酒指数（百分点差）",
+      "status": "available",
+      "value": 1.5199851632120454,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_20D - IND_RETURN_20D, in percentage points (subtraction, never division)"
+    },
+    {
+      "metricId": "MKT_RELATIVE_INDUSTRY_60D",
+      "dimension": "market",
+      "name": "个股 60 日收益率相对白酒指数（百分点差）",
+      "status": "available",
+      "value": -1.1791280100656332,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_60D - IND_RETURN_60D, in percentage points (subtraction, never division)"
+    },
+    {
+      "metricId": "MKT_RELATIVE_INDUSTRY_120D",
+      "dimension": "market",
+      "name": "个股 120 日收益率相对白酒指数（百分点差）",
+      "status": "available",
+      "value": 2.9759795935903597,
+      "unit": "pct",
+      "period": "2026-09-30",
+      "sourceFields": [
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "close_price",
+          "date": "2026-09-30"
+        },
+        {
+          "source": "fuyao",
+          "domain": "prices",
+          "field": "881273.TI:close_price",
+          "date": "2026-09-30"
+        }
+      ],
+      "calculationMethod": "MKT_RETURN_120D - IND_RETURN_120D, in percentage points (subtraction, never division)"
+    }
+  ],
+  "ai": {
+    "status": "partial_failure",
+    "framer": {
+      "model": "deepseek-chat",
+      "promptVersion": "research_framer_v1",
+      "latencyMs": 0,
+      "retries": 1,
+      "status": "success"
+    },
+    "composer": {
+      "model": "deepseek-chat",
+      "promptVersion": "research_composer_v1",
+      "latencyMs": 0,
+      "retries": 1,
+      "status": "success"
+    },
+    "issues": [
+      "DIM_AI_INITIAL_05_行业相对表现与市场情绪_C02/evidence-binding: 引用的证据不在该维度证据包内：EV_FACT_IND_RETURN_60D",
+      "DIM_AI_INITIAL_05_行业相对表现与市场情绪_C02/evidence-binding: 引用的证据不在该维度证据包内：EV_FACT_IND_RETURN_60D"
+    ]
+  },
+  "errors": []
+}

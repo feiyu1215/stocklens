@@ -9,7 +9,28 @@ import {
   type FuyaoPriceBar,
 } from "./fuyao"
 import { msToShanghaiDate } from "./normalize"
-import { VERIFIED_INDUSTRY_MAPPINGS, type VerifiedIndustryMapping, getVerifiedIndustry } from "./verified-industry"
+import { VERIFIED_INDUSTRY_MAPPINGS, type VerifiedIndustryMapping } from "./verified-industry"
+import { lookupIndustry } from "./industry-registry"
+
+/**
+ * 行业解析（Task 12 §14）：优先离线注册表（5572 只股票，真实成分股扫描生成）；
+ * 未命中则回退 legacy verified 映射（000333 → 白色家电，保持 V1 行为完全一致）。
+ */
+function resolveIndustry(stockCode: string): VerifiedIndustryMapping | null {
+  const entry = lookupIndustry(stockCode)
+  if (entry) {
+    return {
+      stockCode: entry.stockCode,
+      industryIndexCode: entry.industryIndexCode,
+      industryName: entry.industryName,
+      source: entry.source,
+      verifiedAt: entry.verifiedAt,
+      verificationMethod: "industry registry (level-1 constituents scan, scripts/build-industry-registry.mjs)",
+    }
+  }
+  const legacy = VERIFIED_INDUSTRY_MAPPINGS.find((m) => m.stockCode === stockCode.toUpperCase())
+  return legacy ?? null
+}
 
 // 市场上下文（Task 08）：基准指数 + 行业上下文。
 // 与个股数据一样：只来自扶摇真实接口，失败显式暴露，不 Mock。
@@ -146,7 +167,7 @@ async function fetchIndustryValuations(
 export async function fetchIndustryContextData(
   stockCode: string,
 ): Promise<MarketContext["industry"] | null> {
-  const mapping = getVerifiedIndustry(stockCode)
+  const mapping = resolveIndustry(stockCode)
   if (!mapping) return null
 
   const context: IndustryContext = {

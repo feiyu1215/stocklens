@@ -1,7 +1,7 @@
 # 测试说明（Test Notes）
 
 > 覆盖：主链路、数据/接口异常、合规边界、AI 校验、部署验收。
-> 执行方式：`npm run test`（Vitest，198 个，离线 mock，不依赖外网模型）；
+> 执行方式：`npm run test`（Vitest，282 个，离线 mock，不依赖外网模型）；
 > 线上验收：`python scripts/production_smoke.py`（走公网 URL 的 5 条真实路径）。
 
 ## 1. 软件测试（Truth Layer）

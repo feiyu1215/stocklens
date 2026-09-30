@@ -40,6 +40,17 @@ Evidence Binding + 分区类型 + 合规扫描校验；失败 repair 一次，�
 synthesis = null，证据照常返回（AI 失败不污染 Truth Layer）。
 架构细节与已知边界：[docs/ai-architecture.md](./docs/ai-architecture.md)。
 
+## Observatory V2（/observatory）
+
+**Observatory dynamically constructs a company-specific research space rather than applying one fixed analysis template to every stock.**
+AI Research Framer 依据公司、行业、用户问题与真实 Capability Manifest 动态生成研究维度
+（4–6 个，可自由命名），每个维度经 capability → evidence 匹配后由一次 Composer 生成
+grounded claims；用户可直接添加研究角度（无数据支撑时生成 UNKNOWN 维度并列出缺失数据，
+绝不编造），沿 Claim 的 ①②③ 证据锚点 hover 预览 / 点击固定右侧 Evidence Rail，
+并在 Claim 下就地追问（复用 /api/followup）。V1（/、/diagnosis、/api/diagnosis）完整保留。
+设计与实现细节：[`docs/observatory-architecture.md`](./docs/observatory-architecture.md) ·
+[`docs/observatory-visual-spec.md`](./docs/observatory-visual-spec.md)。
+
 ## 产品设计（progressive disclosure）
 
 首屏围绕用户问题呈现关键结论、重点证据与研究边界（合理关注 ≤4 条、尚待验证 ≤3 条），
@@ -60,7 +71,7 @@ cp .env.example .env.local   # 填入 FUYAO_API_KEY 与 DEEPSEEK_API_KEY
 npm run dev                  # http://localhost:3000
 ```
 
-命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，198 个）/ npm run lint。
+命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，253 个）/ npm run lint。
 
 正式部署（Vercel，已完成）：
 
@@ -81,7 +92,7 @@ npx vercel deploy --prod                         # https://stocklens-blush.verce
 
 ## 测试与质量记录
 
-- 198 个自动化测试（公式口径、null 语义、证据规则、AI 校验、合规、部分失败）；
+- 253 个自动化测试（含打包预算、事件护栏、研究视图）；
 - Production smoke（公网 5 路径）：scripts/production_smoke.py → scripts/production-smoke-results.json；
 - 交付文档：docs/test-notes.md · docs/ai-usage-record.md · docs/demo-script.md ·
   docs/metric-catalog.md · docs/evidence-rules.md · docs/ai-architecture.md。

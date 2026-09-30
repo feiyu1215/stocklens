@@ -114,6 +114,23 @@ Event / Risk Lite 只回答"最近是否出现值得注意的市场事件或关�
 被问"为什么最近跌了"时，若事件证据不足，必须回答"当前证据只能确认行情变化，
 无法验证具体驱动原因"，禁止无证据归因（如"资金出逃""预期下调"）。
 
+## Observatory V2：AI Research Framing 与 Dynamic Dimensions（Task 12）
+
+```text
+Company Search → Company Context（+ Industry Registry O(1)）→ Capability Manifest
+→ Research Framer（只看公司/行业/问题/能力，绝不看金融数字）
+→ Dynamic Research Dimensions（AI 自由命名，4–6 个 + 1–3 suggestions）
+→ Capability Mapping → Per-Dimension Evidence Pack（4–8 条，总预算 ≤32）
+→ Research Space Composer（一次调用，非每维度一次）→ Claim Grounding Validator → Observatory UI
+```
+
+**边界**：AI 可以自由命名研究角度、组合能力、建议方向；不能创造数据能力
+（capabilityRefs 必须来自 Capability Manifest，validator 严格拒绝）、不能创造 Evidence/Metric/ID、
+不能改变 dimension status。用户添加的维度若无数据支撑 → `status=unknown` +
+真实 `missingInformation` 清单（例：「海外业务」给出分地区收入/海外毛利率/汇率影响等缺失项），
+绝不编造「海外收入增长 X%」。Capability availability 完全由当次真实指标/证据/事件 coverage 决定，
+没有任何公司类型模板。
+
 ## Compliance：Pre-check + Post-check 双保险
 
 - **Pre-check**（Planner 之前）：确定性模式匹配拦截明显投资建议请求（能买吗/目标价/

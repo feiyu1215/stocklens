@@ -1,0 +1,93 @@
+{
+  "base": "https://stocklens-blush.vercel.app",
+  "results": {
+    "01-company-search": {
+      "ok": true,
+      "count": 1,
+      "first": {
+        "stockCode": "000333.SZ",
+        "stockName": "美的集团",
+        "market": "深交所"
+      },
+      "ms": 2632
+    },
+    "02-midea-observatory": {
+      "ok": true,
+      "ai": "success",
+      "industry": "白色家电",
+      "dims": [
+        "增长韧性",
+        "盈利质量",
+        "现金转化",
+        "估值定位",
+        "行业相对表现",
+        "股东回报与公司行为"
+      ],
+      "claims": 23,
+      "ms": 17772
+    },
+    "03-different-industry": {
+      "ok": true,
+      "industry": "白酒",
+      "dims": [
+        "盈利质量与护城河",
+        "增长韧性",
+        "现金转化与经营质量",
+        "估值与行业相对定位",
+        "市场相对表现与波动",
+        "股东回报与公司行为"
+      ],
+      "ai": "success",
+      "ms": 17072
+    },
+    "04-dimension-focus": {
+      "ok": true,
+      "dimension": "增长韧性",
+      "claims": 4,
+      "evidence": 6,
+      "grounded": true
+    },
+    "05-evidence-rail": {
+      "ok": true,
+      "evidenceId": "EV_INF_FIN_PROFIT_GROWTH_LAGS_REVENUE",
+      "type": "inference",
+      "period": "2026-Q2"
+    },
+    "06-add-dimension": {
+      "ok": false,
+      "label": "分红能力",
+      "status": "partial",
+      "claims": 0,
+      "ev": 8,
+      "ms": 11491
+    },
+    "07-unknown-dimension": {
+      "ok": true,
+      "status": "unknown",
+      "missing": 6,
+      "hallucination": [],
+      "ms": 6220
+    },
+    "08-inline-followup": {
+      "ok": true,
+      "ai": "success",
+      "ms": 7343
+    },
+    "09-compliance": {
+      "ok": true,
+      "mode": "compliance_redirect",
+      "ms": 693
+    },
+    "10-legacy-diagnosis": {
+      "ok": true,
+      "status": 200,
+      "ms": 746
+    },
+    "11-observatory-page": {
+      "ok": true,
+      "status": 200,
+      "ms": 702
+    }
+  },
+  "allPass": false
+}

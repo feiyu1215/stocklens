@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto"
 
 import { LLMConfigError, parseLLMJson, runLLM } from "@/lib/ai/model"
 import { CAPABILITY_KEYS, type CapabilityKey } from "./capability"
+import type { Evidence } from "@/lib/evidence/types"
 import { matchEvidenceByCapabilities } from "./company-context"
 import { buildDimensionPack } from "./composer"
 import { validateDimensionClaims, type ResearchClaim } from "./claims"
@@ -271,9 +272,34 @@ export async function addResearchDimension(input: AddDimensionRequest): Promise<
     // 合成失败不阻塞对象创建：维度以无 claim 的 partial 状态进入空间
   }
 
+  // 合成失败时的确定性回退（Task 12 §45/§77 精神）：
+  // 直接以证据原文生成 grounded claims（不新增任何事实、不调用 LLM）。
+  let usedFallback = false
+  if (claims.length === 0 && pack.evidence.length > 0) {
+    usedFallback = true
+    const prioritized = [...pack.evidence].sort((a, b) => {
+      const tier = (e: Evidence) => {
+        if (e.type === "inference" && e.signal === "conflict") return 0
+        if (e.type === "inference") return 1
+        if (e.type === "unknown") return 2
+        if (e.type === "fact" && e.signal === "negative") return 3
+        return 4
+      }
+      return tier(a) - tier(b)
+    })
+    claims = prioritized.slice(0, 4).map((e, index) => ({
+      claimId: `${dimensionId}_C${String(index + 1).padStart(2, "0")}`,
+      dimensionId,
+      text: e.statement,
+      type: e.type,
+      signal: e.signal,
+      evidenceIds: [e.evidenceId],
+    }))
+  }
+
   const dimension: ResearchDimension = {
     ...pack.dimension,
-    status: effectiveDraft.dataSupport === "supported" && claims.length > 0 ? "ready" : "partial",
+    status: effectiveDraft.dataSupport === "supported" && claims.length > 0 && !usedFallback ? "ready" : "partial",
     claimIds: claims.map((c) => c.claimId),
     ...(effectiveDraft.missingInformation ? { missingInformation: effectiveDraft.missingInformation } : {}),
   }
@@ -285,8 +311,12 @@ export async function addResearchDimension(input: AddDimensionRequest): Promise<
     evidence: pack.evidence,
     ai: {
       ...aiTrace,
-      status: claims.length > 0 ? "success" : "failed",
-      ...(claims.length === 0 ? { issues: [...(aiTrace.issues ?? []), "维度合成未产出可校验的 claim（证据绑定校验未通过）"] } : {}),
+      status: aiTrace.status === "success" && !usedFallback ? "success" : "failed",
+      ...(usedFallback
+        ? { issues: [...(aiTrace.issues ?? []), "AI 合成未产出可校验 claim，已回退为确定性证据陈述（未新增事实）"] }
+        : claims.length === 0
+          ? { issues: [...(aiTrace.issues ?? []), "维度合成未产出可校验的 claim（证据绑定校验未通过）"] }
+          : {}),
     },
     errors: truth.dataResp.errors.map((e) => ({ domain: e.domain, message: e.message })),
   }

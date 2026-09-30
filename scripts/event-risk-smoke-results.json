@@ -19,14 +19,14 @@
       "anomalyEmptyAsUnknown": true,
       "newsBoundaryKept": true,
       "noFakeNews": true,
-      "latencyMs": 10705
+      "latencyMs": 9256
     },
     "Q2": {
       "ok": true,
       "ai": "success",
       "noUnfoundedAttribution": true,
       "declaresUnverifiable": true,
-      "latencyMs": 9015
+      "latencyMs": 8050
     },
     "Q3": {
       "ok": true,
@@ -35,7 +35,7 @@
         "2025-Q4"
       ],
       "guardrailPresent": true,
-      "latencyMs": 14012
+      "latencyMs": 14412
     }
   },
   "allPass": true

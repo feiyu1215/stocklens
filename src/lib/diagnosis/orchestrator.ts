@@ -11,6 +11,7 @@ import { computeIndustryValuationStats } from "@/lib/metrics/market-context"
 import type { Evidence } from "@/lib/evidence/types"
 import { runPlanner } from "@/lib/ai/planner"
 import { selectEvidenceForPlan } from "@/lib/ai/select-evidence"
+import { buildSynthesisEvidencePack, toCompactEvidence } from "@/lib/ai/evidence-pack"
 import { runSynthesizer } from "@/lib/ai/synthesizer"
 import type { DiagnosisDimension } from "@/lib/ai/types"
 import {
@@ -51,6 +52,24 @@ function makeTrendLookup(periods: Parameters<typeof buildFinancialTrend>[0]) {
         .filter((p) => typeof p[field] === "number")
         .map((p) => ({ period: p.period, value: p[field] as number }))
         .slice(-n),
+  }
+}
+
+/** 证据选择 trace（Task 09 §20/§27）：只统计计数与序列化字符数，不含证据正文 */
+function packSelectionTrace(
+  full: Evidence[],
+  pack: ReturnType<typeof buildSynthesisEvidencePack>,
+): {
+  full: number
+  synthesis: number
+  byDimension: Record<string, number>
+  serializedEvidenceChars: number
+} {
+  return {
+    full: full.length,
+    synthesis: pack.synthesisEvidence.length,
+    byDimension: pack.byDimension as Record<string, number>,
+    serializedEvidenceChars: JSON.stringify(pack.synthesisEvidence.map(toCompactEvidence)).length,
   }
 }
 
@@ -232,7 +251,10 @@ export async function runDiagnosis(input: {
   }
 
   // ---------- 4. Evidence Selection（代码完成）----------
+  // fullEvidence：完整选中集 → UI / Drawer / Follow-up（不删减）
+  // synthesisEvidence：确定性打包的紧凑证据包 → 只给 LLM Synthesizer（Task 09）
   const selected = selectEvidenceForPlan(evidence, plannerRun.planner!)
+  const pack = buildSynthesisEvidencePack(selected, plannerRun.planner!)
 
   // ---------- 5. Synthesizer ----------
   const synthRun = await runSynthesizer({
@@ -244,7 +266,7 @@ export async function runDiagnosis(input: {
       availableDimensions: context.availableDimensions,
       unavailableDimensions: context.unavailableDimensions,
     },
-    selectedEvidence: selected,
+    selectedEvidence: pack.synthesisEvidence,
   })
 
   if (synthRun.status === "failed") {
@@ -264,6 +286,7 @@ export async function runDiagnosis(input: {
       trend,
       industry: industryMeta,
       industryValuationSampleSize,
+      evidenceSelection: packSelectionTrace(selected, pack),
     }
   }
 
@@ -282,5 +305,6 @@ export async function runDiagnosis(input: {
     trend,
     industry: industryMeta,
     industryValuationSampleSize,
+    evidenceSelection: packSelectionTrace(selected, pack),
   }
 }

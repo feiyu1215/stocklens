@@ -64,4 +64,12 @@ export interface DiagnosisResponse {
   } | null
   /** additive extension（Task 08）：行业估值样本量（UI 展示 n=…） */
   industryValuationSampleSize?: number | null
+  /** additive extension（Task 09）：证据选择计数（UI 用 full；synthesis 供 Trace/调试） */
+  evidenceSelection?: {
+    full: number
+    synthesis: number
+    byDimension: Record<string, number>
+    /** 序列化后进入模型的证据字符数（JSON.stringify，用于观察上下文尺寸） */
+    serializedEvidenceChars: number
+  }
 }

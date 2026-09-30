@@ -9,6 +9,8 @@ import {
   type SynthesisPromptInput,
 } from "./prompts/synthesizer"
 import type { AIInvocationTrace, SynthesizerRunResult } from "./types"
+import { toCompactEvidence } from "./evidence-pack"
+import type { CompactSynthesisPromptInput } from "./prompts/synthesizer"
 import { validateDiagnosisSynthesis } from "@/lib/validation/diagnosis"
 
 // Synthesizer（Task 04 §19–28）：
@@ -20,8 +22,9 @@ const SYNTHESIS_TEMPERATURE = 0.2
 // Task 08：证据集增大（26 → ~40 条）后 JSON 输出更长，1500 会截断导致解析失败
 const SYNTHESIS_MAX_TOKENS = 3000
 
-export function buildSynthesizerInput(input: SynthesisPromptInput): SynthesisPromptInput {
-  // 显式白名单构造：确保输入中不可能携带 API Key、原始扶摇响应或原始字段目录
+export function buildSynthesizerInput(input: SynthesisPromptInput): CompactSynthesisPromptInput {
+  // 显式白名单构造：只保留合成所需字段（Task 09 §17-19）。
+  // sourceFields / confidenceReason / verifyStatus / metricIds 等内部字段一律不进模型输入。
   return {
     question: input.question,
     stock: { stockCode: input.stock.stockCode, stockName: input.stock.stockName },
@@ -31,10 +34,7 @@ export function buildSynthesizerInput(input: SynthesisPromptInput): SynthesisPro
       availableDimensions: input.context.availableDimensions,
       unavailableDimensions: input.context.unavailableDimensions,
     },
-    selectedEvidence: input.selectedEvidence.map((e) => ({
-      ...e,
-      sourceFields: [], // 原始字段目录不进入模型输入（statement 已含可读事实）
-    })),
+    selectedEvidence: input.selectedEvidence.map(toCompactEvidence),
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Evidence } from "@/lib/evidence/types"
 import type { DiagnosisContext } from "@/lib/diagnosis/types"
+import { toCompactEvidence, type CompactEvidenceForLLM } from "../evidence-pack"
 
 export const SYNTHESIS_PROMPT_VERSION = "diagnosis_synthesis_v1"
 
@@ -8,6 +9,11 @@ export interface SynthesisPromptInput {
   stock: { stockCode: string; stockName: string }
   context: Pick<DiagnosisContext, "latestFinancialPeriod" | "latestTradeDate" | "availableDimensions" | "unavailableDimensions">
   selectedEvidence: Evidence[]
+}
+
+/** 交给模型的紧凑证据包（不含 sourceFields 等内部字段，Task 09 §17–19） */
+export interface CompactSynthesisPromptInput extends Omit<SynthesisPromptInput, "selectedEvidence"> {
+  selectedEvidence: CompactEvidenceForLLM[]
 }
 
 export function buildSynthesisSystemPrompt(): string {
@@ -33,13 +39,17 @@ export function buildSynthesisSystemPrompt(): string {
     "- 每条 statement 的 text 必须绑定 evidenceIds（非空），且所有 id 必须来自输入 Evidence。",
     "- 绝对不要发明输入中不存在的 evidenceId（例如自造 EV_UNKNOWN_XXX）。unknowns 分区只允许引用输入中 type=unknown 的证据；若输入中没有 unknown 证据，unknowns 返回空数组。",
     "- 如果某类信息只有 unknown 证据，如实说明「当前无法验证」，不要绕过它下结论。",
+    "- 输入证据已由系统根据用户研究意图确定性筛选。仅使用提供的 Evidence；不要讨论未提供的维度，也不要要求补充证据。",
     "",
     "只输出一个 JSON 对象，格式：",
     '{"summary":{"text":"...","evidenceIds":[...]},"confirmedFacts":[{"text":"...","evidenceIds":[...]}],"analysisInferences":[{"text":"...","evidenceIds":[...]}],"unknowns":[{"text":"...","evidenceIds":[...]}],"nextQuestions":["..."]}',
   ].join("\n")
 }
 
-export function buildSynthesisUserPrompt(input: SynthesisPromptInput): string {
+export function buildSynthesisUserPrompt(input: SynthesisPromptInput | CompactSynthesisPromptInput): string {
+  const compact = input.selectedEvidence.map((e) =>
+    "sourceFields" in e ? toCompactEvidence(e) : e,
+  )
   return JSON.stringify({
     question: input.question,
     stock: input.stock,
@@ -49,17 +59,7 @@ export function buildSynthesisUserPrompt(input: SynthesisPromptInput): string {
       availableDimensions: input.context.availableDimensions,
       unavailableDimensions: input.context.unavailableDimensions,
     },
-    evidence: input.selectedEvidence.map((e) => ({
-      evidenceId: e.evidenceId,
-      dimension: e.dimension,
-      type: e.type,
-      signal: e.signal,
-      title: e.title,
-      statement: e.statement,
-      period: e.period ?? null,
-      comparisonPeriod: e.comparisonPeriod ?? null,
-      metricIds: e.metricIds,
-    })),
+    evidence: compact,
   })
 }
 

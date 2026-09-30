@@ -12,6 +12,7 @@ export type DemoActionKind =
   | "clear-ai-input"
   | "open-add-dimension"
   | "open-shelf"
+  | "close-reading"
 
 export interface DemoScene {
   id: string
@@ -72,8 +73,10 @@ export const DEMO_SCENES: DemoScene[] = [
   {
     id: "extend-shelf",
     actions: [
-      { atMs: 400, kind: "open-add-dimension" },
-      { atMs: 3600, kind: "open-shelf" },
+      // 先回到 Canvas，否则 Reading 的面包屑会占住头部，研究架打开也看不见
+      { atMs: 200, kind: "close-reading" },
+      { atMs: 900, kind: "open-add-dimension" },
+      { atMs: 4200, kind: "open-shelf" },
       { atMs: 8200, kind: "clear-ai-input" },
     ],
     captions: [{ atMs: 1000, title: "EXTEND & SHELF", text: "补充研究角度，并保存公司，随时继续研究。" }],

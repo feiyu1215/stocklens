@@ -199,6 +199,9 @@ export default function ResearchCanvas() {
   /** §6：已研究会话（缓存路径不调用 /api/research/init） */
   const payloadCacheRef = useRef<Record<string, ResearchSpacePayload>>({})
   const switchAbortRef = useRef<AbortController | null>(null)
+  /** §2/§3：未缓存 init 的唯一所有者 + 在途去重（同一公司只允许一个在途请求）；
+   *  Refresh（force）有意绕过去重，因为那是用户显式发起的新请求。 */
+  const inFlightInitRef = useRef<Record<string, Promise<ResearchSpacePayload | null>>>({})
   const rootRef = useRef<HTMLDivElement>(null)
   const navBaseSetRef = useRef(false)
   /** 最近一次 Aperture 的客观度量（§43/§49：碰撞前后数量、位移对象数） */
@@ -1253,14 +1256,23 @@ export default function ResearchCanvas() {
       const controller = new AbortController()
       switchAbortRef.current = controller
       try {
-        const res = await fetch("/api/research/init", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stockCode }),
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error(`init ${res.status}`)
-        const data = (await res.json()) as ResearchSpacePayload
+        const existing = opts?.force ? undefined : inFlightInitRef.current[stockCode]
+        const inflight =
+          existing ??
+          fetch("/api/research/init", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ stockCode }),
+            signal: controller.signal,
+          })
+            .then((r) => (r.ok ? ((r.json() as Promise<ResearchSpacePayload>) as Promise<ResearchSpacePayload>) : null))
+            .catch(() => null)
+            .finally(() => {
+              delete inFlightInitRef.current[stockCode]
+            })
+        if (!opts?.force) inFlightInitRef.current[stockCode] = inflight
+        const data = await inflight
+        if (!data) throw new Error("init failed")
         if (seq !== switchSeqRef.current) return // §15：过期响应不得覆盖更新的目标
         applySession(data, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
         recordVisit(stockCode, data.company.stockName, data.company.industryName ?? undefined)
@@ -1618,6 +1630,10 @@ export default function ResearchCanvas() {
       }
       if (kind === "open-add-dimension") {
         setAddAngle(DEMO_ANGLE_PLACEHOLDER)
+        return
+      }
+      if (kind === "close-reading") {
+        closeReadingRef.current?.()
         return
       }
       if (kind === "open-shelf") {

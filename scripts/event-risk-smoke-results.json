@@ -1,0 +1,42 @@
+{
+  "base": "https://stocklens-blush.vercel.app",
+  "results": {
+    "Q1": {
+      "ok": true,
+      "ai": "success",
+      "plannerDims": [
+        "risk",
+        "market"
+      ],
+      "eventItems": 3,
+      "coverage": {
+        "anomaly": "no_records",
+        "attention": "records",
+        "corporateAction": "records",
+        "newsDisclosure": "unavailable"
+      },
+      "riskFactCount": 3,
+      "anomalyEmptyAsUnknown": true,
+      "newsBoundaryKept": true,
+      "noFakeNews": true,
+      "latencyMs": 10705
+    },
+    "Q2": {
+      "ok": true,
+      "ai": "success",
+      "noUnfoundedAttribution": true,
+      "declaresUnverifiable": true,
+      "latencyMs": 9015
+    },
+    "Q3": {
+      "ok": true,
+      "ai": "success",
+      "flaggedPeriods": [
+        "2025-Q4"
+      ],
+      "guardrailPresent": true,
+      "latencyMs": 14012
+    }
+  },
+  "allPass": true
+}

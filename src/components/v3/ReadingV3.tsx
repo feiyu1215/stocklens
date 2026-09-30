@@ -41,6 +41,7 @@ export default function ReadingV3({
   flipTitleFrom,
   initialClaimId,
   initialEvidenceId,
+  onEvidenceFocus,
   onBack,
 }: {
   space: SpaceLike
@@ -48,6 +49,8 @@ export default function ReadingV3({
   flipTitleFrom: { x: number; y: number; width: number; height: number } | null
   initialClaimId?: string | null
   initialEvidenceId?: string | null
+  /** Reading 内点击证据锚点 → 通知 Canvas 高亮同一证据（§24） */
+  onEvidenceFocus?: (evidenceId: string | null) => void
   onBack: () => void
 }) {
   const claims = useMemo(
@@ -219,7 +222,9 @@ export default function ReadingV3({
                           onMouseLeave={() => setPreviewId(null)}
                           onClick={() => {
                             setActiveClaimId(claim.claimId)
-                            setPinnedId((p) => (p === id ? null : id))
+                            const next = pinnedId === id ? null : id
+                            setPinnedId(next)
+                            onEvidenceFocus?.(next)
                           }}
                           aria-label={`证据 ${i + 1}`}
                           className="font-mono text-[15px] transition"
@@ -421,7 +426,11 @@ export default function ReadingV3({
             )}
             <button
               type="button"
-              onClick={() => setPinnedId((p) => (p === railEvidence.evidenceId ? null : railEvidence.evidenceId))}
+              onClick={() => {
+                const next = pinnedId === railEvidence.evidenceId ? null : railEvidence.evidenceId
+                setPinnedId(next)
+                onEvidenceFocus?.(next)
+              }}
               className="mt-6 font-mono text-[10.5px] tracking-[0.16em] transition hover:opacity-70"
               style={{ color: V3_PALETTE.secondary }}
             >

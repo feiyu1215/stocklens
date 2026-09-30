@@ -26,6 +26,7 @@ import {
   normalizeValuation,
   periodKeyOf,
   periodToIndicatorReport,
+  prevYearSamePeriod,
   zipFinancialPeriods,
 } from "./normalize"
 
@@ -81,18 +82,23 @@ async function fetchFinancial(
   )
   const latestPeriod = periodKeyOf(latestIncome.fiscal_year, latestIncome.fiscal_period)
   const latestReport = periodToIndicatorReport(latestPeriod)
+  const prevYearPeriod = prevYearSamePeriod(latestPeriod)
 
-  // 官方指标（毛利率/净利率/ROE）按期查询；失败不拖垮报表本身（记为仅缺指标）
-  const [cashflow, indicators] = await Promise.all([
+  // 官方指标（毛利率/净利率/ROE）按期查询最新期 + 上年同期（供盈利能力变化计算）；
+  // 任一失败不拖垮报表本身（记为仅缺指标）
+  const [cashflow, latestIndicators, prevYearIndicators] = await Promise.all([
     fetchCashFlowStatements(stockCode, FINANCIAL_PERIOD_COUNT),
     fetchFinancialIndicators(stockCode, latestReport).catch(() => null),
+    fetchFinancialIndicators(stockCode, periodToIndicatorReport(prevYearPeriod)).catch(() => null),
   ])
 
   const periods = zipFinancialPeriods(
     stockCode,
     incomeItems,
     cashflow.item ?? [],
-    indicators,
+    [latestIndicators, prevYearIndicators].filter(
+      (set): set is NonNullable<typeof set> => set !== null,
+    ),
     new Date(income.timestamp).toISOString(),
   )
   return { periods, latestPeriod }

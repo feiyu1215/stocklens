@@ -91,15 +91,15 @@ describe("zipFinancialPeriods —— Missing 与 Zero 严格区分", () => {
   }
 
   it("真实 0 原样保留，真实负数原样保留", () => {
-    const [q2] = zipFinancialPeriods("000333.SZ", income, cashflow, indicators, "2026-09-30T00:00:00Z")
+    const [q2] = zipFinancialPeriods("000333.SZ", income, cashflow, [indicators], "2026-09-30T00:00:00Z")
     expect(q2.period).toBe("2026-Q2")
     expect(q2.revenue).toBe(100)
     expect(q2.netProfit).toBe(0) // 真实 0，不是缺失
     expect(q2.operatingCashflow).toBe(-20)
   })
 
-  it("最新期指标取值；指标值为 null 保留 null；非最新期为 undefined（未请求，序列化后键不出现）", () => {
-    const [q2, q1] = zipFinancialPeriods("000333.SZ", income, cashflow, indicators, null)
+  it("已查询期次指标取值；指标值为 null 保留 null；未查询期次为 undefined（序列化后键不出现）", () => {
+    const [q2, q1] = zipFinancialPeriods("000333.SZ", income, cashflow, [indicators], null)
     expect(q2.grossMargin).toBe(25.25)
     expect(q2.netMargin).toBeNull() // 指标接口返回了但值为空
     expect(q2.roe).toBe(11.33)
@@ -110,19 +110,19 @@ describe("zipFinancialPeriods —— Missing 与 Zero 严格区分", () => {
   })
 
   it("缺失字段为 null；无现金流期次 operatingCashflow 为 null", () => {
-    const [, q1] = zipFinancialPeriods("000333.SZ", income, cashflow, indicators, null)
+    const [, q1] = zipFinancialPeriods("000333.SZ", income, cashflow, [indicators], null)
     expect(q1.revenue).toBeNull() // 接口返回 null
     expect(q1.netProfit).toBe(50)
     expect(q1.operatingCashflow).toBeNull() // 无该期现金流数据
   })
 
   it("期次倒序排列", () => {
-    const periods = zipFinancialPeriods("000333.SZ", income, cashflow, indicators, null)
+    const periods = zipFinancialPeriods("000333.SZ", income, cashflow, [indicators], null)
     expect(periods.map((p) => p.period)).toEqual(["2026-Q2", "2026-Q1"])
   })
 
-  it("指标请求失败（null）时所有期次 margins/roe 为 undefined，报表数据不受影响", () => {
-    const periods = zipFinancialPeriods("000333.SZ", income, cashflow, null, null)
+  it("指标请求失败（空集）时所有期次 margins/roe 为 undefined，报表数据不受影响", () => {
+    const periods = zipFinancialPeriods("000333.SZ", income, cashflow, [], null)
     expect(periods[0].revenue).toBe(100)
     expect(periods[0].grossMargin).toBeUndefined()
     expect(JSON.parse(JSON.stringify(periods[0]))).not.toHaveProperty("grossMargin")

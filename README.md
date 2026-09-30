@@ -7,9 +7,24 @@ Evidence 模型与开发阶段见 [`PRD.md`](./PRD.md)。
 
 ## 当前状态
 
-Task 01（Bootstrap + Runtime Financial Data Spike）已完成：Next.js 骨架 + 运行期
-扶摇金融数据链路（StockLens 服务端 → Fuyao REST → Data Adapter → Normalized Model）。
-尚未开发 Metric / Evidence / AI / 诊断页面。
+Task 01（Data Layer）+ Task 02（Deterministic Metric Engine）已完成：
+
+```text
+Fuyao REST → Data Adapter → Normalized Data → Metric Engine → MetricResult[]
+```
+
+- 指标口径与公式登记在 [`docs/metric-catalog.md`](./docs/metric-catalog.md)；
+- 21 个确定性指标（财务 13 / 估值 2 / 行情 6），缺失指标以 unavailable + 原因呈现，
+  不静默丢弃、不 0 兜底；
+- Metric Engine 只计算、不解释：无语义标签、无评分。
+
+**尚未开发**：Evidence Engine、AI（Planner/Synthesis/Followup）、正式诊断 UI、
+Evidence Drill-down。当前页面仅为脚手架占位。
+
+数据验证入口：
+
+- `GET /api/debug/stock-data?stockCode=000333.SZ` —— 归一化数据层
+- `GET /api/debug/metrics?stockCode=000333.SZ` —— 指标层
 
 ## 启动
 
@@ -35,8 +50,10 @@ npm run test    # Vitest
 
 ```text
 src/lib/data/          # 扶摇 Data Adapter（types / fuyao / normalize / stock-data）
-src/app/api/debug/     # 数据验证 Debug API
-tests/                 # Vitest：归一化、null 语义、缺失 Key、部分失败
+src/lib/metrics/       # 确定性 Metric Engine（types / financial / market / valuation / engine）
+src/app/api/debug/     # 数据与指标验证 Debug API
+docs/                  # metric-catalog.md（指标口径登记簿）
+tests/                 # Vitest：归一化、指标公式、null 语义、缺失 Key、部分失败
 ```
 
 ## 规则

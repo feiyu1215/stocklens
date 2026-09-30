@@ -48,19 +48,19 @@ export const FIELD_CATALOG = [
     internal: "grossMargin",
     raw: "financials/indicators → sale_gross_margin",
     unit: "%",
-    note: "仅最新报告期（官方指标接口按期查询），其余期次为 undefined",
+    note: "仅已查询期次（当前=最新期+上年同期，官方指标接口按期查询），其余期次为 undefined",
   },
   {
     internal: "netMargin",
     raw: "financials/indicators → sale_net_interest_ratio",
     unit: "%",
-    note: "销售净利率；仅最新报告期",
+    note: "销售净利率；仅已查询期次",
   },
   {
     internal: "roe",
     raw: "financials/indicators → index_weighted_avg_roe",
     unit: "%",
-    note: "加权平均 ROE；仅最新报告期",
+    note: "加权平均 ROE；仅已查询期次",
   },
   { internal: "peTtm", raw: "valuations/snapshot → pe_ttm", unit: "倍", note: "可为负（亏损公司），原样保留" },
   { internal: "pb", raw: "valuations/snapshot → pb_mrq", unit: "倍", note: "MRQ 口径市净率" },
@@ -100,6 +100,13 @@ export function indicatorReportToPeriod(report: string): string {
   const m = /^(\d{4})-([1-4])$/.exec(report)
   if (!m) throw new Error(`无法解析指标报告期：${report}（期望格式 YYYY-n）`)
   return `${m[1]}-Q${m[2]}`
+}
+
+/** 上年同期："2026-Q2" → "2025-Q2" */
+export function prevYearSamePeriod(period: string): string {
+  const m = /^(\d{4})-Q([1-4])$/.exec(period)
+  if (!m) throw new Error(`无法解析报告期：${period}（期望格式 YYYY-Qn）`)
+  return `${Number(m[1]) - 1}-Q${m[2]}`
 }
 
 function periodSortKey(period: string): number {
@@ -145,15 +152,16 @@ export function zipFinancialPeriods(
   stockCode: string,
   income: FuyaoIncomeStatement[],
   cashflow: FuyaoCashFlowStatement[],
-  latestIndicators: FuyaoIndicatorsData | null,
+  indicatorSets: FuyaoIndicatorsData[],
   fetchedAt: string | null,
 ): FinancialPeriodData[] {
   const cfByKey = new Map(
     cashflow.map((c) => [periodKeyOf(c.fiscal_year, c.fiscal_period), c] as const),
   )
-  const latestIndicatorPeriod = latestIndicators
-    ? indicatorReportToPeriod(latestIndicators.report)
-    : null
+  // 官方指标按报告期挂接：哪套指标对应哪个期次由 report 字段决定
+  const indicatorsByPeriod = new Map(
+    indicatorSets.map((set) => [indicatorReportToPeriod(set.report), set] as const),
+  )
 
   const periods = new Set<string>()
   for (const row of income) periods.add(periodKeyOf(row.fiscal_year, row.fiscal_period))
@@ -164,7 +172,7 @@ export function zipFinancialPeriods(
     .map((period): FinancialPeriodData => {
       const inc = income.find((r) => periodKeyOf(r.fiscal_year, r.fiscal_period) === period)
       const cf = cfByKey.get(period)
-      const isLatest = period === latestIndicatorPeriod
+      const indicators = indicatorsByPeriod.get(period)
       return {
         stockCode,
         period,
@@ -172,10 +180,10 @@ export function zipFinancialPeriods(
         revenue: inc ? inc.operating_income : null,
         netProfit: inc ? inc.parent_holder_net_profit : null,
         operatingCashflow: cf ? cf.act_cash_flow_net : null,
-        // 官方指标仅按期查询最新一期：最新期取值（可为 null），其余期次 undefined（未请求）
-        grossMargin: isLatest && latestIndicators ? pickIndicator(latestIndicators.abilities, "sale_gross_margin") : undefined,
-        netMargin: isLatest && latestIndicators ? pickIndicator(latestIndicators.abilities, "sale_net_interest_ratio") : undefined,
-        roe: isLatest && latestIndicators ? pickIndicator(latestIndicators.abilities, "index_weighted_avg_roe") : undefined,
+        // 指标仅覆盖已查询期次：命中取值（可为 null），未查询期次 undefined（未请求）
+        grossMargin: indicators ? pickIndicator(indicators.abilities, "sale_gross_margin") : undefined,
+        netMargin: indicators ? pickIndicator(indicators.abilities, "sale_net_interest_ratio") : undefined,
+        roe: indicators ? pickIndicator(indicators.abilities, "index_weighted_avg_roe") : undefined,
         source: "fuyao",
         updatedAt: fetchedAt,
       }
@@ -210,7 +218,9 @@ export function normalizePrices(
   return (data.item ?? [])
     .filter(
       (bar): bar is FuyaoPriceBar & { close_price: number } =>
-        typeof bar.date_ms === "number" && typeof bar.close_price === "number",
+        typeof bar.date_ms === "number" &&
+        typeof bar.close_price === "number" &&
+        Number.isFinite(bar.close_price),
     )
     .map(
       (bar): DailyPrice => ({

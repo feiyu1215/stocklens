@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { DEMO_STEPS, DEMO_TOTAL_MS, isLastStep, stepAt, stepBy } from "@/lib/v5/demo"
+import { DEMO_SCENES, DEMO_TOTAL_MS, isLastScene, sceneAt, sceneBy } from "@/lib/v5/demo"
+import { createSwitchGuard } from "@/lib/v5/switch-guard"
 import {
   RECENT_LIMIT,
   formatLastResearch,
@@ -79,39 +80,69 @@ describe("Research Shelf（§B7–§B10）", () => {
   })
 })
 
-describe("Guided Demo 步骤（§C25/§C26/§C30）", () => {
-  it("总时长落在 55–75 秒区间（不为了 60 秒卡死）", () => {
-    expect(DEMO_TOTAL_MS).toBeGreaterThanOrEqual(55000)
-    expect(DEMO_TOTAL_MS).toBeLessThanOrEqual(75000)
-    expect(DEMO_STEPS).toHaveLength(8)
+describe("Guided Demo V2 场景（§26/§27/§30）", () => {
+  it("6 个场景，总时长落在 50–60 秒", () => {
+    expect(DEMO_SCENES).toHaveLength(6)
+    expect(DEMO_TOTAL_MS).toBeGreaterThanOrEqual(50000)
+    expect(DEMO_TOTAL_MS).toBeLessThanOrEqual(60000)
   })
 
-  it("每一步只有 1 个标题 + 1 句话，且指针在视口内", () => {
-    for (const step of DEMO_STEPS) {
-      expect(step.title.length).toBeGreaterThan(0)
-      expect(step.caption.length).toBeGreaterThan(0)
-      expect(step.caption.split("。").filter(Boolean).length).toBeLessThanOrEqual(2)
-      expect(step.pointer.x).toBeGreaterThan(0)
-      expect(step.pointer.x).toBeLessThan(1)
-      expect(step.pointer.y).toBeGreaterThan(0)
-      expect(step.pointer.y).toBeLessThan(1)
+  it("每条字幕最多 1 标题 + 1 句话，指针在视口内", () => {
+    for (const scene of DEMO_SCENES) {
+      expect(scene.captions.length).toBeGreaterThan(0)
+      for (const c of scene.captions) {
+        expect(c.title.length).toBeGreaterThan(0)
+        expect(c.text.split("。").filter(Boolean).length).toBeLessThanOrEqual(1)
+      }
+      expect(scene.pointer.x).toBeGreaterThan(0)
+      expect(scene.pointer.x).toBeLessThan(1)
+      expect(scene.pointer.y).toBeGreaterThan(0)
+      expect(scene.pointer.y).toBeLessThan(1)
+    }
+  })
+
+  it("同一时刻只有一个焦点动作（动作时间点不重叠）", () => {
+    for (const scene of DEMO_SCENES) {
+      const times = scene.actions.map((a) => a.atMs)
+      const unique = new Set(times)
+      expect(unique.size).toBe(times.length)
     }
   })
 
   it("步进被夹在范围内，不越界", () => {
-    expect(stepBy(0, -1)).toBe(0)
-    expect(stepBy(DEMO_STEPS.length - 1, 1)).toBe(DEMO_STEPS.length - 1)
-    expect(isLastStep(DEMO_STEPS.length - 1)).toBe(true)
-    expect(stepAt(99).id).toBe(DEMO_STEPS[DEMO_STEPS.length - 1].id)
-    expect(stepAt(-3).id).toBe(DEMO_STEPS[0].id)
+    expect(sceneBy(0, -1)).toBe(0)
+    expect(sceneBy(DEMO_SCENES.length - 1, 1)).toBe(DEMO_SCENES.length - 1)
+    expect(isLastScene(DEMO_SCENES.length - 1)).toBe(true)
+    expect(sceneAt(99).id).toBe(DEMO_SCENES[DEMO_SCENES.length - 1].id)
+    expect(sceneAt(-3).id).toBe(DEMO_SCENES[0].id)
   })
 
   it("Demo 不包含任何会写入数据的动作（只展示入口）", () => {
-    const kinds = DEMO_STEPS.map((s) => s.action)
+    const kinds = DEMO_SCENES.flatMap((s) => s.actions.map((a) => a.kind))
     expect(kinds).not.toContain("submit-dimension")
     expect(kinds).not.toContain("send-ai")
     expect(kinds).not.toContain("switch-company")
     expect(kinds).toContain("open-add-dimension")
     expect(kinds).toContain("open-shelf")
+    expect(kinds).toContain("focus-ai-typing")
+  })
+})
+
+describe("公司切换过期响应守卫（§15）", () => {
+  it("后发起的切换使先前的响应失效", () => {
+    const guard = createSwitchGuard()
+    const first = guard.begin()
+    expect(guard.isCurrent(first)).toBe(true)
+    const second = guard.begin()
+    expect(guard.isCurrent(first)).toBe(false)
+    expect(guard.isCurrent(second)).toBe(true)
+  })
+
+  it("取消会让所有在途响应失效", () => {
+    const guard = createSwitchGuard()
+    const inflight = guard.begin()
+    guard.cancel()
+    expect(guard.isCurrent(inflight)).toBe(false)
+    expect(guard.isCurrent(guard.begin())).toBe(true)
   })
 })

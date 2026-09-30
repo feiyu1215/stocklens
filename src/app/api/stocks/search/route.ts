@@ -5,6 +5,7 @@ import { searchStocks } from "@/lib/data/stock-search"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
+  const startedAt = Date.now()
   const { searchParams } = new URL(request.url)
   const q = (searchParams.get("q") ?? "").trim()
   if (q.length === 0) {
@@ -15,7 +16,12 @@ export async function GET(request: Request) {
   }
   try {
     const items = await searchStocks(q)
-    return NextResponse.json({ items })
+    const response = NextResponse.json({ items })
+    // Task 16.1 延迟审计：仅开发环境附加真实耗时头；不改变响应体、状态码与行为
+    if (process.env.NODE_ENV !== "production") {
+      response.headers.set("Server-Timing", `total;dur=${Date.now() - startedAt}`)
+    }
+    return response
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const configMissing = message.includes("FUYAO_API_KEY")

@@ -13,6 +13,7 @@ export const maxDuration = 120
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function POST(request: Request) {
+  const startedAt = Date.now()
   let body: unknown
   try {
     body = await request.json()
@@ -51,5 +52,14 @@ export async function POST(request: Request) {
     currentDimensions: dims,
     ...(typeof entryQuestion === "string" && entryQuestion.trim().length > 0 ? { entryQuestion: entryQuestion.trim() } : {}),
   })
-  return NextResponse.json({ mode: "dimension", ...resp })
+  const response = NextResponse.json({ mode: "dimension", ...resp })
+  // Task 16.1 延迟审计：仅开发环境附加真实耗时头；framing 为维度框定 LLM 实测耗时，
+  // 其余耗时（含 truth 加载与维度合成 LLM）归入 rest。不改变响应体、状态码与行为
+  if (process.env.NODE_ENV !== "production") {
+    response.headers.set(
+      "Server-Timing",
+      [`total;dur=${Date.now() - startedAt}`, `framing;dur=${resp.ai.latencyMs ?? 0}`].join(", "),
+    )
+  }
+  return response
 }

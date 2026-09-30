@@ -13,6 +13,7 @@ export const maxDuration = 60
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function POST(request: Request) {
+  const startedAt = Date.now()
   let body: unknown
   try {
     body = await request.json()
@@ -58,5 +59,14 @@ export async function POST(request: Request) {
     focusEvidenceIds,
   })
 
-  return NextResponse.json(resp)
+  const response = NextResponse.json(resp)
+  // Task 16.1 延迟审计：仅开发环境附加真实耗时头（synthesis 取自 followup 自带 trace）；
+  // 不改变响应体、状态码与行为
+  if (process.env.NODE_ENV !== "production") {
+    response.headers.set(
+      "Server-Timing",
+      [`total;dur=${Date.now() - startedAt}`, `synthesis;dur=${resp.ai.trace?.latencyMs ?? 0}`].join(", "),
+    )
+  }
+  return response
 }

@@ -4,7 +4,8 @@ import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import DemoOverlay from "@/components/v5/DemoOverlay"
-import { DEMO_STEPS, isLastStep, stepAt, stepBy } from "@/lib/v5/demo"
+import { instrumentPointer, interactionPerf, perfDebugEnabled, type InteractionRecord } from "@/lib/v5/perf"
+import { DEMO_ANGLE_PLACEHOLDER, DEMO_SCENES, DEMO_TYPED_QUESTION, isLastScene, sceneAt, sceneBy, type DemoActionKind } from "@/lib/v5/demo"
 import { anchorGlyph, type ResearchSpacePayload } from "@/components/observatory/theme"
 import { computeFitCamera, panCamera, screenToWorld, zoomAtPointer, boundsOfObjects, type CameraState } from "@/lib/spatial/camera"
 import {
@@ -194,6 +195,10 @@ export default function ResearchCanvas() {
   const switchSeqRef = useRef(0)
   /** §B15：待恢复的研究焦点（等该公司 anchors 就绪后打开一次） */
   const pendingRestoreRef = useRef<{ code: string; dimensionId: string } | null>(null)
+  /** §6：已研究会话（缓存路径不调用 /api/research/init） */
+  const payloadCacheRef = useRef<Record<string, ResearchSpacePayload>>({})
+  const switchAbortRef = useRef<AbortController | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const navBaseSetRef = useRef(false)
   /** 最近一次 Aperture 的客观度量（§43/§49：碰撞前后数量、位移对象数） */
   const [apertureMetrics, setApertureMetrics] = useState<{
@@ -213,6 +218,8 @@ export default function ResearchCanvas() {
   const [suggestOpen, setSuggestOpen] = useState<string | null>(null)
   const [suggestDrag, setSuggestDrag] = useState<{ label: string; x: number; y: number; over: boolean } | null>(null)
   const [adding, setAdding] = useState<{ label: string; x: number; y: number } | null>(null)
+  /** §43：失败的临时研究角度（不删除用户输入） */
+  const [failedAngle, setFailedAngle] = useState<{ label: string; x: number; y: number } | null>(null)
   const [ask, setAsk] = useState<AskState | null>(null)
   const [lensOpen, setLensOpen] = useState(false)
   const [lensText, setLensText] = useState("")
@@ -227,6 +234,14 @@ export default function ResearchCanvas() {
   const [recentCompanies, setRecentCompanies] = useState<SavedCompany[]>([])
   const [lastResearchAt, setLastResearchAt] = useState<number | null>(null)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  // §5–§15：公司切换双路径（缓存 / 未缓存过渡）
+  const [pendingCompany, setPendingCompany] = useState<{ stockCode: string; name: string; industry?: string } | null>(null)
+  const [switchPhase, setSwitchPhase] = useState<"idle" | "resolving" | "failed">("idle")
+  const [switchError, setSwitchError] = useState<string | null>(null)
+  const [revealCount, setRevealCount] = useState(99)
+  const [perfOn, setPerfOn] = useState(false)
+  const [perfRows, setPerfRows] = useState<InteractionRecord[]>([])
+  const cleanupRef = useRef<(() => void) | null>(null)
   // §D39/§D40：••• 菜单 + Clear thread 二次确认（视觉关闭 ≠ 删除历史）
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
   const [clearConfirm, setClearConfirm] = useState(false)
@@ -234,6 +249,8 @@ export default function ResearchCanvas() {
   const [demoIndex, setDemoIndex] = useState<number | null>(null)
   const [demoPaused, setDemoPaused] = useState(false)
   const [demoPrompt, setDemoPrompt] = useState(false)
+  const [demoCaption, setDemoCaption] = useState({ title: "", text: "" })
+  const [demoFinal, setDemoFinal] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
   const reducedMotionRef = useRef(false)
   const [hitAreas, setHitAreas] = useState(false)
@@ -723,8 +740,11 @@ export default function ResearchCanvas() {
     async (label: string, screenX?: number, screenY?: number) => {
       const sx = screenX ?? viewport.width / 2
       const sy = screenY ?? viewport.height / 2
+      interactionPerf.markStart("dimension:add", "remote")
       setAdding({ label, x: sx, y: sy })
+      window.requestAnimationFrame(() => interactionPerf.markVisual("dimension:add"))
       setAddAngle(null)
+      setFailedAngle(null)
       try {
         const res = await fetch("/api/research/dimension", {
           method: "POST",
@@ -742,7 +762,9 @@ export default function ResearchCanvas() {
           evidence?: ResearchSpacePayload["evidence"]
         }
         if (body.mode === "compliance_redirect" || !body.dimension) {
+          // §43：不静默删除用户意图——保留临时锚点并给出重试
           setAdding(null)
+          setFailedAngle({ label, x: sx, y: sy })
           return
         }
         const dim = body.dimension
@@ -768,8 +790,11 @@ export default function ResearchCanvas() {
         setApertureId(null)
         setDisplaced({})
         setAdding(null)
+        setFailedAngle(null)
       } catch {
+        // §43：失败不得静默回退；保留用户输入与位置，允许重试
         setAdding(null)
+        setFailedAngle({ label, x: sx, y: sy })
       }
     },
     [payload, anchors, camera, viewport],
@@ -915,7 +940,10 @@ export default function ResearchCanvas() {
         status: "running",
         createdAt: new Date().toISOString(),
       }
+      interactionPerf.markStart("ai:send", "remote")
       setAiThreads((t) => ({ ...t, [stockCode]: [...(t[stockCode] ?? []), entry] }))
+      // 运行中条目已同步写入线程 → 下一帧即视为"用户问题可见"
+      window.requestAnimationFrame(() => interactionPerf.markVisual("ai:send"))
       setAiInput("")
       setAiNotice(null)
       setAiStatus("loading")
@@ -1097,86 +1125,160 @@ export default function ResearchCanvas() {
     setResearchTimes((m) => ({ ...m, [code]: snap.updatedAt }))
   }, [camera, positions, parked, notes, selection, readingId, apertureId])
 
+  /** 把某公司的会话恢复到画布（缓存路径与未缓存路径共用） */
+  const applySession = useCallback(
+    (data: ResearchSpacePayload, stockCode: string, snap: CanvasSnapshot | null) => {
+      payloadCacheRef.current[stockCode] = data
+      setPayload(data)
+      if (snap) {
+        canvasCacheRef.current[stockCode] = snap
+        setCamera(snap.camera)
+        setPositions(snap.positions ?? {})
+        setParked(snap.parked ?? [])
+        setNotes((snap.notes ?? []) as PinnedNote[])
+        setSelection(snap.selection ?? [])
+        setLastResearchAt(snap.updatedAt)
+        setResearchTimes((m) => ({ ...m, [stockCode]: snap.updatedAt }))
+        if (snap.lastDimensionId) pendingRestoreRef.current = { code: stockCode, dimensionId: snap.lastDimensionId }
+      } else {
+        delete canvasCacheRef.current[stockCode]
+        setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
+        setPositions({})
+        setParked([])
+        setNotes([])
+        setSelection([])
+        setLastResearchAt(null)
+      }
+      setApertureId(null)
+      setDisplaced({})
+      setReadingId(null)
+      setReadingEvidenceId(null)
+      if (isSaved(savedCompanies, stockCode)) {
+        const nextSaved = touchSaved(savedCompanies, stockCode)
+        setSavedCompanies(nextSaved)
+        saveSaved(nextSaved)
+      }
+      // §14：占位 → 真实锚点，逐个显现（60–100ms 间隔，总计 ≤700ms）
+      setRevealCount(0)
+      for (let i = 0; i < 9; i++) {
+        window.setTimeout(() => setRevealCount(i + 1), i * 80)
+      }
+      pushNav({ sl: true, stockCode, dim: null, read: false, ev: null })
+    },
+    [pushNav, savedCompanies],
+  )
+
+  const recordVisit = useCallback(
+    (stockCode: string, name: string, industry?: string) => {
+      const nextRecent = pushRecent(recentCompanies, { stockCode, name, industry })
+      setRecentCompanies(nextRecent)
+      saveRecent(nextRecent)
+    },
+    [recentCompanies],
+  )
+
+  /** §13：取消解析中的切换——旧 Canvas 一直在屏上，因此只需移除过渡层 */
+  const cancelSwitch = useCallback(() => {
+    switchSeqRef.current += 1
+    switchAbortRef.current?.abort()
+    setPendingCompany(null)
+    setSwitchPhase("idle")
+    setSwitchError(null)
+    setResolvingName(null)
+    setRevealCount(99)
+  }, [])
+
   const switchCompany = useCallback(
-    async (stockCode: string) => {
+    async (stockCode: string, meta?: { name?: string; industry?: string }) => {
       const currentCode = payloadRef.current?.company.stockCode
       if (currentCode === stockCode) {
-        // 用户改主意：取消仍在解析中的另一次切换
         switchSeqRef.current += 1
+        switchAbortRef.current?.abort()
+        setPendingCompany(null)
+        setSwitchPhase("idle")
         setResolvingName(null)
         setCompanyQuery(null)
         return
       }
       snapshotCurrent()
-      const seq = ++switchSeqRef.current
       const known = [...savedCompanies, ...recentCompanies].find((c) => c.stockCode === stockCode)
-      // §B13：切换期间保留当前 Canvas，只显示解析中提示，结果回来再原子替换
-      setResolvingName(known?.name ?? stockCode)
+      const target = {
+        stockCode,
+        name: meta?.name ?? known?.name ?? stockCode,
+        industry: meta?.industry ?? known?.industry,
+      }
       setCompanyQuery(null)
       setCompanyResults([])
+
+      // ---- §6 CACHED PATH：有会话就不调用 /api/research/init ----
+      const cached = payloadCacheRef.current[stockCode]
+      if (cached) {
+        const seq = ++switchSeqRef.current
+        interactionPerf.markStart(`company:cache:${stockCode}`, "local")
+        applySession(cached, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
+        recordVisit(stockCode, cached.company.stockName, cached.company.industryName ?? undefined)
+        if (seq !== switchSeqRef.current) return
+        interactionPerf.markVisual(`company:cache:${stockCode}`)
+        return
+      }
+
+      // ---- §7–§13 UNCACHED PATH：立即过渡，不让界面看起来卡住 ----
+      const seq = ++switchSeqRef.current
+      interactionPerf.markStart(`company:init:${stockCode}`, "remote")
+      setPendingCompany(target)
+      setSwitchPhase("resolving")
+      setSwitchError(null)
+      setResolvingName(target.name)
+      setRevealCount(0)
+      // 本轮 setState 后即进入"正在构建研究空间"的中间态（下一帧可见）
+      window.requestAnimationFrame(() => interactionPerf.markVisual(`company:init:${stockCode}`))
+      const controller = new AbortController()
+      switchAbortRef.current = controller
       try {
         const res = await fetch("/api/research/init", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stockCode }),
+          signal: controller.signal,
         })
-        if (!res.ok) return
+        if (!res.ok) throw new Error(`init ${res.status}`)
         const data = (await res.json()) as ResearchSpacePayload
-        if (seq !== switchSeqRef.current) return // 已被更晚的切换取代
-        setPayload(data)
-        // §B15：回到研究过的公司 → 恢复原现场；没有快照才回到初始布局
-        const snap = canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode)
-        if (snap) {
-          canvasCacheRef.current[stockCode] = snap
-          setCamera(snap.camera)
-          setPositions(snap.positions ?? {})
-          setParked(snap.parked ?? [])
-          setNotes((snap.notes ?? []) as PinnedNote[])
-          setSelection(snap.selection ?? [])
-          setLastResearchAt(snap.updatedAt)
-          setResearchTimes((m) => ({ ...m, [stockCode]: snap.updatedAt }))
-          if (snap.lastDimensionId) pendingRestoreRef.current = { code: stockCode, dimensionId: snap.lastDimensionId }
-        } else {
-          delete canvasCacheRef.current[stockCode]
-          setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
-          setPositions({})
-          setParked([])
-          setNotes([])
-          setSelection([])
-          setLastResearchAt(null)
-        }
-        setApertureId(null)
-        setDisplaced({})
-        setReadingId(null)
-        setReadingEvidenceId(null)
-        // §B9：recents（上限 6，收藏不受影响）
-        const entry = {
-          stockCode,
-          name: data.company.stockName,
-          industry: data.company.industryName ?? undefined,
-        }
-        const nextRecent = pushRecent(recentCompanies, entry)
-        setRecentCompanies(nextRecent)
-        saveRecent(nextRecent)
-        if (isSaved(savedCompanies, stockCode)) {
-          const nextSaved = touchSaved(savedCompanies, stockCode)
-          setSavedCompanies(nextSaved)
-          saveSaved(nextSaved)
-        }
-        // §A4：语义 history
-        pushNav({ sl: true, stockCode, dim: null, read: false, ev: null })
-      } catch {
-        // 切换失败保持当前公司
+        if (seq !== switchSeqRef.current) return // §15：过期响应不得覆盖更新的目标
+        applySession(data, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
+        recordVisit(stockCode, data.company.stockName, data.company.industryName ?? undefined)
+        setPendingCompany(null)
+        setSwitchPhase("idle")
+        setSwitchError(null)
+      } catch (e) {
+        if (seq !== switchSeqRef.current) return
+        if ((e as Error)?.name === "AbortError") return
+        // §42：失败不静默回退，保留目标身份 + 明确失败文案
+        setSwitchPhase("failed")
+        setSwitchError("研究空间暂时无法完成")
       } finally {
         if (seq === switchSeqRef.current) setResolvingName(null)
       }
     },
-    [pushNav, recentCompanies, savedCompanies, snapshotCurrent],
+    [applySession, recordVisit, savedCompanies, recentCompanies, snapshotCurrent],
   )
 
   useEffect(() => {
     switchCompanyRef.current = switchCompany
   }, [switchCompany])
+
+  // 对账：payload 变化后，仍指向不存在维度的 reading/evidence 必须清掉（否则头部被空的 Reading 占住）
+  useEffect(() => {
+    if (!payload) return
+    const dims = payload.dimensions.map((d) => d.dimensionId)
+    if (readingId && !dims.includes(readingId)) {
+      const raf = window.requestAnimationFrame(() => {
+        setReadingId(null)
+        setReadingEvidenceId(null)
+      })
+      return () => window.cancelAnimationFrame(raf)
+    }
+    return undefined
+  }, [payload, readingId])
 
   // §B15/§A5：恢复该公司最后的研究焦点（等 anchors 就绪，只执行一次）
   useEffect(() => {
@@ -1188,6 +1290,30 @@ export default function ResearchCanvas() {
     const raf = window.requestAnimationFrame(() => openAperture(anchor))
     return () => window.cancelAnimationFrame(raf)
   }, [payload, anchors, openAperture])
+
+  // §3：?perfDebug=1 才启用的交互计时（自动标记 pointer → 首个视觉更新）
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      if (!perfDebugEnabled()) return
+      setPerfOn(true)
+      setPerfRows(interactionPerf.all())
+      const el = rootRef.current
+      const off = el ? instrumentPointer(el) : undefined
+      const unsub = interactionPerf.subscribe(() => setPerfRows(interactionPerf.all()))
+      cleanupRef.current = () => {
+        off?.()
+        unsub()
+      }
+    })()
+    return () => {
+      cancelled = true
+      cleanupRef.current?.()
+      cleanupRef.current = null
+    }
+  }, [])
 
   // §C20/§C34：首次访问提示 + prefers-reduced-motion
   useEffect(() => {
@@ -1247,6 +1373,8 @@ export default function ResearchCanvas() {
     } catch {
       // 忽略
     }
+    // §6：首次载入的公司也进入会话缓存（切走再切回即走缓存路径，不再请求 init）
+    payloadCacheRef.current[payload.company.stockCode] = payload
     // §B9：首次载入的公司同样计入 RECENT（否则研究的起点不会出现在研究架里）
     const entry = {
       stockCode: payload.company.stockCode,
@@ -1271,9 +1399,12 @@ export default function ResearchCanvas() {
       navDepthRef.current = Math.max(0, navDepthRef.current - 1)
       navApplyingRef.current = true
       const apply = (state: NavState) => {
-        setReadingEvidenceId(state.ev ?? null)
-        setReadingId(state.read ? state.dim : null)
-        setApertureId(!state.read && state.dim ? state.dim : null)
+        // 只恢复仍然存在的维度：否则会把用户带进一个已经没有内容的面板
+        const dims = payloadRef.current?.dimensions.map((d) => d.dimensionId) ?? []
+        const valid = Boolean(state.dim) && dims.includes(state.dim as string)
+        setReadingEvidenceId(valid ? (state.ev ?? null) : null)
+        setReadingId(valid && state.read ? state.dim : null)
+        setApertureId(valid && !state.read ? state.dim : null)
         setDisplaced({})
         setMenuOpen(false)
       }
@@ -1373,7 +1504,7 @@ export default function ResearchCanvas() {
     return () => window.cancelAnimationFrame(raf)
   }, [aiThreads, aiOpen])
 
-  // ---- §C：Guided Demo（状态驱动，只调度既有 action；不改数据、不联网） ----
+  // ---- §C：Guided Demo V2（6 场景；同一时刻一个焦点事件；不等待后端） ----
   const demoSnapshotRef = useRef<{
     camera: CameraState
     positions: Record<string, { x: number; y: number }>
@@ -1390,48 +1521,74 @@ export default function ResearchCanvas() {
     companyQuery: string | null
     lensOpen: boolean
   } | null>(null)
+  const demoTimersRef = useRef<number[]>([])
+  const demoTypeTimerRef = useRef<number | null>(null)
+
+  const clearDemoTimers = useCallback(() => {
+    demoTimersRef.current.forEach((id) => window.clearTimeout(id))
+    demoTimersRef.current = []
+    if (demoTypeTimerRef.current !== null) {
+      window.clearInterval(demoTypeTimerRef.current)
+      demoTypeTimerRef.current = null
+    }
+  }, [])
 
   const demoPrimary = useCallback((): AnchorSpec | null => {
     const list = anchors.filter((a) => !parked.includes(a.dimensionId))
     return list.find((a) => a.tier === "primary") ?? list[0] ?? null
   }, [anchors, parked])
 
-  const applyDemoStep = useCallback(
-    (action: string) => {
+  /** 演示只调度既有 UI action；不从网络取任何数据 */
+  const applyDemoAction = useCallback(
+    (kind: DemoActionKind) => {
       const primary = demoPrimary()
-      if (action === "pan" && !reducedMotionRef.current) {
-        setCamera((c) => ({ ...c, x: c.x + 46, y: c.y + 10 }))
+      if (kind === "pan") {
+        if (!reducedMotionRef.current) setCamera((c) => ({ ...c, x: c.x + 46, y: c.y + 10 }))
         return
       }
-      if (action === "hover-dimension" && primary) {
+      if (kind === "hover-dimension" && primary) {
         setHoverId(primary.dimensionId)
         return
       }
-      if (action === "open-aperture" && primary) {
+      if (kind === "open-aperture" && primary) {
         setHoverId(null)
         openAperture(primary)
         return
       }
-      if (action === "open-reading" && primary) {
+      if (kind === "open-reading" && primary) {
         openReading(primary)
         return
       }
-      if (action === "select-evidence" && primary) {
+      if (kind === "select-evidence" && primary) {
         const first = payloadRef.current?.dimensions.find((d) => d.dimensionId === primary.dimensionId)?.evidenceIds[0]
         if (first) setReadingEvidenceId(first)
         return
       }
-      if (action === "focus-ai") {
+      if (kind === "focus-ai-typing") {
         setAiOpen(true)
         focusAiLensRef.current?.(null)
+        // 演示打字：只改 composer 文本，绝不提交
+        let i = 0
+        if (demoTypeTimerRef.current !== null) window.clearInterval(demoTypeTimerRef.current)
+        demoTypeTimerRef.current = window.setInterval(() => {
+          i += 1
+          setAiInput(DEMO_TYPED_QUESTION.slice(0, i))
+          if (i >= DEMO_TYPED_QUESTION.length) {
+            if (demoTypeTimerRef.current !== null) window.clearInterval(demoTypeTimerRef.current)
+            demoTypeTimerRef.current = null
+          }
+        }, 90)
         return
       }
-      if (action === "open-add-dimension") {
-        // §27/§28：只展示入口与示例文本，不提交、不产生数据
-        setAddAngle("库存压力")
+      if (kind === "clear-ai-input") {
+        setAiInput("")
         return
       }
-      if (action === "open-shelf") {
+      if (kind === "open-add-dimension") {
+        setAddAngle(DEMO_ANGLE_PLACEHOLDER)
+        return
+      }
+      if (kind === "open-shelf") {
         setCompanyQuery("")
         return
       }
@@ -1439,9 +1596,30 @@ export default function ResearchCanvas() {
     [demoPrimary, openAperture, openReading],
   )
 
+  const enterScene = useCallback(
+    (index: number) => {
+      const scene = sceneAt(index)
+      const first = scene.captions[0]
+      if (first) setDemoCaption({ title: first.title, text: first.text })
+      clearDemoTimers()
+      scene.actions.forEach((a) => {
+        demoTimersRef.current.push(window.setTimeout(() => applyDemoAction(a.kind), a.atMs))
+      })
+      scene.captions.forEach((c) => {
+        demoTimersRef.current.push(window.setTimeout(() => setDemoCaption({ title: c.title, text: c.text }), c.atMs))
+      })
+      demoTimersRef.current.push(
+        window.setTimeout(() => {
+          if (isLastScene(index)) setDemoFinal(true)
+          else setDemoIndex(index + 1)
+        }, scene.ms),
+      )
+    },
+    [applyDemoAction, clearDemoTimers],
+  )
+
   const demoStart = useCallback(() => {
     if (demoIndex !== null) return
-    // §C23：开始前保存当前研究现场
     demoSnapshotRef.current = {
       camera,
       positions,
@@ -1461,75 +1639,66 @@ export default function ResearchCanvas() {
     markDemoSeen()
     setDemoPrompt(false)
     setDemoPaused(false)
+    setDemoFinal(false)
     setDemoIndex(0)
   }, [demoIndex, camera, positions, selection, parked, notes, apertureId, readingId, readingEvidenceId, hoverId, aiOpen, aiInput, addAngle, companyQuery, lensOpen])
 
-  const demoExit = useCallback(
-    (completed = false) => {
-      const snap = demoSnapshotRef.current
-      if (snap) {
-        // §C24：Demo 不得破坏用户原 Research Workspace
-        setCamera(snap.camera)
-        setPositions(snap.positions)
-        setSelection(snap.selection)
-        setParked(snap.parked)
-        setNotes(snap.notes)
-        setApertureId(snap.apertureId)
-        setReadingId(snap.readingId)
-        setReadingEvidenceId(snap.readingEvidenceId)
-        setHoverId(snap.hoverId)
-        setAiOpen(snap.aiOpen)
-        setAiInput(snap.aiInput)
-        setAddAngle(snap.addAngle)
-        setCompanyQuery(snap.companyQuery)
-        setLensOpen(snap.lensOpen)
-        setDisplaced({})
-        demoSnapshotRef.current = null
-      }
-      setDemoIndex(null)
-      setDemoPaused(false)
-      if (completed) markDemoCompleted()
-    },
-    [],
-  )
+  const demoExit = useCallback(() => {
+    clearDemoTimers()
+    const snap = demoSnapshotRef.current
+    if (snap) {
+      setCamera(snap.camera)
+      setPositions(snap.positions)
+      setSelection(snap.selection)
+      setParked(snap.parked)
+      setNotes(snap.notes)
+      setApertureId(snap.apertureId)
+      setReadingId(snap.readingId)
+      setReadingEvidenceId(snap.readingEvidenceId)
+      setHoverId(snap.hoverId)
+      setAiOpen(snap.aiOpen)
+      setAiInput(snap.aiInput)
+      setAddAngle(snap.addAngle)
+      setCompanyQuery(snap.companyQuery)
+      setLensOpen(snap.lensOpen)
+      setDisplaced({})
+      demoSnapshotRef.current = null
+      markDemoCompleted()
+    }
+    setDemoIndex(null)
+    setDemoPaused(false)
+    setDemoFinal(false)
+    setDemoCaption({ title: "", text: "" })
+  }, [clearDemoTimers])
 
   useEffect(() => {
-    // 只在 Demo 真正运行时占用 Esc；否则必须让位给其他层
-    demoExitRef.current = demoIndex !== null ? () => demoExit(false) : null
+    demoExitRef.current = demoIndex !== null ? () => demoExit() : null
   }, [demoExit, demoIndex])
 
-  // §C25/§C31：按步长推进；暂停即停表
+  // 场景调度：进入场景时排布该场景内的动作/字幕；暂停即清表
   useEffect(() => {
-    if (demoIndex === null || demoPaused) return
-    const step = stepAt(demoIndex)
-    const id = window.setTimeout(() => {
-      if (isLastStep(demoIndex)) demoExit(true)
-      else setDemoIndex((i) => (i === null ? null : stepBy(i, 1)))
-    }, step.ms)
-    return () => window.clearTimeout(id)
-  }, [demoIndex, demoPaused, demoExit])
+    if (demoIndex === null || demoPaused || demoFinal) return
+    const raf = window.requestAnimationFrame(() => enterScene(demoIndex))
+    return () => {
+      window.cancelAnimationFrame(raf)
+      clearDemoTimers()
+    }
+  }, [demoIndex, demoPaused, demoFinal, enterScene, clearDemoTimers])
 
-  // 进入某一步时执行该步的 UI 动作（只调度既有 action）
-  useEffect(() => {
-    if (demoIndex === null) return
-    // 异步边界：避免在 effect 体内同步 setState
-    const raf = window.requestAnimationFrame(() => applyDemoStep(stepAt(demoIndex).action))
-    return () => window.cancelAnimationFrame(raf)
-  }, [demoIndex, applyDemoStep])
-
-  // §C32：用户主动操作 → 自动暂停（不抢鼠标）
+  // §37：用户主动操作 → 暂停演示（不抢鼠标，也不吞掉控件点击）
   useEffect(() => {
     if (demoIndex === null) return
     const onDown = (e: PointerEvent) => {
       const el = e.target as HTMLElement | null
-      if (el?.closest("[data-demo-controls]")) return
+      if (el?.closest("[data-demo-controls]") || el?.closest("[data-demo-final]")) return
       setDemoPaused(true)
+      clearDemoTimers()
     }
     window.addEventListener("pointerdown", onDown, true)
     return () => window.removeEventListener("pointerdown", onDown, true)
-  }, [demoIndex])
+  }, [demoIndex, clearDemoTimers])
 
-  // §C33：Space 暂停/继续，→/← 步进，Esc 退出
+  // §28：Space 暂停/继续，→/← 场景步进，Esc 退出
   useEffect(() => {
     if (demoIndex === null) return
     const onKey = (e: KeyboardEvent) => {
@@ -1542,13 +1711,15 @@ export default function ResearchCanvas() {
       if (e.key === "ArrowRight") {
         e.preventDefault()
         e.stopPropagation()
-        setDemoIndex((i) => (i === null ? null : stepBy(i, 1)))
+        setDemoFinal(false)
+        setDemoIndex((i) => (i === null ? null : sceneBy(i, 1)))
         return
       }
       if (e.key === "ArrowLeft") {
         e.preventDefault()
         e.stopPropagation()
-        setDemoIndex((i) => (i === null ? null : stepBy(i, -1)))
+        setDemoFinal(false)
+        setDemoIndex((i) => (i === null ? null : sceneBy(i, -1)))
       }
     }
     window.addEventListener("keydown", onKey, true)
@@ -1579,7 +1750,7 @@ export default function ResearchCanvas() {
   }
 
   return (
-    <main className="relative h-screen w-screen select-none overflow-hidden overflow-x-hidden" style={{ background: C.bg, color: C.ink }}>
+    <main ref={rootRef} className="relative h-screen w-screen select-none overflow-hidden overflow-x-hidden" style={{ background: C.bg, color: C.ink }}>
       {/* 画布底纹（§12） */}
       <div
         aria-hidden
@@ -1610,8 +1781,16 @@ export default function ResearchCanvas() {
         onWheel={onWheel}
       >
         <div
+          data-canvas-world
+          data-switching={switchPhase === "resolving" ? "resolving" : "idle"}
           className="absolute left-1/2 top-1/2"
-          style={{ transform, transformOrigin: "0 0", transition: "transform 560ms cubic-bezier(0.22,1,0.36,1)" }}
+          style={{
+            transform,
+            transformOrigin: "0 0",
+            transition: "transform 560ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, filter 320ms ease",
+            opacity: switchPhase === "resolving" ? 0.32 : 1,
+            filter: switchPhase === "resolving" && !reducedMotion ? "blur(0.6px)" : "none",
+          }}
         >
           {/* Evidence Trace（§13） */}
           <svg aria-hidden className="pointer-events-none absolute left-0 top-0 overflow-visible" width={DESIGN.width} height={DESIGN.height}>
@@ -1672,7 +1851,7 @@ export default function ResearchCanvas() {
           ))}
 
           {/* Research Anchors */}
-          {visible.map((a) => {
+          {visible.map((a, vi) => {
             const pos = anchorPos(a)
             const f = tierFont(a.tier)
             const isUnknown = a.status === "unknown"
@@ -1686,6 +1865,7 @@ export default function ResearchCanvas() {
               <div
                 key={a.dimensionId}
                 data-anchor-id={a.dimensionId}
+                data-reveal={vi < revealCount ? "in" : "out"}
                 data-hit="anchor"
                 className="absolute"
                 style={{
@@ -2057,6 +2237,30 @@ export default function ResearchCanvas() {
             </div>
           )}
 
+          {/* §43：失败的临时研究角度——不删除用户意图，可就地重试 */}
+          {failedAngle && (
+            <div className="absolute" data-failed-angle style={{ left: failedAngle.x - 20, top: failedAngle.y - 20, zIndex: 30 }}>
+              <div className="text-[22px] font-medium" style={{ color: C.ink }}>
+                {failedAngle.label}
+              </div>
+              <div className="mt-1 flex items-center gap-3">
+                <span className="font-mono text-[10.5px] tracking-[0.12em]" style={{ color: C.coral }}>
+                  Unable to resolve
+                </span>
+                <button
+                  type="button"
+                  data-ui
+                  data-failed-angle-retry
+                  onClick={() => void addDimension(failedAngle.label, failedAngle.x, failedAngle.y)}
+                  className="font-mono text-[10.5px]"
+                  style={{ color: C.blue, minHeight: 28, cursor: "pointer" }}
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Pinned notes（§26） */}
           {notes.map((n) => (
             <div
@@ -2188,7 +2392,7 @@ export default function ResearchCanvas() {
         <span className="font-mono text-[11px] tracking-[0.3em]" style={{ color: C.ink }}>
           STOCKLENS
         </span>
-        {readingId && payload ? (
+        {readingId && payload && readingDimension ? (
           <button
             type="button"
             data-ui
@@ -2776,6 +2980,101 @@ export default function ResearchCanvas() {
         </div>
       )}
 
+      {/* §11/§42：未缓存研究空间的占位（中性骨架，不含任何虚构研究概念）与失败态 */}
+      {(switchPhase === "resolving" || switchPhase === "failed") && pendingCompany && (
+        <div
+          data-company-transition
+          className="pointer-events-none absolute left-1/2 top-[46%] z-[58] w-[560px] -translate-x-1/2 -translate-y-1/2"
+        >
+          <div className="flex items-baseline justify-between">
+            <div>
+              <div className="text-[30px] leading-tight" style={{ color: C.ink }}>
+                {pendingCompany.name}
+              </div>
+              <div className="mt-1 font-mono text-[11px] tracking-[0.2em]" style={{ color: C.secondary }}>
+                {pendingCompany.stockCode}
+                {pendingCompany.industry ? ` · ${pendingCompany.industry}` : ""}
+              </div>
+            </div>
+            {switchPhase === "resolving" && (
+              <span data-transition-copy className="font-mono text-[11px]" style={{ color: C.secondary }}>
+                正在构建研究空间…
+              </span>
+            )}
+          </div>
+          <div className="mt-7 space-y-4" data-placeholder-set>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} data-placeholder className="flex items-center gap-4" style={{ opacity: 0.55, animation: reducedMotion ? "none" : `v5-placeholder 2.4s ease-in-out ${i * 0.18}s infinite` }}>
+                <span className="font-mono text-[10px]" style={{ color: C.secondary }}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="block h-px flex-1" style={{ background: "rgba(17,21,27,0.18)" }} />
+                <span className="font-mono text-[10px]" style={{ color: C.secondary }}>
+                  research angle resolving
+                </span>
+              </div>
+            ))}
+          </div>
+          {switchPhase === "failed" && (
+            <div data-transition-failed className="pointer-events-auto mt-8 flex items-center gap-4">
+              <span className="text-[13px]" style={{ color: C.coral }}>
+                {switchError ?? "研究空间暂时无法完成"}
+              </span>
+              <button
+                type="button"
+                data-transition-retry
+                onClick={() => void switchCompanyRef.current?.(pendingCompany.stockCode)}
+                className="font-mono text-[11px]"
+                style={{ color: C.blue, minHeight: 30, cursor: "pointer" }}
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                data-transition-cancel
+                onClick={cancelSwitch}
+                className="font-mono text-[11px]"
+                style={{ color: C.secondary, minHeight: 30, cursor: "pointer" }}
+              >
+                返回上一家公司
+              </button>
+            </div>
+          )}
+          {switchPhase === "resolving" && (
+            <button
+              type="button"
+              data-transition-cancel
+              onClick={cancelSwitch}
+              className="pointer-events-auto mt-8 font-mono text-[11px]"
+              style={{ color: C.secondary, minHeight: 30, cursor: "pointer" }}
+            >
+              取消 · 返回 {payload?.company.stockName ?? "上一家公司"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* §3：开发期交互计时面板（仅 ?perfDebug=1） */}
+      {perfOn && (
+        <div
+          data-perf-panel
+          className="pointer-events-none absolute left-8 top-24 z-[75] rounded border px-3 py-2 font-mono text-[10px] leading-relaxed"
+          style={{ borderColor: C.hair, background: "rgba(255,255,255,0.94)", color: C.secondary }}
+        >
+          <div style={{ color: C.ink }}>interaction perf</div>
+          {perfRows.length === 0 && <div>— no samples —</div>}
+          {perfRows
+            .slice()
+            .reverse()
+            .map((r, i) => (
+              <div key={`${r.at}-${i}`} data-perf-row>
+                {r.name} · {r.type} · {r.visualMs ?? "—"}ms · net:{r.network ? "yes" : "no"}
+                {r.network && r.networkUrls[0] ? ` (${r.networkUrls[0]})` : ""}
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* §C20：首次访问轻提示（非 Modal），关闭后不再自动出现 */}
       {demoPrompt && demoIndex === null && payload && (
         <div
@@ -2816,14 +3115,19 @@ export default function ResearchCanvas() {
       {/* §C22：DemoController 的视觉层（只展示，不产生业务逻辑） */}
       {demoIndex !== null && (
         <DemoOverlay
-          step={stepAt(demoIndex)}
+          scene={sceneAt(demoIndex)}
           index={demoIndex}
-          total={DEMO_STEPS.length}
+          total={DEMO_SCENES.length}
+          caption={demoCaption}
           paused={demoPaused}
+          final={demoFinal}
           reducedMotion={reducedMotion}
           onTogglePause={() => setDemoPaused((v) => !v)}
-          onSkip={() => setDemoIndex((i) => (i === null ? null : isLastStep(i) ? i : stepBy(i, 1)))}
-          onExit={() => demoExit(false)}
+          onSkip={() => {
+            setDemoFinal(false)
+            setDemoIndex((i) => (i === null ? null : isLastScene(i) ? i : sceneBy(i, 1)))
+          }}
+          onExit={demoExit}
         />
       )}
 
@@ -3010,6 +3314,12 @@ export default function ResearchCanvas() {
           outline: 2px solid rgba(47,102,255,0.55);
           outline-offset: 2px;
         }
+        @keyframes v5-placeholder {
+          0%, 100% { opacity: 0.32; }
+          50% { opacity: 0.72; }
+        }
+        [data-reveal="out"] { opacity: 0; }
+        [data-anchor-id] { transition: opacity 300ms ease; }
         @keyframes v5-in {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }

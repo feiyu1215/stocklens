@@ -40,6 +40,11 @@ Evidence Binding + 分区类型 + 合规扫描校验；失败 repair 一次，�
 synthesis = null，证据照常返回（AI 失败不污染 Truth Layer）。
 架构细节与已知边界：[docs/ai-architecture.md](./docs/ai-architecture.md)。
 
+## 产品设计（progressive disclosure）
+
+首屏围绕用户问题呈现关键结论、重点证据与研究边界（合理关注 ≤4 条、尚待验证 ≤3 条），
+完整指标与证据通过维度视图（primary 维度默认展开）与 Evidence Drawer 逐层下钻。
+
 ## 数据使用
 
 - **扶摇金融数据 API**（同花顺系，X-api-key 鉴权）：行情快照/历史 K 线（前复权）、

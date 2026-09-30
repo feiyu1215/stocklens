@@ -109,21 +109,22 @@ export function DiagnosisSummary({
         )}
       </div>
 
-      <div className="mt-5 space-y-5 border-t border-zinc-100 pt-5">
-        <GroundedSection title="可以确认" statements={synthesis.confirmedFacts} onOpenEvidence={onOpenEvidence} />
-        <GroundedSection title="基于证据的分析" statements={synthesis.analysisInferences} onOpenEvidence={onOpenEvidence} />
-        <GroundedSection title="当前还不能确认" statements={synthesis.unknowns} onOpenEvidence={onOpenEvidence} />
-        {synthesis.nextQuestions.length > 0 && (
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">值得继续研究</h3>
-            <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-zinc-600">
-              {synthesis.nextQuestions.map((q, i) => (
-                <li key={i}>{q}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      {/* Task 11 §30：分层解读默认折叠，避免首屏被长列表占满（保持渐进披露） */}
+      <details className="group mt-5 border-t border-zinc-100 pt-4">
+        <summary className="flex cursor-pointer select-none flex-wrap items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 [&::-webkit-details-marker]:hidden">
+          查看分层解读
+          <span className="text-xs font-normal text-zinc-400">
+            （可以确认 {synthesis.confirmedFacts.length} · 基于证据的分析 {synthesis.analysisInferences.length} · 当前还不能确认 {synthesis.unknowns.length}）
+          </span>
+          <span className="text-xs text-zinc-400 group-open:hidden">展开 ↓</span>
+          <span className="hidden text-xs text-zinc-400 group-open:inline">收起 ↑</span>
+        </summary>
+        <div className="mt-4 space-y-5">
+          <GroundedSection title="可以确认" statements={synthesis.confirmedFacts} onOpenEvidence={onOpenEvidence} />
+          <GroundedSection title="基于证据的分析" statements={synthesis.analysisInferences} onOpenEvidence={onOpenEvidence} />
+          <GroundedSection title="当前还不能确认" statements={synthesis.unknowns} onOpenEvidence={onOpenEvidence} />
+        </div>
+      </details>
     </section>
   )
 }

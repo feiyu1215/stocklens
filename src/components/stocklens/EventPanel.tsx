@@ -32,8 +32,9 @@ export function EventPanel({ data }: { data: DiagnosisResponse }) {
         <span className="text-xs text-zinc-400">来源：Fuyao 特色数据（Event Lite）</span>
       </div>
 
+      <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">近期已验证</h3>
       {shown.length > 0 ? (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-2 space-y-3">
           {shown.map((e) => (
             <li key={e.eventId} className="rounded-xl border border-zinc-100 bg-zinc-50/50 p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -53,18 +54,28 @@ export function EventPanel({ data }: { data: DiagnosisResponse }) {
         </p>
       )}
 
-      <div className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-400">
-        <div className="font-medium text-zinc-500">覆盖边界</div>
-        <ul className="mt-1 space-y-0.5">
-          <li>个股异动：{COVERAGE_NOTE[events.coverage.anomaly] ?? events.coverage.anomaly}</li>
-          <li>热榜关注度：{COVERAGE_NOTE[events.coverage.attention] ?? events.coverage.attention}</li>
-          <li>公司行为（分红/送股）：{COVERAGE_NOTE[events.coverage.corporateAction] ?? events.coverage.corporateAction}</li>
-          <li>公告与新闻文本：未接入——事件覆盖不是全量，无法确认不存在其他公司层面事件</li>
-        </ul>
-        <p className="mt-1.5">
-          关注度变化与公司行为均为客观记录，不代表市场方向或投资价值。
-        </p>
-      </div>
+      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        当前无法完整确认
+      </h3>
+      <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-zinc-500">
+        <li className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-2">
+          个股异动：{COVERAGE_NOTE[events.coverage.anomaly] ?? events.coverage.anomaly}
+          {events.coverage.anomaly === "no_records" &&
+            "——这不能用于确认今日不存在其他市场事件。"}
+        </li>
+        <li className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-2">
+          热榜关注度：{COVERAGE_NOTE[events.coverage.attention] ?? events.coverage.attention}
+        </li>
+        <li className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-2">
+          公司行为（分红/送股）：{COVERAGE_NOTE[events.coverage.corporateAction] ?? events.coverage.corporateAction}
+        </li>
+        <li className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-2">
+          公告与新闻文本：未接入——事件覆盖不是全量，无法确认不存在其他公司层面事件。
+        </li>
+      </ul>
+      <p className="mt-2 text-xs text-zinc-400">
+        关注度变化与公司行为均为客观记录，不代表市场方向或投资价值。
+      </p>
     </section>
   )
 }

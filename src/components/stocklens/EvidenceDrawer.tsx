@@ -27,7 +27,13 @@ function MetricDetail({ metric }: { metric: MetricResult }) {
         <span>当前期：{metric.period ?? "—"}</span>
         {metric.comparisonPeriod && <span>比较期：{metric.comparisonPeriod}</span>}
         <span>单位：{metric.unit}</span>
+        {typeof metric.sampleSize === "number" && <span>有效样本：n={metric.sampleSize}</span>}
       </div>
+      {metric.interpretationNote && (
+        <p className="mt-1.5 rounded border border-amber-200 bg-amber-50/70 p-2 text-xs leading-relaxed text-amber-800">
+          ⚠ {metric.interpretationNote}
+        </p>
+      )}
       <div className="mt-2">
         <div className="text-xs font-medium text-zinc-500">计算口径</div>
         <p className="mt-0.5 font-mono text-xs leading-relaxed text-zinc-600">{metric.calculationMethod}</p>
@@ -56,12 +62,15 @@ export function EvidenceDrawer({
   allEvidence,
   metrics,
   stockCode,
+  seedQuestion,
   onClose,
 }: {
   evidenceId: string | null
   allEvidence: Evidence[]
   metrics: MetricResult[]
   stockCode: string
+  /** 从「继续研究」带入的预填问题（Task 11 §28） */
+  seedQuestion?: string
   onClose: () => void
 }) {
   // 钻取栈：当前证据 + 返回历史；切换目标证据时重置
@@ -216,6 +225,7 @@ export function EvidenceDrawer({
 
           <FollowupSection
             stockCode={stockCode}
+            seedQuestion={seedQuestion}
             focusEvidence={current}
             focusEvidenceIds={[...current.basedOn, ...current.metricIds.map((id) => {
               // 关联指标对应的证据（同指标的 fact 证据）作为追问上下文

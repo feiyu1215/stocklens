@@ -51,14 +51,17 @@ export function FollowupSection({
   stockCode,
   focusEvidence,
   focusEvidenceIds,
+  seedQuestion,
   onOpenEvidence,
 }: {
   stockCode: string
   focusEvidence: Evidence
   focusEvidenceIds: string[]
+  /** 从「继续研究」点击带入的预填问题（Task 11 §28） */
+  seedQuestion?: string
   onOpenEvidence: (id: string) => void
 }) {
-  const [question, setQuestion] = useState("")
+  const [question, setQuestion] = useState(seedQuestion ?? "")
   const [state, setState] = useState<FollowupState>({ status: "idle" })
 
   const run = async () => {

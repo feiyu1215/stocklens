@@ -1,5 +1,5 @@
 {
-  "base": "http://127.0.0.1:3100",
+  "base": "https://stocklens-blush.vercel.app",
   "results": {
     "Q1": {
       "ok": true,

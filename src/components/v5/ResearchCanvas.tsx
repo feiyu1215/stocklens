@@ -40,6 +40,7 @@ import {
   type CanvasSnapshot,
   type SavedCompany,
 } from "@/lib/v5/shelf"
+import { installTestFailureInterceptor } from "@/lib/v5/test-failure"
 import {
   apertureRectFor,
   apertureSizeFor,
@@ -285,6 +286,8 @@ export default function ResearchCanvas() {
     void (async () => {
       await Promise.resolve()
       if (cancelled) return
+      // Task 16.2A B4：失败态注入必须排在首个业务请求之前（生产构建下为空操作）
+      installTestFailureInterceptor()
       const params = new URLSearchParams(window.location.search)
       setHitAreas(params.get("hitAreas") === "1")
       setAiDebugOn(params.get("aiDebug") === "1")

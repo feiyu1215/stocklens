@@ -2,6 +2,7 @@ import type { PlannerResult, DiagnosisSynthesis, AIInvocationTrace } from "@/lib
 import type { Evidence } from "@/lib/evidence/types"
 import type { DataSourceError } from "@/lib/data/types"
 import type { MetricResult } from "@/lib/metrics/types"
+import type { FinancialTrendPoint } from "@/lib/metrics/trend"
 
 // Diagnosis 编排层类型（Task 04 §38–40）
 
@@ -51,4 +52,16 @@ export interface DiagnosisResponse {
    * 来自已计算的 calculateMetrics()；前端禁止重新计算。redirect 模式为空数组。
    */
   metrics: MetricResult[]
+  /** additive extension（Task 08）：单季趋势序列（来自 Metric Engine，前端只渲染不重算） */
+  trend?: FinancialTrendPoint[]
+  /** additive extension（Task 08）：行业上下文元数据（verified mapping 溯源） */
+  industry?: {
+    name: string
+    indexCode: string
+    verifiedAt: string
+    source: "fuyao"
+    verificationMethod: string
+  } | null
+  /** additive extension（Task 08）：行业估值样本量（UI 展示 n=…） */
+  industryValuationSampleSize?: number | null
 }

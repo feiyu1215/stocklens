@@ -17,7 +17,8 @@ import { validateDiagnosisSynthesis } from "@/lib/validation/diagnosis"
 // LLM 负责组织与解释；类型/数字/方向的权威仍在 Evidence。
 
 const SYNTHESIS_TEMPERATURE = 0.2
-const SYNTHESIS_MAX_TOKENS = 1500
+// Task 08：证据集增大（26 → ~40 条）后 JSON 输出更长，1500 会截断导致解析失败
+const SYNTHESIS_MAX_TOKENS = 3000
 
 export function buildSynthesizerInput(input: SynthesisPromptInput): SynthesisPromptInput {
   // 显式白名单构造：确保输入中不可能携带 API Key、原始扶摇响应或原始字段目录

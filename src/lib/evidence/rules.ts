@@ -24,6 +24,17 @@ export const EVIDENCE_THRESHOLDS = {
 
 export type MetricLookup = (metricId: string) => MetricResult | undefined
 
+/** 财务趋势序列访问器（Task 08 §21–22）：与 MetricLookup 并列的规则输入 */
+export interface TrendLookup {
+  /** 最近 n 个可比单季同比（ASC；可能少于 n） */
+  quarterYoY: (
+    field: "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY",
+    n: number,
+  ) => { period: string; value: number }[]
+}
+
+export type RuleContext = { metrics: MetricLookup; trend?: TrendLookup }
+
 function num(lookup: MetricLookup, metricId: string): number | undefined {
   const m = lookup(metricId)
   if (!m || m.status !== "available") return undefined
@@ -46,10 +57,10 @@ export interface RuleDefinition {
   dimension: EvidenceDimension
   title: string
   signal: EvidenceSignal
-  /** 规则输入指标；同时决定 inference.basedOn 指向哪些 FACT */
+  /** 规则输入指标；同时决定 inference.basedOn 指向哪些 FACT（趋势规则为空数组） */
   requires: string[]
   /** 返回 statement（触发）或 null（不触发） */
-  evaluate: (lookup: MetricLookup) => string | null
+  evaluate: (lookup: MetricLookup, trend?: TrendLookup) => string | null
 }
 
 export const RULE_DEFINITIONS: RuleDefinition[] = [
@@ -159,6 +170,44 @@ export const RULE_DEFINITIONS: RuleDefinition[] = [
       if (ytd === undefined || q === undefined) return null
       if (!(sign(ytd) !== 0 && sign(q) !== 0 && sign(ytd) !== sign(q))) return null
       return `最新报告期归母净利润累计同比${growthWord(ytd)}，而单季归母净利润同比${growthWord(q)}，两者方向不同。`
+    },
+  },
+  {
+    // Task 08 §21：最近 3 个可比单季收入同比同向。这是描述性连续趋势，非预测。
+    ruleId: "RULE_TREND_REVENUE_QUARTER_DIRECTION_RUN",
+    evidenceId: "EV_INF_TREND_REVENUE_QUARTER_DIRECTION_RUN",
+    dimension: "growth",
+    title: "单季收入同比连续同向",
+    signal: "neutral",
+    requires: ["FIN_REVENUE_YOY_QUARTER", "FIN_REVENUE_YOY_YTD"],
+    evaluate: (_lookup, trend) => {
+      const series = trend?.quarterYoY("revenueQuarterYoY", 3) ?? []
+      if (series.length < 3) return null
+      const allPositive = series.every((p) => p.value > 0)
+      const allNegative = series.every((p) => p.value < 0)
+      if (!allPositive && !allNegative) return null
+      const periods = series.map((p) => p.period).join("、")
+      const word = allPositive ? "为正" : "为负"
+      return `最近 3 个可比单季（${periods}）营业收入同比均${word}，单季收入同比连续同向。`
+    },
+  },
+  {
+    // Task 08 §22：单季收入同比方向反转（上期为负本期为正，或反向）
+    ruleId: "RULE_TREND_REVENUE_QUARTER_REVERSAL",
+    evidenceId: "EV_INF_TREND_REVENUE_QUARTER_REVERSAL",
+    dimension: "growth",
+    title: "最新单季收入同比方向反转",
+    signal: "conflict",
+    requires: ["FIN_REVENUE_YOY_QUARTER", "FIN_REVENUE_YOY_YTD"],
+    evaluate: (_lookup, trend) => {
+      const series = trend?.quarterYoY("revenueQuarterYoY", 2) ?? []
+      if (series.length < 2) return null
+      const [previous, latest] = series
+      const flipped =
+        (previous.value < 0 && latest.value > 0) || (previous.value > 0 && latest.value < 0)
+      if (!flipped) return null
+      const word = latest.value > 0 ? "由负转正" : "由正转负"
+      return `${latest.period} 单季营业收入同比${word}（${previous.period}：${previous.value.toFixed(2)}% → ${latest.period}：${latest.value.toFixed(2)}%）。`
     },
   },
 ]

@@ -1,4 +1,5 @@
 import type { MetricResult } from "@/lib/metrics/types"
+import type { TrendLookup } from "./rules"
 
 import { buildFacts } from "./fact-builder"
 import { buildInferences } from "./inference-builder"
@@ -58,12 +59,14 @@ function computeStats(evidence: Evidence[]): EvidenceStats {
 export function buildEvidence({
   metrics,
   context,
+  trend,
 }: {
   metrics: MetricResult[]
   context: EvidenceContext
+  trend?: TrendLookup
 }): EvidenceBundle {
   const facts = buildFacts(metrics)
-  const inferences = buildInferences(metrics, facts)
+  const inferences = buildInferences(metrics, facts, trend)
   const unknowns = buildUnknowns(metrics, context)
   // 稳定排序：fact → inference → unknown（组内保持生成顺序；最终展示选择留给 Planner）
   const evidence: Evidence[] = [...facts, ...inferences, ...unknowns]

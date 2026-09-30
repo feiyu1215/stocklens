@@ -3,8 +3,11 @@ import "server-only"
 import { randomUUID } from "node:crypto"
 
 import { gatherStockData } from "@/lib/data/stock-data"
-import { calculateMetrics } from "@/lib/metrics/engine"
+import { gatherMarketContext, type MarketContext } from "@/lib/data/industry"
+import { calculateMetrics, type MarketContextInput } from "@/lib/metrics/engine"
 import { buildEvidence } from "@/lib/evidence/engine"
+import { buildFinancialTrend } from "@/lib/metrics/trend"
+import { computeIndustryValuationStats } from "@/lib/metrics/market-context"
 import type { Evidence } from "@/lib/evidence/types"
 import { runPlanner } from "@/lib/ai/planner"
 import { selectEvidenceForPlan } from "@/lib/ai/select-evidence"
@@ -35,6 +38,21 @@ const ALL_DIMENSIONS: DiagnosisDimension[] = [
 ]
 
 const AI_UNAVAILABLE_NOTICE = "AI 解释暂不可用，已验证证据仍可查看。"
+
+/** 趋势序列访问器（Task 08）：供 Evidence 规则使用；纯函数，基于当次真实财务期次 */
+function makeTrendLookup(periods: Parameters<typeof buildFinancialTrend>[0]) {
+  const trend = buildFinancialTrend(periods)
+  return {
+    quarterYoY: (
+      field: "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY",
+      n: number,
+    ) =>
+      trend
+        .filter((p) => typeof p[field] === "number")
+        .map((p) => ({ period: p.period, value: p[field] as number }))
+        .slice(-n),
+  }
+}
 
 function computeStats(evidence: Evidence[]): DiagnosisStats {
   const stats: DiagnosisStats = {
@@ -97,20 +115,51 @@ export async function runDiagnosis(input: {
   }
 
   // ---------- 2. Truth Layer（不重构，直接复用）----------
-  const dataResp = await gatherStockData(input.stockCode)
-  const metricsResp = calculateMetrics(dataResp)
+  const [dataResp, marketCtx] = await Promise.all([
+    gatherStockData(input.stockCode),
+    gatherMarketContext(input.stockCode).catch((): MarketContext => ({ csi300: [], errors: [] })),
+  ])
+  const marketInput: MarketContextInput = {
+    csi300: marketCtx.csi300,
+    industry: marketCtx.industry
+      ? {
+          indexCode: marketCtx.industry.context.industryIndexCode,
+          indexName: marketCtx.industry.context.industryName,
+          prices: marketCtx.industry.prices,
+          valuations: marketCtx.industry.valuations,
+        }
+      : undefined,
+  }
+  const metricsResp = calculateMetrics(dataResp, marketInput)
+
+  const trend = buildFinancialTrend(dataResp.financial)
+  const industryMeta = marketCtx.industry
+    ? {
+        name: marketCtx.industry.context.industryName,
+        indexCode: marketCtx.industry.context.industryIndexCode,
+        verifiedAt: marketCtx.industry.context.verifiedAt,
+        source: marketCtx.industry.context.source,
+        verificationMethod: marketCtx.industry.context.verificationMethod,
+      }
+    : null
+  const industryValuationSampleSize = marketCtx.industry?.valuations
+    ? computeIndustryValuationStats(marketCtx.industry.valuations).peSampleSize
+    : null
 
   let evidence: Evidence[]
   try {
     const bundle = buildEvidence({
       metrics: metricsResp.metrics,
+      trend: makeTrendLookup(dataResp.financial),
       context: {
         stockCode: input.stockCode,
         stockName: dataResp.stock?.stockName ?? input.stockCode,
-        industry: dataResp.stock?.industry ?? null,
+        industry: marketCtx.industry?.context.industryName ?? dataResp.stock?.industry ?? null,
         latestFinancialPeriod: metricsResp.latestFinancialPeriod,
         latestPriceDate: metricsResp.latestPriceDate,
         metricWarnings: metricsResp.warnings,
+        industryPricesAvailable: (marketCtx.industry?.prices.length ?? 0) > 0,
+        industryValuationAvailable: Boolean(marketCtx.industry?.valuations),
       },
     })
     evidence = bundle.evidence
@@ -134,6 +183,9 @@ export async function runDiagnosis(input: {
         },
       ],
       metrics: metricsResp.metrics,
+      trend,
+      industry: industryMeta,
+      industryValuationSampleSize,
     }
   }
 
@@ -173,6 +225,9 @@ export async function runDiagnosis(input: {
       notices: [AI_UNAVAILABLE_NOTICE],
       errors: dataResp.errors,
       metrics: metricsResp.metrics,
+      trend,
+      industry: industryMeta,
+      industryValuationSampleSize,
     }
   }
 
@@ -206,6 +261,9 @@ export async function runDiagnosis(input: {
       notices: [AI_UNAVAILABLE_NOTICE],
       errors: dataResp.errors,
       metrics: metricsResp.metrics,
+      trend,
+      industry: industryMeta,
+      industryValuationSampleSize,
     }
   }
 
@@ -221,5 +279,8 @@ export async function runDiagnosis(input: {
     ai: { status: "success", planner: plannerRun.trace, synthesizer: synthRun.trace },
     errors: dataResp.errors,
     metrics: metricsResp.metrics,
+    trend,
+    industry: industryMeta,
+    industryValuationSampleSize,
   }
 }

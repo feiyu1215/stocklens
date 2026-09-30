@@ -3,8 +3,10 @@ import "server-only"
 import { randomUUID } from "node:crypto"
 
 import { gatherStockData } from "@/lib/data/stock-data"
-import { calculateMetrics } from "@/lib/metrics/engine"
+import { gatherMarketContext, type MarketContext } from "@/lib/data/industry"
+import { calculateMetrics, type MarketContextInput } from "@/lib/metrics/engine"
 import { buildEvidence } from "@/lib/evidence/engine"
+import { buildFinancialTrend } from "@/lib/metrics/trend"
 import type { Evidence } from "@/lib/evidence/types"
 import { LLMConfigError, parseLLMJson, runLLM } from "./model"
 import {
@@ -21,7 +23,22 @@ import type { AIInvocationTrace, DiagnosisSynthesis } from "./types"
 // 每次调用重新执行 Truth Layer（无持久化），保证证据始终是当次真实数据。
 
 const FOLLOWUP_TEMPERATURE = 0.2
-const FOLLOWUP_MAX_TOKENS = 1200
+const FOLLOWUP_MAX_TOKENS = 1800
+
+/** 与 diagnosis 编排器同一趋势访问器（复用 Task 02 差分算法） */
+function makeTrendLookup(periods: Parameters<typeof buildFinancialTrend>[0]) {
+  const trend = buildFinancialTrend(periods)
+  return {
+    quarterYoY: (
+      field: "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY",
+      n: number,
+    ) =>
+      trend
+        .filter((p) => typeof p[field] === "number")
+        .map((p) => ({ period: p.period, value: p[field] as number }))
+        .slice(-n),
+  }
+}
 
 export interface FollowupResult {
   followupId: string
@@ -47,17 +64,34 @@ export async function runFollowup(input: {
   focusEvidenceIds?: string[]
 }): Promise<FollowupResult> {
   const followupId = randomUUID()
-  const dataResp = await gatherStockData(input.stockCode)
-  const metricsResp = calculateMetrics(dataResp)
+  const [dataResp, marketCtx] = await Promise.all([
+    gatherStockData(input.stockCode),
+    gatherMarketContext(input.stockCode).catch((): MarketContext => ({ csi300: [], errors: [] })),
+  ])
+  const marketInput: MarketContextInput = {
+    csi300: marketCtx.csi300,
+    industry: marketCtx.industry
+      ? {
+          indexCode: marketCtx.industry.context.industryIndexCode,
+          indexName: marketCtx.industry.context.industryName,
+          prices: marketCtx.industry.prices,
+          valuations: marketCtx.industry.valuations,
+        }
+      : undefined,
+  }
+  const metricsResp = calculateMetrics(dataResp, marketInput)
   const bundle = buildEvidence({
     metrics: metricsResp.metrics,
+    trend: makeTrendLookup(dataResp.financial),
     context: {
       stockCode: input.stockCode,
       stockName: dataResp.stock?.stockName ?? input.stockCode,
-      industry: dataResp.stock?.industry ?? null,
+      industry: marketCtx.industry?.context.industryName ?? dataResp.stock?.industry ?? null,
       latestFinancialPeriod: metricsResp.latestFinancialPeriod,
       latestPriceDate: metricsResp.latestPriceDate,
       metricWarnings: metricsResp.warnings,
+      industryPricesAvailable: (marketCtx.industry?.prices.length ?? 0) > 0,
+      industryValuationAvailable: Boolean(marketCtx.industry?.valuations),
     },
   })
 

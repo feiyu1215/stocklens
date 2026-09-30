@@ -135,7 +135,52 @@ export function stubFetch(): { fetchMock: Mock; deepseekCalls: DeepseekCall[]; s
       return new Response(JSON.stringify(indicatorsBody(report)), { status: 200 })
     }
     if (url.pathname.includes("/valuations/")) {
+      const codes = (url.searchParams.get("thscodes") ?? "").split(",").filter(Boolean)
+      if (codes.length > 1) {
+        const batchBody = {
+          code: 0, message: "success",
+          data: {
+            timestamp: Date.UTC(2026, 8, 30, 2, 0, 0),
+            item: codes.map((code, i) => ({
+              thscode: code, name: `C${i}`,
+              pe_ttm: [13.77, 8.5, -3.2][i % 3],  // 含负 PE（应被过滤）
+              pe_mrq: null,
+              pb_mrq: [2.89, 1.2, 3.1][i % 3],
+              ps_ttm: 1, pcf_ttm: 1,
+            })),
+          },
+        }
+        return new Response(JSON.stringify(batchBody), { status: 200 })
+      }
       return new Response(JSON.stringify(valuationBody), { status: 200 })
+    }
+    // 指数行情（Task 08）：必须先于个股 prices/historical 判断
+    if (url.pathname.includes("/a-share-index/prices/historical")) {
+      const indexBody = {
+        code: 0, message: "success",
+        data: {
+          item: Array.from({ length: 130 }, (_, i) => ({
+            date_ms: Date.UTC(2026, 0, 1, 16) + i * 2 * 24 * 3600 * 1000,
+            open_price: 4000, high_price: 4050, low_price: 3950,
+            close_price: 4000 + i * 2,
+            volume: 1, turnover: 1,
+          })),
+        },
+      }
+      return new Response(JSON.stringify(indexBody), { status: 200 })
+    }
+    if (url.pathname.includes("/a-share-index/constituents/")) {
+      const body = {
+        code: 0, message: "success",
+        data: {
+          item: [
+            { thscode: "000333.SZ", ticker: "000333", name: "美的集团" },
+            { thscode: "000651.SZ", ticker: "000651", name: "格力电器" },
+            { thscode: "600690.SH", ticker: "600690", name: "海尔智家" },
+          ],
+        },
+      }
+      return new Response(JSON.stringify(body), { status: 200 })
     }
     if (url.pathname.includes("prices/historical")) {
       return new Response(JSON.stringify(pricesBody), { status: 200 })

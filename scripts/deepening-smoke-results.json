@@ -1,0 +1,58 @@
+{
+  "base": "http://127.0.0.1:3100",
+  "results": {
+    "Q1": {
+      "ok": true,
+      "ai": "success",
+      "trendPoints": 3,
+      "industry": "白色家电",
+      "indSampleSize": 38
+    },
+    "Q2": {
+      "ok": true,
+      "stock": [
+        -8.45,
+        1.24,
+        9.83
+      ],
+      "csi300": [
+        -5.5,
+        -9.07,
+        -5.18
+      ],
+      "relative_csi300": [
+        -2.94,
+        10.31,
+        15.01
+      ],
+      "industry": [
+        -0.39,
+        0.39,
+        -0.35
+      ],
+      "relative_industry": [
+        -8.06,
+        0.85,
+        10.18
+      ]
+    },
+    "Q3": {
+      "ok": true,
+      "peDiff": -17.2,
+      "peSampleSize": 38,
+      "pbDiff": 0.46
+    },
+    "Q4": {
+      "ok": true,
+      "ai": "success",
+      "plannerDims": [
+        "growth",
+        "profitability",
+        "valuation",
+        "market"
+      ],
+      "mentionsPeerUnknown": true
+    }
+  },
+  "allPass": true
+}

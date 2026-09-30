@@ -45,6 +45,10 @@ interface FuyaoEnvelope<T> {
   data: T | null
 }
 
+export async function fuyaoGet<T>(path: string, params: Record<string, string>): Promise<T> {
+  return fuyaoFetch<T>(path, params)
+}
+
 async function fuyaoFetch<T>(path: string, params: Record<string, string>): Promise<T> {
   const apiKey = process.env.FUYAO_API_KEY
   if (!apiKey) {
@@ -174,6 +178,16 @@ export interface FuyaoPriceHistoryData {
   item: FuyaoPriceBar[] | null
 }
 
+export interface FuyaoConstituent {
+  thscode: string
+  ticker: string
+  name: string
+}
+
+export interface FuyaoConstituentsData {
+  item: FuyaoConstituent[] | null
+}
+
 // ---------- 各端点请求函数 ----------
 
 export function fetchTickerSearch(query: string): Promise<FuyaoTickerSearchData> {
@@ -210,6 +224,36 @@ export function fetchFinancialIndicators(
   return fuyaoFetch<FuyaoIndicatorsData>("/api/a-share/financials/indicators", {
     thscode,
     report,
+  })
+}
+
+export function fetchIndexHistorical(
+  thscode: string,
+  startMs: number,
+  endMs: number,
+): Promise<FuyaoPriceHistoryData> {
+  return fuyaoFetch<FuyaoPriceHistoryData>("/api/a-share-index/prices/historical", {
+    thscode,
+    interval: "1d",
+    start: String(startMs),
+    end: String(endMs),
+  })
+}
+
+export function fetchIndexConstituents(
+  thscode: string,
+): Promise<FuyaoConstituentsData> {
+  return fuyaoFetch<FuyaoConstituentsData>("/api/a-share-index/constituents/ths-stock-list", {
+    thscode,
+    limit: "500",
+  })
+}
+
+export function fetchValuationSnapshotBatch(
+  thscodes: string,
+): Promise<FuyaoValuationData> {
+  return fuyaoFetch<FuyaoValuationData>("/api/a-share/valuations/snapshot", {
+    thscodes,
   })
 }
 

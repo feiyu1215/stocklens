@@ -56,6 +56,10 @@ export interface EvidenceContext {
   latestFinancialPeriod?: string | null
   latestPriceDate?: string | null
   metricWarnings?: string[]
+  /** 行业成分股批量估值是否可用（决定行业 UNKNOWN 拆分粒度，Task 08 §26） */
+  industryValuationAvailable?: boolean
+  /** 行业指数行情是否可用 */
+  industryPricesAvailable?: boolean
 }
 
 export interface EvidenceStats {

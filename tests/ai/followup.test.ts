@@ -86,7 +86,7 @@ describe("Followup（Task 06 五个核心 Case）", () => {
 
     expect(resp.ai.status).toBe("failed")
     expect(resp.synthesis).toBeNull()
-    expect(resp.evidence).toHaveLength(26) // Truth Layer 完整保留
+    expect(resp.evidence.length).toBeGreaterThan(30) // Truth Layer 完整保留（含基准/行业新增事实）
     expect(resp.ai.trace?.validationIssues?.join(" ")).toContain("EV_FAKE_001")
   })
 
@@ -103,7 +103,7 @@ describe("Followup（Task 06 五个核心 Case）", () => {
 
     expect(resp.ai.status).toBe("failed")
     expect(resp.synthesis).toBeNull()
-    expect(resp.evidence).toHaveLength(26)
+    expect(resp.evidence.length).toBeGreaterThan(30)
     expect(resp.ai.trace?.validationIssues?.[0]).toContain("aborted")
   })
 

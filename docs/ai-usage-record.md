@@ -57,3 +57,15 @@ AI 只做组织与解释，UI 只做格式化与钻取。
   6/6 PASS（`scripts/production-smoke-results.json`）；
 - 每次诊断的 Planner/Synthesizer Trace（promptVersion/model/latency/retries/validationIssues）
   随响应返回，未记录任何密钥。
+
+## 5. Task 08（Deepening）修正记录
+
+1. **输出截断导致 JSON 解析失败**：证据集从 26 条增至 40 条后，Synthesizer 的
+   max_tokens=1500 会把 JSON 截断（Q1 live 出现两次 invalid-json → 正确降级 partial_failure）。
+   修正：max_tokens 提升至 3000（Followup 1800），未改动 prompt 或契约，重跑 4/4 通过。
+2. **测试桩路由过宽**：`prices/historical` 匹配同时命中指数端点，导致 mock 环境中 CSI300 /
+   行业指数拿到个股价格序列。修正：指数路由前置判断（`/a-share-index/prices/historical`）。
+3. **能力组 UNKNOWN 语义**：指标完全不存在（该能力域本轮未参与）不应报"数据不足"。
+   修正：聚合 UNKNOWN 增加「该域指标至少存在一个」守卫。
+4. **行业归属不做常识猜测**：通过官方成分股接口扫描 90 个一级行业指数（0 错误、唯一命中）
+   后才写入 verified mapping，并保留 source/verifiedAt/verificationMethod 溯源字段。

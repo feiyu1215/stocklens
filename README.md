@@ -27,7 +27,7 @@ Question → Compliance Pre-check → AI Planner（选维度，看不到数据�
 
 | 层 | 职责 | 纪律 |
 |---|---|---|
-| **Truth Layer** | 数据适配、21 个确定性指标、21 条证据（fact/inference/unknown） | LLM 禁入；缺失=null；真实 0 不改写；单季/累计口径分离 |
+| **Truth Layer** | 数据适配、39 个确定性指标（含基准/行业/趋势）、40 条证据（fact/inference/unknown） | LLM 禁入；缺失=null；真实 0 不改写；单季/累计口径分离 |
 | **Intelligence Layer** | Planner 选维度；Synthesizer/Followup 组织与解释证据 | 只能引用已有 Evidence ID；输出全过确定性校验，伪造 ID 整体拒绝 |
 | **Experience Layer** | 诊断工作台、Evidence Drawer、追问 | 只呈现/组织/格式化/钻取，不产生新金融结论 |
 

@@ -86,3 +86,27 @@
 `{ stock, latestFinancialPeriod, latestPriceDate, metrics: MetricResult[21], summary, warnings }`。
 错误语义与 `/api/debug/stock-data` 一致：400 非法代码格式；503 缺 API Key；
 个股不存在等业务失败 → 200 + 全部指标 unavailable + 原因。
+
+---
+
+## Task 08 新增指标（基准 / 相对 / 行业 / 趋势）
+
+数据来源：指数行情 `/api/a-share-index/prices/historical`（沪深300 000300.SH、行业指数 881131.TI）；
+行业成分股批量估值复用 `valuations/snapshot`（thscodes 逗号分隔，每批 20 个）。
+
+| metricId | 公式 | 单位 | 说明 |
+|---|---|---|---|
+| `MKT_CSI300_RETURN_{20,60,120}D` | 与个股完全同口径（nDayReturnPct，N+1 收盘价窗口） | % | 基准区间收益；不足 → unavailable |
+| `MKT_RELATIVE_CSI300_{20,60,120}D` | 个股 − 沪深300（**减法，绝不做除法**） | **pct** | 仅表示相对表现方向，不构成评级 |
+| `IND_RETURN_{20,60,120}D` | 行业指数区间收益（同口径） | % | 行业行情不可用 → unavailable |
+| `MKT_RELATIVE_INDUSTRY_{20,60,120}D` | 个股 − 行业指数 | pct | 同上 |
+| `VAL_PE_VS_INDUSTRY_MEDIAN` | 个股 PE TTM − 行业中位数（过滤 null/NaN/PE≤0） | x | 带 `sampleSize`（有效公司数） |
+| `VAL_PB_VS_INDUSTRY_MEDIAN` | 个股 PB MRQ − 行业中位数 | x | 同上 |
+
+**行业归属 provenance**：`000333.SZ → 881131.TI 白色家电`，验证方式见
+`src/lib/data/verified-industry.ts`（2026-09-30 扫描 90 个一级行业指数成分股，唯一命中）。
+运行期不扫描行业列表；未验证股票返回 null（不猜行业）。
+
+**趋势序列**（`src/lib/metrics/trend.ts`，非 MetricResult，随响应 `trend` 字段返回）：
+8 个报告期的单季值（复用 `getStandaloneQuarterValue` 差分）与单季同比（缺上年同期 → null），ASC 排序。
+不做线性预测/外推。

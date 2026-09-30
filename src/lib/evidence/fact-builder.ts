@@ -194,6 +194,125 @@ const FACT_DEFINITIONS: FactDefinition[] = [
     signal: () => "neutral",
     statement: (m) => `最近 120 个交易日最大回撤为 ${m.value!.toFixed(2)}%。`,
   },
+  // ---------- Benchmark & Relative（Task 08 §24：仅表示相对表现方向，不是评级） ----------
+  {
+    metricId: "MKT_CSI300_RETURN_20D",
+    dimension: "market",
+    title: "沪深300 20 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 20 个交易日沪深300 指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "MKT_CSI300_RETURN_60D",
+    dimension: "market",
+    title: "沪深300 60 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 60 个交易日沪深300 指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "MKT_CSI300_RETURN_120D",
+    dimension: "market",
+    title: "沪深300 120 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 120 个交易日沪深300 指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_CSI300_20D",
+    dimension: "market",
+    title: "个股相对沪深300 表现（20 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 20 个交易日，个股区间收益率较沪深300高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 20 个交易日，个股区间收益率较沪深300低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_CSI300_60D",
+    dimension: "market",
+    title: "个股相对沪深300 表现（60 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 60 个交易日，个股区间收益率较沪深300高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 60 个交易日，个股区间收益率较沪深300低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_CSI300_120D",
+    dimension: "market",
+    title: "个股相对沪深300 表现（120 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 120 个交易日，个股区间收益率较沪深300高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 120 个交易日，个股区间收益率较沪深300低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  // ---------- Industry Context（Task 08 §25） ----------
+  {
+    metricId: "IND_RETURN_20D",
+    dimension: "industry",
+    title: "所属行业指数 20 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 20 个交易日，所属行业指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "IND_RETURN_60D",
+    dimension: "industry",
+    title: "所属行业指数 60 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 60 个交易日，所属行业指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "IND_RETURN_120D",
+    dimension: "industry",
+    title: "所属行业指数 120 交易日区间收益率",
+    signal: directionSignal,
+    statement: (m) => `最近 120 个交易日，所属行业指数区间收益率为 ${m.value!.toFixed(2)}%。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_INDUSTRY_20D",
+    dimension: "industry",
+    title: "个股相对所属行业表现（20 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 20 个交易日，个股区间收益率较所属行业指数高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 20 个交易日，个股区间收益率较所属行业指数低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_INDUSTRY_60D",
+    dimension: "industry",
+    title: "个股相对所属行业表现（60 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 60 个交易日，个股区间收益率较所属行业指数高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 60 个交易日，个股区间收益率较所属行业指数低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  {
+    metricId: "MKT_RELATIVE_INDUSTRY_120D",
+    dimension: "industry",
+    title: "个股相对所属行业表现（120 日，百分点差）",
+    signal: directionSignal,
+    statement: (m) =>
+      m.value! >= 0
+        ? `最近 120 个交易日，个股区间收益率较所属行业指数高 ${m.value!.toFixed(2)} 个百分点。`
+        : `最近 120 个交易日，个股区间收益率较所属行业指数低 ${Math.abs(m.value!).toFixed(2)} 个百分点。`,
+  },
+  // ---------- Industry Valuation（Task 08 §28：事实陈述，不做高低判断） ----------
+  {
+    metricId: "VAL_PE_VS_INDUSTRY_MEDIAN",
+    dimension: "valuation",
+    title: "PE TTM 相对行业中位数（倍数差）",
+    signal: () => "neutral",
+    statement: (m) => `当前 PE TTM 较所属行业中位数${m.value! >= 0 ? "高" : "低"} ${Math.abs(m.value!).toFixed(2)} 倍。`,
+  },
+  {
+    metricId: "VAL_PB_VS_INDUSTRY_MEDIAN",
+    dimension: "valuation",
+    title: "PB MRQ 相对行业中位数（倍数差）",
+    signal: () => "neutral",
+    statement: (m) => `当前 PB MRQ 较所属行业中位数${m.value! >= 0 ? "高" : "低"} ${Math.abs(m.value!).toFixed(2)} 倍。`,
+  },
 ]
 
 export function buildFacts(metrics: MetricResult[]): Evidence[] {

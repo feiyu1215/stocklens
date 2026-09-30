@@ -25,6 +25,14 @@ export function DiagnosisHeader({
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-500">
           <span>最新财务期：{data.context?.latestFinancialPeriod ?? "—"}</span>
           <span>最新行情日期：{data.context?.latestTradeDate ?? "—"}</span>
+          {data.industry && (
+            <span title={`${data.industry.verificationMethod}（验证于 ${data.industry.verifiedAt}）`}>
+              所属行业：{data.industry.name}
+              <span className="ml-1 text-zinc-400">
+                （{data.industry.indexCode} · 官方成分股验证）
+              </span>
+            </span>
+          )}
         </div>
       </div>
       <div className="text-left sm:text-right">

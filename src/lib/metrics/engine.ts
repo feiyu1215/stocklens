@@ -1,9 +1,15 @@
 import type { DebugStockDataResponse } from "@/lib/data/types"
+import type { IndexPrice, IndustryValuationSampleData } from "@/lib/data/industry"
 
 import { buildFinancialMetrics } from "./financial"
 import { buildMarketMetrics } from "./market"
-import type { DebugMetricsResponse, MetricResult, MetricsSummary } from "./types"
+import {
+  buildIndustryValuationMetrics,
+  buildMarketContextMetrics,
+  computeIndustryValuationStats,
+} from "./market-context"
 import { buildValuationMetrics } from "./valuation"
+import type { DebugMetricsResponse, MetricResult, MetricsSummary } from "./types"
 
 // Metric Engine 编排入口：Normalized Data → MetricResult[]
 // 只组合，不解释。语义判断属于后续 Evidence Engine。
@@ -11,11 +17,49 @@ import { buildValuationMetrics } from "./valuation"
 export const VALUATION_HISTORY_WARNING =
   "historical valuation percentile unavailable because valuation history is not yet connected"
 
-export function calculateMetrics(data: DebugStockDataResponse): DebugMetricsResponse {
+export interface MarketContextInput {
+  csi300: IndexPrice[]
+  industry?: {
+    indexCode: string
+    indexName: string
+    prices: IndexPrice[]
+    valuations?: IndustryValuationSampleData
+  }
+}
+
+export function calculateMetrics(
+  data: DebugStockDataResponse,
+  marketContext?: MarketContextInput,
+): DebugMetricsResponse {
+  const industryValuationMetrics: MetricResult[] = marketContext?.industry?.valuations
+    ? buildIndustryValuationMetrics({
+        peTtm: data.valuation?.peTtm ?? null,
+        pb: data.valuation?.pb ?? null,
+        stats: computeIndustryValuationStats(marketContext.industry.valuations),
+        industryName: marketContext.industry.indexName,
+        date: data.valuation?.date ?? data.meta.latest_price_date ?? "",
+      })
+    : []
+
+  const marketMetrics: MetricResult[] = marketContext
+    ? buildMarketContextMetrics({
+        stockPrices: data.prices,
+        csi300: marketContext.csi300,
+        industry: marketContext.industry
+          ? {
+              indexCode: marketContext.industry.indexCode,
+              indexName: marketContext.industry.indexName,
+              prices: marketContext.industry.prices,
+            }
+          : undefined,
+      })
+    : buildMarketMetrics(data.prices)
+
   const metrics: MetricResult[] = [
     ...buildFinancialMetrics(data.financial, data.meta.latest_financial_period),
     ...buildValuationMetrics(data.valuation),
-    ...buildMarketMetrics(data.prices),
+    ...industryValuationMetrics,
+    ...marketMetrics,
   ]
 
   const available = metrics.filter((m) => m.status === "available").length

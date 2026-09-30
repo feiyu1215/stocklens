@@ -1,6 +1,6 @@
 import type { MetricResult } from "@/lib/metrics/types"
 
-import type { MetricLookup } from "./rules"
+import type { MetricLookup, TrendLookup } from "./rules"
 import { EVIDENCE_RULES_VERSION, RULE_DEFINITIONS } from "./rules"
 import type { Evidence } from "./types"
 
@@ -13,13 +13,17 @@ const INFERENCE_CONFIDENCE_REASON =
  * 前提约束：规则只在全部所需指标 available 时才可能触发（evaluate 保证），
  * 因此 basedOn 指向的 FACT 必然存在；若因防御性原因缺失，跳过该规则而非生成断链引用。
  */
-export function buildInferences(metrics: MetricResult[], facts: Evidence[]): Evidence[] {
+export function buildInferences(
+  metrics: MetricResult[],
+  facts: Evidence[],
+  trend?: TrendLookup,
+): Evidence[] {
   const lookup: MetricLookup = (metricId) => metrics.find((m) => m.metricId === metricId)
   const factIds = new Set(facts.map((f) => f.evidenceId))
 
   const out: Evidence[] = []
   for (const rule of RULE_DEFINITIONS) {
-    const statement = rule.evaluate(lookup)
+    const statement = rule.evaluate(lookup, trend)
     if (statement === null) continue
 
     const basedOn = rule.requires.map((metricId) => `EV_FACT_${metricId}`)

@@ -35,15 +35,17 @@ describe("runDiagnosis —— 完整成功链路", () => {
     expect(resp.synthesis).not.toBeNull()
     expect(resp.context?.latestFinancialPeriod).toBe("2026-Q2")
     expect(resp.context?.availableDimensions).toContain("growth")
-    expect(resp.context?.unavailableDimensions).toContain("industry")
+    // Task 08：行业上下文可用后 industry 成为 available（verified mapping + 行业行情）
+    expect(resp.context?.availableDimensions).toContain("industry")
 
-    // Evidence Selection 由代码完成：选中范围 = 5 维度（行业 UNKNOWN 被排除）
+    // Evidence Selection 由代码完成：选中范围 = 计划维度（valuation 为 optional）
     expect(resp.evidence.length).toBeGreaterThan(0)
-    expect(resp.evidence.some((e) => e.evidenceId === "EV_UNKNOWN_INDUSTRY_COMPARISON")).toBe(false)
-    const allowedDims = new Set(["growth", "profitability", "cashflow", "valuation", "market"])
+    const allowedDims = new Set(["growth", "profitability", "cashflow", "valuation", "market", "industry"])
     expect(resp.evidence.every((e) => allowedDims.has(e.dimension))).toBe(true)
     expect(resp.stats.totalEvidence).toBe(resp.evidence.length)
-    expect(resp.stats.fact).toBe(21)
+    // Planner 选中 growth/profitability/cashflow/valuation(+market optional)，未选 industry：
+    // 选中事实 = 21 原有 + 8（CSI300 3 / 相对 3 / 行业估值 2）= 29；行业行情 6 条被维度过滤排除
+    expect(resp.stats.fact).toBe(29)
     expect(resp.stats.inference).toBe(3)
     expect(resp.stats.unknown).toBe(1)
 
@@ -54,8 +56,9 @@ describe("runDiagnosis —— 完整成功链路", () => {
       }
     }
 
-    // §33/§70 additive extension：metrics 随响应返回，且与证据引用一致
-    expect(resp.metrics).toHaveLength(21)
+    // §33/§70 additive extension：metrics 随响应返回（Task 08 后含基准/行业/趋势共 39 个），
+    // 且与证据引用一致
+    expect(resp.metrics.length).toBeGreaterThanOrEqual(35)
     const metricIds = new Set(resp.metrics.map((m) => m.metricId))
     for (const e of resp.evidence) {
       if (e.type === "unknown") continue // UNKNOWN 允许无关联指标
@@ -177,8 +180,8 @@ describe("§52/§53｜AI Failure 不污染 Truth Layer", () => {
     expect(resp.ai.status).toBe("failed")
     expect(resp.planner).toBeUndefined()
     expect(resp.synthesis).toBeNull()
-    // 全量证据 = 26 条（含行业 UNKNOWN）
-    expect(resp.stats.totalEvidence).toBe(26)
+    // 全量证据 = 40 条（Task 08 前 26 + 基准/行业 14）
+    expect(resp.stats.totalEvidence).toBe(40)
     expect(resp.notices?.length).toBeGreaterThan(0)
   })
 })

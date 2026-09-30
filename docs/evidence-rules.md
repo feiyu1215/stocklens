@@ -39,6 +39,15 @@ PE/PB、波动率、最大回撤恒为 neutral。
 | `RULE_MKT_HORIZON_DIVERGENCE` | MKT_RETURN_20D, MKT_RETURN_120D | (20D < 0 AND 120D > 0) OR (20D > 0 AND 120D < 0) | inference / conflict | 不同时间尺度的行情方向背离 |
 | `RULE_FIN_QUARTER_YTD_GROWTH_DIVERGENCE` | FIN_REVENUE_YOY_YTD, FIN_REVENUE_YOY_QUARTER | 两者符号相反（一方为 0 不触发；同号数值不同不触发） | inference / conflict | 单季收入增长方向与累计表现不同 |
 | `RULE_FIN_QUARTER_YTD_PROFIT_DIVERGENCE` | FIN_NET_PROFIT_YOY_YTD, FIN_NET_PROFIT_YOY_QUARTER | 同上（利润） | inference / conflict | 单季利润增长方向与累计表现不同 |
+| `RULE_TREND_REVENUE_QUARTER_DIRECTION_RUN` | 单季收入同比序列（近 3 个可比期） | 3 个可比单季同比全部 >0 或全部 <0 | inference / **neutral** | 单季收入同比连续同向（描述性，非预测）；basedOn 锚定季度同比 + 累计同比 FACT |
+| `RULE_TREND_REVENUE_QUARTER_REVERSAL` | 单季收入同比序列（近 2 个可比期） | 上期与本期符号相反 | inference / conflict | 最新单季收入同比方向反转（由正转负 / 由负转正） |
+
+Task 08 新增 FACT（一句话模板，数字只来自 MetricResult.value）：沪深300 区间收益 3 条、
+相对沪深300 3 条（"较沪深300高/低 X 个百分点"）、行业指数收益 3 条、相对行业 3 条、
+PE/PB 相对行业中位数 2 条（"较所属行业中位数高/低 X 倍"，neutral）。
+行业 UNKNOWN 拆分：行业未知 → `EV_UNKNOWN_INDUSTRY_COMPARISON`；
+行业已知但行情缺失 → `EV_UNKNOWN_INDUSTRY_PRICES`；
+恒定 → `EV_UNKNOWN_INDUSTRY_PEER_FINANCIALS`；行业估值缺失 → `EV_UNKNOWN_INDUSTRY_VALUATION`。
 
 ### 明确不做的 Market 规则
 

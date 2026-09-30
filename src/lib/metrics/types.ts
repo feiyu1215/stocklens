@@ -39,6 +39,8 @@ export interface MetricResult {
   calculationMethod: string
   /** status=unavailable 时必须给出原因 */
   unavailableReason?: string
+  /** 统计类指标的样本量（如行业 PE 中位数的有效公司数），必须随指标展示 */
+  sampleSize?: number
 }
 
 export interface MetricsSummary {

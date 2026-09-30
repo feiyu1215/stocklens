@@ -68,7 +68,7 @@ export default function CompanyTransition({ target, mode, phase, elapsedSec, err
         ← 返回{previousName ?? "上一家公司"}
       </button>
 
-      <div className="absolute inset-0 flex flex-col justify-center px-[8vw]">
+      <div className="pointer-events-none absolute inset-0 flex flex-col justify-center px-[8vw]">
         {/* 目标公司身份：立即可用（来自搜索元数据，不等 init） */}
         <div className="text-[54px] leading-[1.05] tracking-tight" style={{ color: C.ink }}>
           {target.name}
@@ -100,7 +100,7 @@ export default function CompanyTransition({ target, mode, phase, elapsedSec, err
           </div>
         )}
         {phase === "failed" && (
-          <div className="mt-6 flex items-center gap-5">
+          <div className="pointer-events-auto mt-6 flex items-center gap-5">
             <span className="text-[13px]" style={{ color: C.coral }}>
               {error ?? "研究空间暂时无法完成"}
             </span>

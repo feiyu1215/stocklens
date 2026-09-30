@@ -1,0 +1,50 @@
+{
+  "base": "https://stocklens-blush.vercel.app",
+  "results": {
+    "Q1": {
+      "ok": true,
+      "ai": "success",
+      "full": 34,
+      "synthesis": 14,
+      "byDimension": {
+        "growth": 5,
+        "profitability": 3,
+        "market": 4,
+        "valuation": 1,
+        "cashflow": 1
+      },
+      "fullChars": 8391,
+      "synthesisChars": 3537,
+      "latencyMs": 17653,
+      "coversGrowth": true,
+      "coversMargin": true,
+      "coversCashflow": false,
+      "coversConflict": true,
+      "coversUnknown": true,
+      "noTruncation": true
+    },
+    "Q2": {
+      "ok": true,
+      "ai": "success",
+      "full": 18,
+      "synthesis": 10,
+      "pe": true,
+      "industryPe": true,
+      "historicalUnknownRetained": true,
+      "historicalUnknownMentioned": true,
+      "latencyMs": 7872
+    },
+    "Q3": {
+      "ok": true,
+      "ai": "success",
+      "full": 13,
+      "synthesis": 6,
+      "stock": true,
+      "csi300": true,
+      "industry": false,
+      "horizonDivergence": true,
+      "latencyMs": 13679
+    }
+  },
+  "allPass": true
+}

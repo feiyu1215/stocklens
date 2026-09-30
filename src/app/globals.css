@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+/* StockLens 固定浅色研究工作台风格：不跟随系统深色模式，
+   避免无背景色页面在深色浏览器下出现黑底 */
+html {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-zinc-50);
+  color: var(--color-zinc-900);
+}

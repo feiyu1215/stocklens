@@ -54,6 +54,21 @@ describe("runDiagnosis —— 完整成功链路", () => {
       }
     }
 
+    // §33/§70 additive extension：metrics 随响应返回，且与证据引用一致
+    expect(resp.metrics).toHaveLength(21)
+    const metricIds = new Set(resp.metrics.map((m) => m.metricId))
+    for (const e of resp.evidence) {
+      if (e.type === "unknown") continue // UNKNOWN 允许无关联指标
+      expect(e.metricIds.length).toBeGreaterThan(0)
+      for (const id of e.metricIds) expect(metricIds.has(id)).toBe(true)
+    }
+    // Task 04 原有字段全部仍在（additive，不删改）
+    expect(resp.diagnosisId).toBeTruthy()
+    expect(resp.stock).toEqual({ stockCode: "000333.SZ", stockName: "美的集团" })
+    expect(resp.context).toBeTruthy()
+    expect(resp.stats).toBeTruthy()
+    expect(resp.errors).toEqual([])
+
     // Trace 完整且无敏感信息
     expect(resp.ai.planner?.promptVersion).toBe("planner_v1")
     expect(resp.ai.synthesizer?.promptVersion).toBe("diagnosis_synthesis_v1")

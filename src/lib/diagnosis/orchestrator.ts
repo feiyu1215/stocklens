@@ -92,6 +92,7 @@ export async function runDiagnosis(input: {
       },
       notices: [`请求已按合规策略拦截（匹配：${restricted.matchedPattern}）。`],
       errors: [],
+      metrics: [],
     }
   }
 
@@ -132,6 +133,7 @@ export async function runDiagnosis(input: {
           message: err instanceof Error ? err.message : String(err),
         },
       ],
+      metrics: metricsResp.metrics,
     }
   }
 
@@ -170,6 +172,7 @@ export async function runDiagnosis(input: {
       ai: { status: "failed", planner: plannerRun.trace },
       notices: [AI_UNAVAILABLE_NOTICE],
       errors: dataResp.errors,
+      metrics: metricsResp.metrics,
     }
   }
 
@@ -202,6 +205,7 @@ export async function runDiagnosis(input: {
       ai: { status: "partial_failure", planner: plannerRun.trace, synthesizer: synthRun.trace },
       notices: [AI_UNAVAILABLE_NOTICE],
       errors: dataResp.errors,
+      metrics: metricsResp.metrics,
     }
   }
 
@@ -216,5 +220,6 @@ export async function runDiagnosis(input: {
     stats: computeStats(selected),
     ai: { status: "success", planner: plannerRun.trace, synthesizer: synthRun.trace },
     errors: dataResp.errors,
+    metrics: metricsResp.metrics,
   }
 }

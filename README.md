@@ -1,72 +1,91 @@
 # StockLens
 
-AI Native 个股多维诊断与证据验证工具（作业项目，题目 03）。
+AI Native 个股多维诊断与证据验证工具（题目 03 交付）。
 
-**Evidence First, Conclusion Second** —— 先有证据，再有结论。产品目标、三层架构、
-Evidence 模型与开发阶段见 [`PRD.md`](./PRD.md)。
+> **先看证据，再下结论。** StockLens 不判断股票好坏、不给评分、不给买卖建议——
+> 它把真实金融数据组织成可追溯的证据链，区分**事实、分析推断与暂时无法验证的信息**，
+> 并让每一个结论都能点回原始数据。
 
-## 当前状态
+- **公开访问**：https://feb-comprehensive-truth-receiving.trycloudflare.com （cloudflared 隧道，随演示进程存活；失效时按下方「本地运行」自建）
+- **研究对象**：美的集团 000333.SZ（P0 固定标的，不做全市场搜索）
 
-Task 01–04 已完成：Data Layer + Metric Engine + Evidence Engine + **AI 诊断主链路**。
+## 目标用户
+
+希望快速研究一家上市公司，但不满足于 AI 长篇总结、简单评分或"好/坏"标签的用户。
+他们关心的是：现在到底发生了什么？这个判断有什么证据？哪些地方存在矛盾？接下来该验证什么？
+
+## 核心设计
 
 ```text
-Question → Compliance Pre-check → AI Planner → Truth Layer → Evidence Selection
-        → AI Synthesizer → Diagnosis Validation → DiagnosisResponse
+Question → Compliance Pre-check → AI Planner（选维度，看不到数据）
+→ Truth Layer（扶摇 REST → Data Adapter → Normalized Data → Metric Engine → Evidence Engine）
+→ Evidence Selection（代码按维度过滤）→ AI Synthesizer（只组织证据）
+→ Diagnosis Validation（结构→绑定→分区类型→合规）→ 诊断工作台 UI → Evidence Drawer 钻取 → Follow-up
 ```
 
-- `POST /api/diagnosis`（stockCode + question）→ 诊断 JSON：Planner 维度、Grounded Summary、
-  分层证据（fact/inference/unknown）、后续研究问题、AI Trace；
-- AI 层（DeepSeek）只组织与解释证据：不产生事实、不算数字、不评级、不建议买卖；
-  所有输出必须通过确定性 Validation（Evidence 绑定 + 分区类型 + 合规扫描）；
-- AI 失败不污染 Truth Layer：证据照常返回，synthesis = null；
-- 架构与已知边界：[`docs/ai-architecture.md`](./docs/ai-architecture.md)。
+三层职责（详细口径见 docs/）：
 
-**尚未开发**：正式诊断 UI、Evidence Drawer、Follow-up 交互。当前页面仅为脚手架占位。
+| 层 | 职责 | 纪律 |
+|---|---|---|
+| **Truth Layer** | 数据适配、21 个确定性指标、21 条证据（fact/inference/unknown） | LLM 禁入；缺失=null；真实 0 不改写；单季/累计口径分离 |
+| **Intelligence Layer** | Planner 选维度；Synthesizer/Followup 组织与解释证据 | 只能引用已有 Evidence ID；输出全过确定性校验，伪造 ID 整体拒绝 |
+| **Experience Layer** | 诊断工作台、Evidence Drawer、追问 | 只呈现/组织/格式化/钻取，不产生新金融结论 |
 
-调试入口：
+## AI 的角色
 
-- `POST /api/diagnosis` —— 完整诊断链路（需 DEEPSEEK_API_KEY）
-- `GET /api/debug/stock-data?stockCode=000333.SZ` —— 数据层
-- `GET /api/debug/metrics?stockCode=000333.SZ` —— 指标层
-- `GET /api/debug/evidence?stockCode=000333.SZ` —— 证据层（无 LLM）
+模型（DeepSeek）只做三件事：**理解研究问题并选择维度**、**组织与解释已有证据**、
+**提出后续研究方向**。它不能：调用不存在的数据、重算数字、修改/新增 Evidence、
+评级（优秀/低估/高估）、给买卖建议或预测。所有 AI 输出必须通过
+Evidence Binding + 分区类型 + 合规扫描校验；失败 repair 一次，仍失败则
+synthesis = null，证据照常返回（AI 失败不污染 Truth Layer）。
+架构细节与已知边界：[docs/ai-architecture.md](./docs/ai-architecture.md)。
 
-## 启动
+## 数据使用
+
+- **扶摇金融数据 API**（同花顺系，X-api-key 鉴权）：行情快照/历史 K 线（前复权）、
+  三大报表多期、官方财务指标、估值快照、交易日历、标的检索——唯一事实来源；
+- **DeepSeek API**：Planner / Synthesizer / Followup（temperature 0/0.2/0.2）；
+- 所有密钥走服务端环境变量，不暴露给浏览器；前端不直接请求任何外部数据源。
+
+## 本地运行
 
 ```bash
 npm install
-cp .env.example .env.local   # 填入 FUYAO_API_KEY（fuyao.aicubes.cn/admin 签发）
+cp .env.example .env.local   # 填入 FUYAO_API_KEY 与 DEEPSEEK_API_KEY
 npm run dev                  # http://localhost:3000
 ```
 
-数据验证入口：`GET /api/debug/stock-data?stockCode=000333.SZ`
+命令：npm run build / npm run start -- --port 3100 / npm run test（Vitest，198 个）/ npm run lint。
 
-## 命令
+公网隧道（复现当前部署形态）：
 
 ```bash
-npm run dev     # 开发服务器
-npm run build   # 生产构建
-npm run start   # 生产运行
-npm run lint    # ESLint
-npm run test    # Vitest
+npm run build && npm run start -- --port 3100
+cloudflared tunnel --url http://localhost:3100   # 输出 trycloudflare.com 公网 URL
 ```
 
-## 结构（当前）
+## 调试 API
 
-```text
-src/lib/data/          # 扶摇 Data Adapter（types / fuyao / normalize / stock-data）
-src/lib/metrics/       # 确定性 Metric Engine（types / financial / market / valuation / engine）
-src/lib/evidence/      # Evidence Engine（types / fact-builder / rules / inference-builder / unknown-builder / validate / engine）
-src/lib/ai/            # AI 层（model / planner / synthesizer / select-evidence / prompts）
-src/lib/validation/    # diagnosis / compliance（确定性校验与合规守卫）
-src/lib/diagnosis/     # Diagnosis Orchestrator
-src/app/api/           # debug 数据/指标/证据 + POST /api/diagnosis
-docs/                  # metric-catalog / evidence-rules / ai-architecture（口径、规则与 AI 边界登记簿）
-tests/                 # Vitest：归一化、指标公式、证据规则、null 语义、缺失 Key、部分失败
-```
+- POST /api/diagnosis — 完整诊断链路
+- POST /api/followup — 沿证据追问
+- GET /api/debug/stock-data?stockCode=000333.SZ · /metrics · /evidence — 分层验证
 
-## 规则
+## 测试与质量记录
 
-- API Key 只来自环境变量，`.env.local` 不入库；
-- 不伪造任何金融数据：缺失用 `null`/字段缺省表达，与真实 `0` 严格区分；
-- 外部接口失败显式报错（`availability` + `errors`），禁止静默兜底；
-- 不输出涨跌预测、收益承诺或买卖建议。
+- 198 个自动化测试（公式口径、null 语义、证据规则、AI 校验、合规、部分失败）；
+- Production smoke（公网 5 路径）：scripts/production_smoke.py → scripts/production-smoke-results.json；
+- 交付文档：docs/test-notes.md · docs/ai-usage-record.md · docs/demo-script.md ·
+  docs/metric-catalog.md · docs/evidence-rules.md · docs/ai-architecture.md。
+
+## 已知边界与未做事项
+
+**已知边界**（诚实声明，详见 ai-architecture.md）：
+
+1. 语义事实一致性无法形式化证明——模型可能绑定合法证据却写出矛盾句子；
+   通过 Prompt 禁令 + Eval Bad Case + Summary 少写数字 + 证据钻取缓解，不假装零幻觉；
+2. 合规 Pre-check 是 P0 关键词规则，不是完整金融合规模型；
+3. 行业/新闻/历史估值数据未接入 → 对应维度以 UNKNOWN 显式呈现，不编造；
+4. 每次诊断实时重新执行 Truth Layer（无持久化），刷新即重新诊断。
+
+**未做**：Follow-up 多轮上下文记忆、历史诊断存储、多股票搜索、行业对比、
+新闻/公告事件、K 线图、部署持久化域名、用户系统。

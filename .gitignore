@@ -18,3 +18,6 @@ __pycache__/
 # ---- 系统文件 ----
 .DS_Store
 Thumbs.db
+
+# ---- 本地部署工具（cloudflared 二进制等，不入库） ----
+.tools/

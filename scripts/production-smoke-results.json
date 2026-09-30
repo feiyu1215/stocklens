@@ -1,0 +1,61 @@
+{
+  "base": "https://feb-comprehensive-truth-receiving.trycloudflare.com",
+  "results": {
+    "P1-经营": {
+      "ok": true,
+      "mode": "diagnosis",
+      "ai": "success",
+      "plannerDims": [
+        "growth",
+        "profitability",
+        "cashflow",
+        "valuation"
+      ],
+      "evidence": 25,
+      "conflict": 2,
+      "latency": 11219
+    },
+    "P2-估值": {
+      "ok": true,
+      "mode": "diagnosis",
+      "ai": "success",
+      "plannerDims": [
+        "valuation"
+      ],
+      "evidence": 10,
+      "conflict": 1,
+      "latency": 4881
+    },
+    "P3-行情": {
+      "ok": true,
+      "mode": "diagnosis",
+      "ai": "success",
+      "plannerDims": [
+        "market"
+      ],
+      "evidence": 7,
+      "conflict": 1,
+      "latency": 3989
+    },
+    "P4-合规": {
+      "ok": true,
+      "mode": "compliance_redirect",
+      "latency": 683
+    },
+    "P5-追问": {
+      "ok": true,
+      "focus": "EV_INF_FIN_GROWTH_MARGIN_DIVERGENCE",
+      "ai": "success",
+      "sections": [
+        "confirmed",
+        "inferences",
+        "unknowns"
+      ],
+      "latency": 7751
+    },
+    "P0-首页": {
+      "ok": true
+    }
+  },
+  "allPass": true
+}

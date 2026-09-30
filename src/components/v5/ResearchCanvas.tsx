@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import type { ResearchSpacePayload } from "@/components/observatory/theme"
+import DemoOverlay from "@/components/v5/DemoOverlay"
+import { DEMO_STEPS, isLastStep, stepAt, stepBy } from "@/lib/v5/demo"
+import { anchorGlyph, type ResearchSpacePayload } from "@/components/observatory/theme"
 import { computeFitCamera, panCamera, screenToWorld, zoomAtPointer, boundsOfObjects, type CameraState } from "@/lib/spatial/camera"
 import {
   DESIGN,
@@ -16,6 +18,26 @@ import {
   tierFont,
   type AnchorSpec,
 } from "@/lib/v5/canvas"
+import {
+  formatLastResearch,
+  isSaved,
+  loadCanvas,
+  loadRecent,
+  loadSaved,
+  pushRecent,
+  saveCanvas,
+  saveRecent,
+  saveSaved,
+  demoCompleted,
+  demoSeen,
+  markDemoCompleted,
+  markDemoSeen,
+  searchCompanies,
+  toggleSaved,
+  touchSaved,
+  type CanvasSnapshot,
+  type SavedCompany,
+} from "@/lib/v5/shelf"
 import {
   apertureRectFor,
   apertureSizeFor,
@@ -104,6 +126,15 @@ function aiSuggestionsFor(scope: AiScope, payload: ResearchSpacePayload | null):
   ].slice(0, 3)
 }
 
+/** Task 16 §A4：浏览器 history 里的语义状态（company / dimension / reading / evidence） */
+interface NavState {
+  sl: true
+  stockCode: string
+  dim: string | null
+  read: boolean
+  ev: string | null
+}
+
 interface AskState {
   anchorId: string
   question: string
@@ -143,6 +174,27 @@ export default function ResearchCanvas() {
   const focusAiLensRef = useRef<((scope: AiScope | null, preset?: string) => void) | null>(null)
   const askRef = useRef<((q: string, scope: AiScope) => Promise<void>) | null>(null)
   const aiRunningStockRef = useRef<string | null>(null)
+  /** §A4：本页内 pushState 的深度（用于决定 back 是否安全） */
+  const navDepthRef = useRef(0)
+  /** §B14：每公司画布快照（memory 优先，sessionStorage 兜底） */
+  const canvasCacheRef = useRef<Record<string, CanvasSnapshot>>({})
+  const navApplyingRef = useRef(false)
+  /** 供 event/异步回调读取最新 payload（避免闭包旧值） */
+  const payloadRef = useRef<ResearchSpacePayload | null>(null)
+  /** Demo：退出钩子 + 既有 UI action 集合（§22 只调度，不复制业务逻辑） */
+  const demoExitRef = useRef<(() => void) | null>(null)
+  /** Reading 之前的相机（§A5 返回时恢复空间） */
+  const preReadingCameraRef = useRef<CameraState | null>(null)
+  const closeReadingRef = useRef<(() => void) | null>(null)
+  /** 切换公司时的解析中提示（§B13） */
+  const [resolvingName, setResolvingName] = useState<string | null>(null)
+  const [researchTimes, setResearchTimes] = useState<Record<string, number>>({})
+  const switchCompanyRef = useRef<((stockCode: string) => Promise<void>) | null>(null)
+  /** 切换序号：过期请求不得覆盖新选择（防止连点两次落到错的公司） */
+  const switchSeqRef = useRef(0)
+  /** §B15：待恢复的研究焦点（等该公司 anchors 就绪后打开一次） */
+  const pendingRestoreRef = useRef<{ code: string; dimensionId: string } | null>(null)
+  const navBaseSetRef = useRef(false)
   /** 最近一次 Aperture 的客观度量（§43/§49：碰撞前后数量、位移对象数） */
   const [apertureMetrics, setApertureMetrics] = useState<{
     rect: Rect
@@ -170,6 +222,20 @@ export default function ResearchCanvas() {
   const [flipFrom, setFlipFrom] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [companyQuery, setCompanyQuery] = useState<string | null>(null)
   const [companyResults, setCompanyResults] = useState<{ stockCode: string; stockName: string }[]>([])
+  // Task 16 PART B：Research Shelf（研究架）
+  const [savedCompanies, setSavedCompanies] = useState<SavedCompany[]>([])
+  const [recentCompanies, setRecentCompanies] = useState<SavedCompany[]>([])
+  const [lastResearchAt, setLastResearchAt] = useState<number | null>(null)
+  const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  // §D39/§D40：••• 菜单 + Clear thread 二次确认（视觉关闭 ≠ 删除历史）
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  // §C19/§C20/§C34：Guided Demo 控制器状态
+  const [demoIndex, setDemoIndex] = useState<number | null>(null)
+  const [demoPaused, setDemoPaused] = useState(false)
+  const [demoPrompt, setDemoPrompt] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
+  const reducedMotionRef = useRef(false)
   const [hitAreas, setHitAreas] = useState(false)
   const [spaceDown, setSpaceDown] = useState(false)
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
@@ -287,6 +353,26 @@ export default function ResearchCanvas() {
   const activeId = hoverId
   const active = anchors.find((a) => a.dimensionId === activeId) ?? null
 
+  // §A4：语义 history。pushState 维护层栈，程序化关闭走 back()，popstate 统一落地。
+  const pushNav = useCallback((next: NavState) => {
+    try {
+      window.history.pushState(next, "", window.location.href)
+      navDepthRef.current += 1
+    } catch {
+      // history 不可用时退化为纯状态
+    }
+  }, [])
+
+  const backNav = useCallback(() => {
+    if (navDepthRef.current > 0) {
+      try {
+        window.history.back()
+      } catch {
+        // 忽略
+      }
+    }
+  }, [])
+
   const fitAll = useCallback(() => {
     setCamera(computeFitCamera(boundsOfObjects([{ x: 0, y: 0, width: DESIGN.width, height: DESIGN.height }])!, viewport, 60))
   }, [viewport])
@@ -377,9 +463,12 @@ export default function ResearchCanvas() {
       setDisplaced(result.displaced)
       setApertureId(a.dimensionId)
       setMenuOpen(false)
+      const code = payload?.company.stockCode
+      if (code) pushNav({ sl: true, stockCode: code, dim: a.dimensionId, read: false, ev: null })
+
       setAsk(null)
     },
-    [viewport, basePos, anchors, parked, positions, toScreenRect, toWorldPoint, camera.scale],
+    [viewport, basePos, anchors, parked, positions, toScreenRect, toWorldPoint, camera.scale, pushNav, payload],
   )
 
   const fitSelection = useCallback(() => {
@@ -400,17 +489,37 @@ export default function ResearchCanvas() {
         e.preventDefault()
         setLensOpen((v) => !v)
       }
+      // §A2：单一 Esc 优先级链（Palette → Thread → Evidence → Reading → Aperture → Canvas）
       if (e.key === "Escape") {
+        if (demoExitRef.current) {
+          demoExitRef.current()
+          return
+        }
         if (lensOpen) { setLensOpen(false); return }
         if (aiOpen) {
           setAiOpen(false)
           aiInputRef.current?.blur()
           return
         }
-        closeAperture()
-        setSuggestOpen(null)
-        setAsk(null)
-        setAddAngle(null)
+        if (readingEvidenceId) { setReadingEvidenceId(null); backNav(); return }
+        if (readingId) { closeReadingRef.current?.(); backNav(); return }
+        if (apertureId) { closeAperture(); backNav(); return }
+        if (suggestOpen || ask || addAngle !== null) {
+          setSuggestOpen(null)
+          setAsk(null)
+          setAddAngle(null)
+          return
+        }
+        // 已到 Company Canvas：保持不动
+      }
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !readingId && !apertureId) {
+        e.preventDefault()
+        const list = savedCompanies
+        if (list.length < 2) return
+        const idx = payload ? list.findIndex((c) => c.stockCode === payload.company.stockCode) : -1
+        const next = e.key === "ArrowRight" ? (idx + 1 + list.length) % list.length : (idx - 1 + list.length) % list.length
+        void switchCompanyRef.current?.(list[next].stockCode)
+        return
       }
       if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
         e.preventDefault()
@@ -440,7 +549,7 @@ export default function ResearchCanvas() {
       window.removeEventListener("keyup", onUp)
     }
     // 事件回调在触发时读取最新 state；此处依赖稳定回调即可
-  }, [fitAll, fitSelection, aiOpen, lensOpen, closeAperture])
+  }, [fitAll, fitSelection, aiOpen, lensOpen, closeAperture, backNav, apertureId, readingId, readingEvidenceId, suggestOpen, ask, addAngle, savedCompanies, payload])
 
   // ---- pointer 仲裁（§17：5px 阈值，click 与 drag 分离） ----
   const onPointerDown = useCallback(
@@ -713,13 +822,16 @@ export default function ResearchCanvas() {
         setFlipFrom({ x: r.x, y: r.y, width: r.width, height: r.height })
       } else setFlipFrom(null)
       const pos = anchorPos(a)
+      preReadingCameraRef.current = camera
       setCamera({ x: pos.x, y: pos.y + 80, scale: 0.9 })
       setReadingId(a.dimensionId)
       setDisplaced({})
       setApertureId(null)
       setAsk(null)
+      const code = payload?.company.stockCode
+      if (code) pushNav({ sl: true, stockCode: code, dim: a.dimensionId, read: true, ev: null })
     },
-    [anchorPos],
+    [anchorPos, pushNav, camera, payload],
   )
 
   // ---------- §7/§8：scope 自动推导 + 唯一 handleAskAI ----------
@@ -863,6 +975,26 @@ export default function ResearchCanvas() {
   )
 
   /** §11–§13：Stop = abort 客户端等待；不声称服务端模型已终止 */
+  /** §D40：Clear thread——只清当前公司线程，且需二次确认 */
+  const clearThread = useCallback(() => {
+    const code = payloadRef.current?.company.stockCode
+    if (!code) return
+    setAiThreads((prev) => ({ ...prev, [code]: [] }))
+    try {
+      sessionStorage.setItem(`stocklens.thread.${code}`, "[]")
+    } catch {
+      // 忽略
+    }
+    setClearConfirm(false)
+    setThreadMenuOpen(false)
+  }, [])
+
+  const collapseThread = useCallback(() => {
+    setAiOpen(false)
+    setThreadMenuOpen(false)
+    aiInputRef.current?.blur()
+  }, [])
+
   const stopAi = useCallback(() => {
     const c = aiAbortRef.current
     if (!c) return
@@ -912,7 +1044,8 @@ export default function ResearchCanvas() {
   useEffect(() => {
     focusAiLensRef.current = focusAiLens
     askRef.current = handleAskAI
-  }, [focusAiLens, handleAskAI])
+    payloadRef.current = payload
+  }, [focusAiLens, handleAskAI, payload])
 
   const externalJob = useMemo(() => {
     const code = payload?.company.stockCode
@@ -928,8 +1061,14 @@ export default function ResearchCanvas() {
   const closeReading = useCallback(() => {
     setReadingId(null)
     setReadingEvidenceId(null)
-    setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
+    // §A5：返回 Company Canvas 时恢复进入 Reading 之前的空间状态
+    const prev = preReadingCameraRef.current
+    setCamera(prev ?? { x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
   }, [])
+
+  useEffect(() => {
+    closeReadingRef.current = closeReading
+  }, [closeReading])
 
   const searchCompany = useCallback(async (q: string) => {
     setCompanyQuery(q)
@@ -937,40 +1076,237 @@ export default function ResearchCanvas() {
       setCompanyResults([])
       return
     }
-    try {
-      const res = await fetch(`/api/stocks/search?q=${encodeURIComponent(q.trim())}`)
-      const body = await res.json()
-      const items = (body.items ?? body.results ?? body ?? []) as { stockCode: string; stockName: string }[]
-      setCompanyResults(Array.isArray(items) ? items.slice(0, 5) : [])
-    } catch {
+    setCompanyResults(await searchCompanies(q))
+  }, [])
+
+  /** §B14/§A5：把当前画布现场写进该公司快照（内存 + sessionStorage） */
+  const snapshotCurrent = useCallback(() => {
+    const code = payloadRef.current?.company.stockCode
+    if (!code) return
+    const snap: CanvasSnapshot = {
+      camera,
+      positions,
+      parked,
+      notes: notes as CanvasSnapshot["notes"],
+      selection,
+      lastDimensionId: readingId ?? apertureId,
+      updatedAt: Date.now(),
+    }
+    canvasCacheRef.current[code] = snap
+    saveCanvas(code, snap)
+    setResearchTimes((m) => ({ ...m, [code]: snap.updatedAt }))
+  }, [camera, positions, parked, notes, selection, readingId, apertureId])
+
+  const switchCompany = useCallback(
+    async (stockCode: string) => {
+      const currentCode = payloadRef.current?.company.stockCode
+      if (currentCode === stockCode) {
+        // 用户改主意：取消仍在解析中的另一次切换
+        switchSeqRef.current += 1
+        setResolvingName(null)
+        setCompanyQuery(null)
+        return
+      }
+      snapshotCurrent()
+      const seq = ++switchSeqRef.current
+      const known = [...savedCompanies, ...recentCompanies].find((c) => c.stockCode === stockCode)
+      // §B13：切换期间保留当前 Canvas，只显示解析中提示，结果回来再原子替换
+      setResolvingName(known?.name ?? stockCode)
+      setCompanyQuery(null)
       setCompanyResults([])
+      try {
+        const res = await fetch("/api/research/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stockCode }),
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as ResearchSpacePayload
+        if (seq !== switchSeqRef.current) return // 已被更晚的切换取代
+        setPayload(data)
+        // §B15：回到研究过的公司 → 恢复原现场；没有快照才回到初始布局
+        const snap = canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode)
+        if (snap) {
+          canvasCacheRef.current[stockCode] = snap
+          setCamera(snap.camera)
+          setPositions(snap.positions ?? {})
+          setParked(snap.parked ?? [])
+          setNotes((snap.notes ?? []) as PinnedNote[])
+          setSelection(snap.selection ?? [])
+          setLastResearchAt(snap.updatedAt)
+          setResearchTimes((m) => ({ ...m, [stockCode]: snap.updatedAt }))
+          if (snap.lastDimensionId) pendingRestoreRef.current = { code: stockCode, dimensionId: snap.lastDimensionId }
+        } else {
+          delete canvasCacheRef.current[stockCode]
+          setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
+          setPositions({})
+          setParked([])
+          setNotes([])
+          setSelection([])
+          setLastResearchAt(null)
+        }
+        setApertureId(null)
+        setDisplaced({})
+        setReadingId(null)
+        setReadingEvidenceId(null)
+        // §B9：recents（上限 6，收藏不受影响）
+        const entry = {
+          stockCode,
+          name: data.company.stockName,
+          industry: data.company.industryName ?? undefined,
+        }
+        const nextRecent = pushRecent(recentCompanies, entry)
+        setRecentCompanies(nextRecent)
+        saveRecent(nextRecent)
+        if (isSaved(savedCompanies, stockCode)) {
+          const nextSaved = touchSaved(savedCompanies, stockCode)
+          setSavedCompanies(nextSaved)
+          saveSaved(nextSaved)
+        }
+        // §A4：语义 history
+        pushNav({ sl: true, stockCode, dim: null, read: false, ev: null })
+      } catch {
+        // 切换失败保持当前公司
+      } finally {
+        if (seq === switchSeqRef.current) setResolvingName(null)
+      }
+    },
+    [pushNav, recentCompanies, savedCompanies, snapshotCurrent],
+  )
+
+  useEffect(() => {
+    switchCompanyRef.current = switchCompany
+  }, [switchCompany])
+
+  // §B15/§A5：恢复该公司最后的研究焦点（等 anchors 就绪，只执行一次）
+  useEffect(() => {
+    const pending = pendingRestoreRef.current
+    if (!pending || !payload || payload.company.stockCode !== pending.code) return
+    const anchor = anchors.find((a) => a.dimensionId === pending.dimensionId)
+    if (!anchor) return
+    pendingRestoreRef.current = null
+    const raf = window.requestAnimationFrame(() => openAperture(anchor))
+    return () => window.cancelAnimationFrame(raf)
+  }, [payload, anchors, openAperture])
+
+  // §C20/§C34：首次访问提示 + prefers-reduced-motion
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+      setReducedMotion(mq.matches)
+      reducedMotionRef.current = mq.matches
+      const onChange = (e: MediaQueryListEvent) => {
+        setReducedMotion(e.matches)
+        reducedMotionRef.current = e.matches
+      }
+      mq.addEventListener?.("change", onChange)
+      setDemoPrompt(!demoSeen() && !demoCompleted())
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  const switchCompany = useCallback(async (stockCode: string) => {
-    setCompanyQuery(null)
-    setCompanyResults([])
-    try {
-      const res = await fetch("/api/research/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stockCode }),
-      })
-      if (!res.ok) return
-      const data = (await res.json()) as ResearchSpacePayload
-      setPayload(data)
-      setPositions({})
-      setSelection([])
-      setParked([])
-      setNotes([])
-      setApertureId(null)
-      setDisplaced({})
-      setReadingId(null)
-      setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
-    } catch {
-      // 切换失败保持当前公司
+  // §B8/§B9：研究架数据（localStorage）+ 各公司最近一次研究时间
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      const saved = loadSaved()
+      const recent = loadRecent()
+      setSavedCompanies(saved)
+      setRecentCompanies(recent)
+      const times: Record<string, number> = {}
+      for (const c of [...saved, ...recent]) {
+        if (times[c.stockCode]) continue
+        const snap = canvasCacheRef.current[c.stockCode] ?? loadCanvas(c.stockCode)
+        if (snap) times[c.stockCode] = snap.updatedAt
+      }
+      setResearchTimes(times)
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
+
+  // §A4：基准 history entry（replaceState，保证 Back 不会离开 StockLens）
+  useEffect(() => {
+    if (navBaseSetRef.current || !payload) return
+    navBaseSetRef.current = true
+    try {
+      window.history.replaceState(
+        { sl: true, stockCode: payload.company.stockCode, dim: null, read: false, ev: null } as NavState,
+        "",
+        window.location.href,
+      )
+      navDepthRef.current = 0
+    } catch {
+      // 忽略
+    }
+    // §B9：首次载入的公司同样计入 RECENT（否则研究的起点不会出现在研究架里）
+    const entry = {
+      stockCode: payload.company.stockCode,
+      name: payload.company.stockName,
+      industry: payload.company.industryName ?? undefined,
+    }
+    const raf = window.requestAnimationFrame(() => {
+      setRecentCompanies((prev) => {
+        const next = pushRecent(prev, entry)
+        saveRecent(next)
+        return next
+      })
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [payload])
+
+  // §A4：浏览器 Back/Forward → 语义后退
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const st = e.state as NavState | null
+      if (!st || st.sl !== true) return
+      navDepthRef.current = Math.max(0, navDepthRef.current - 1)
+      navApplyingRef.current = true
+      const apply = (state: NavState) => {
+        setReadingEvidenceId(state.ev ?? null)
+        setReadingId(state.read ? state.dim : null)
+        setApertureId(!state.read && state.dim ? state.dim : null)
+        setDisplaced({})
+        setMenuOpen(false)
+      }
+      const code = payloadRef.current?.company.stockCode
+      if (st.stockCode && st.stockCode !== code && switchCompanyRef.current) {
+        void switchCompanyRef.current(st.stockCode).then(() => apply(st))
+      } else {
+        apply(st)
+      }
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
+
+  // §B14：现场快照（节流写 sessionStorage；只存产品状态）
+  useEffect(() => {
+    if (!payload) return
+    const id = window.setTimeout(() => {
+      const code = payload.company.stockCode
+      const snap: CanvasSnapshot = {
+        camera,
+        positions,
+        parked,
+        notes: notes as CanvasSnapshot["notes"],
+        selection,
+        lastDimensionId: readingId ?? apertureId,
+        updatedAt: Date.now(),
+      }
+      canvasCacheRef.current[code] = snap
+      saveCanvas(code, snap)
+    }, 900)
+    return () => window.clearTimeout(id)
+  }, [payload, camera, positions, parked, notes, selection, readingId, apertureId])
 
   // ---- lens（§34 context-sensitive） ----
   const lensItems = useMemo(() => {
@@ -1003,6 +1339,8 @@ export default function ResearchCanvas() {
       )
     } else if (active) {
       out.push(
+        // 仅在用户点击该菜单项时执行（ref 写入发生在事件回调内，非渲染期；编译器保守报错）
+        // eslint-disable-next-line react-hooks/refs
         { label: `Explore · ${active.label}`, run: () => openReading(active) },
         { label: "Ask", run: () => setAsk({ anchorId: active.dimensionId, question: "", status: "idle" }) },
         { label: "Pin", run: () => pinNote(active) },
@@ -1033,14 +1371,199 @@ export default function ResearchCanvas() {
       else setHasNewResponse(true)
     })
     return () => window.cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在线程内容长度变化时触发
   }, [aiThreads, aiOpen])
+
+  // ---- §C：Guided Demo（状态驱动，只调度既有 action；不改数据、不联网） ----
+  const demoSnapshotRef = useRef<{
+    camera: CameraState
+    positions: Record<string, { x: number; y: number }>
+    selection: string[]
+    parked: string[]
+    notes: PinnedNote[]
+    apertureId: string | null
+    readingId: string | null
+    readingEvidenceId: string | null
+    hoverId: string | null
+    aiOpen: boolean
+    aiInput: string
+    addAngle: string | null
+    companyQuery: string | null
+    lensOpen: boolean
+  } | null>(null)
+
+  const demoPrimary = useCallback((): AnchorSpec | null => {
+    const list = anchors.filter((a) => !parked.includes(a.dimensionId))
+    return list.find((a) => a.tier === "primary") ?? list[0] ?? null
+  }, [anchors, parked])
+
+  const applyDemoStep = useCallback(
+    (action: string) => {
+      const primary = demoPrimary()
+      if (action === "pan" && !reducedMotionRef.current) {
+        setCamera((c) => ({ ...c, x: c.x + 46, y: c.y + 10 }))
+        return
+      }
+      if (action === "hover-dimension" && primary) {
+        setHoverId(primary.dimensionId)
+        return
+      }
+      if (action === "open-aperture" && primary) {
+        setHoverId(null)
+        openAperture(primary)
+        return
+      }
+      if (action === "open-reading" && primary) {
+        openReading(primary)
+        return
+      }
+      if (action === "select-evidence" && primary) {
+        const first = payloadRef.current?.dimensions.find((d) => d.dimensionId === primary.dimensionId)?.evidenceIds[0]
+        if (first) setReadingEvidenceId(first)
+        return
+      }
+      if (action === "focus-ai") {
+        setAiOpen(true)
+        focusAiLensRef.current?.(null)
+        return
+      }
+      if (action === "open-add-dimension") {
+        // §27/§28：只展示入口与示例文本，不提交、不产生数据
+        setAddAngle("库存压力")
+        return
+      }
+      if (action === "open-shelf") {
+        setCompanyQuery("")
+        return
+      }
+    },
+    [demoPrimary, openAperture, openReading],
+  )
+
+  const demoStart = useCallback(() => {
+    if (demoIndex !== null) return
+    // §C23：开始前保存当前研究现场
+    demoSnapshotRef.current = {
+      camera,
+      positions,
+      selection,
+      parked,
+      notes,
+      apertureId,
+      readingId,
+      readingEvidenceId,
+      hoverId,
+      aiOpen,
+      aiInput,
+      addAngle,
+      companyQuery,
+      lensOpen,
+    }
+    markDemoSeen()
+    setDemoPrompt(false)
+    setDemoPaused(false)
+    setDemoIndex(0)
+  }, [demoIndex, camera, positions, selection, parked, notes, apertureId, readingId, readingEvidenceId, hoverId, aiOpen, aiInput, addAngle, companyQuery, lensOpen])
+
+  const demoExit = useCallback(
+    (completed = false) => {
+      const snap = demoSnapshotRef.current
+      if (snap) {
+        // §C24：Demo 不得破坏用户原 Research Workspace
+        setCamera(snap.camera)
+        setPositions(snap.positions)
+        setSelection(snap.selection)
+        setParked(snap.parked)
+        setNotes(snap.notes)
+        setApertureId(snap.apertureId)
+        setReadingId(snap.readingId)
+        setReadingEvidenceId(snap.readingEvidenceId)
+        setHoverId(snap.hoverId)
+        setAiOpen(snap.aiOpen)
+        setAiInput(snap.aiInput)
+        setAddAngle(snap.addAngle)
+        setCompanyQuery(snap.companyQuery)
+        setLensOpen(snap.lensOpen)
+        setDisplaced({})
+        demoSnapshotRef.current = null
+      }
+      setDemoIndex(null)
+      setDemoPaused(false)
+      if (completed) markDemoCompleted()
+    },
+    [],
+  )
+
+  useEffect(() => {
+    // 只在 Demo 真正运行时占用 Esc；否则必须让位给其他层
+    demoExitRef.current = demoIndex !== null ? () => demoExit(false) : null
+  }, [demoExit, demoIndex])
+
+  // §C25/§C31：按步长推进；暂停即停表
+  useEffect(() => {
+    if (demoIndex === null || demoPaused) return
+    const step = stepAt(demoIndex)
+    const id = window.setTimeout(() => {
+      if (isLastStep(demoIndex)) demoExit(true)
+      else setDemoIndex((i) => (i === null ? null : stepBy(i, 1)))
+    }, step.ms)
+    return () => window.clearTimeout(id)
+  }, [demoIndex, demoPaused, demoExit])
+
+  // 进入某一步时执行该步的 UI 动作（只调度既有 action）
+  useEffect(() => {
+    if (demoIndex === null) return
+    // 异步边界：避免在 effect 体内同步 setState
+    const raf = window.requestAnimationFrame(() => applyDemoStep(stepAt(demoIndex).action))
+    return () => window.cancelAnimationFrame(raf)
+  }, [demoIndex, applyDemoStep])
+
+  // §C32：用户主动操作 → 自动暂停（不抢鼠标）
+  useEffect(() => {
+    if (demoIndex === null) return
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el?.closest("[data-demo-controls]")) return
+      setDemoPaused(true)
+    }
+    window.addEventListener("pointerdown", onDown, true)
+    return () => window.removeEventListener("pointerdown", onDown, true)
+  }, [demoIndex])
+
+  // §C33：Space 暂停/继续，→/← 步进，Esc 退出
+  useEffect(() => {
+    if (demoIndex === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " ") {
+        e.preventDefault()
+        e.stopPropagation()
+        setDemoPaused((v) => !v)
+        return
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault()
+        e.stopPropagation()
+        setDemoIndex((i) => (i === null ? null : stepBy(i, 1)))
+        return
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        e.stopPropagation()
+        setDemoIndex((i) => (i === null ? null : stepBy(i, -1)))
+      }
+    }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
+  }, [demoIndex])
 
   // ---- derived ----
   const transform = `translate3d(${-camera.x * camera.scale}px, ${-camera.y * camera.scale}px, 0) scale(${camera.scale})`
   const zoomPct = Math.round(camera.scale * 100)
   const panelW = readingId ? Math.round(Math.max(viewport.width * 0.3, 300)) : viewport.width
   const visible = anchors.filter((a) => !parked.includes(a.dimensionId))
+  // §B10：切换器里的 SAVED / RECENT（已收藏的公司不在 RECENT 重复出现）
+  const recentOnly = recentCompanies.filter((c) => !isSaved(savedCompanies, c.stockCode))
+  const lastResearchFor = (code: string) => formatLastResearch(researchTimes[code] ?? null)
+  const currentSaved = payload ? isSaved(savedCompanies, payload.company.stockCode) : false
   const suggestions = (payload?.suggestions ?? []).slice(0, 2)
   const readingDimension = payload && readingId ? payload.dimensions.find((d) => d.dimensionId === readingId) ?? null : null
   const hitStyle = (on: boolean) => (on ? { outline: "1px dashed rgba(47,102,255,0.6)", outlineOffset: 2, background: "rgba(47,102,255,0.06)" } : undefined)
@@ -1584,6 +2107,57 @@ export default function ResearchCanvas() {
       </div>
 
       {/* READING SHEET（§21–§24：复用 Claim Spine / Evidence / Ask / Challenge） */}
+      {readingId && payload && readingDimension && readingEvidenceId && (
+        <div
+          data-evidence-breadcrumb
+          className="absolute z-[70] flex items-center gap-2 font-mono text-[10.5px]"
+          style={{ left: `calc(30% + 3rem)`, top: 96, color: C.secondary }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              closeReadingRef.current?.()
+              backNav()
+            }}
+            className="transition hover:opacity-70"
+            style={{ minHeight: 24, cursor: "pointer" }}
+          >
+            {payload.company.stockName}
+          </button>
+          <span>/</span>
+          <button
+            type="button"
+            onClick={() => {
+              setReadingEvidenceId(null)
+              backNav()
+            }}
+            className="transition hover:opacity-70"
+            style={{ minHeight: 24, cursor: "pointer" }}
+          >
+            {readingDimension.label}
+          </button>
+          {(() => {
+            const claims = payload.claims.filter((c) => c.dimensionId === readingDimension.dimensionId)
+            const ci = claims.findIndex((c) => c.evidenceIds.includes(readingEvidenceId))
+            const dim = payload.dimensions.find((d) => d.dimensionId === readingDimension.dimensionId)
+            const ei = dim ? dim.evidenceIds.indexOf(readingEvidenceId) + 1 : 0
+            if (ci < 0) return null
+            return (
+              <>
+                <span>/</span>
+                <span style={{ color: C.ink }}>Claim {String(ci + 1).padStart(2, "0")}</span>
+                {ei > 0 && (
+                  <>
+                    <span>/</span>
+                    <span style={{ color: C.ink }}>Evidence {anchorGlyph(ei)}</span>
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
+
       {readingId && payload && readingDimension && (
         <div
           data-reading-sheet
@@ -1628,20 +2202,159 @@ export default function ResearchCanvas() {
         ) : (
           <div data-ui className="pointer-events-auto relative flex items-center gap-5 font-mono text-[12px] tracking-[0.14em]" style={{ color: C.secondary }}>
             <SearchGlyph />
-            <span data-ticker style={{ color: C.ink }}>
-              {payload ? payload.company.stockCode : "—"}
-            </span>
+            <button
+              type="button"
+              data-ui
+              data-company-identity
+              onClick={() => setCompanyQuery((q) => (q === null ? "" : null))}
+              className="flex items-center gap-2 transition hover:opacity-80"
+              style={{ minHeight: 36, cursor: "pointer" }}
+            >
+              <span style={{ color: C.ink }}>{payload ? payload.company.stockName : "—"}</span>
+              <span data-ticker className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
+                {payload ? payload.company.stockCode : "—"}
+              </span>
+            </button>
+            <button
+              type="button"
+              data-ui
+              data-save-company
+              onClick={() => {
+                if (!payload) return
+                const entry = {
+                  stockCode: payload.company.stockCode,
+                  name: payload.company.stockName,
+                  industry: payload.company.industryName ?? undefined,
+                }
+                const next = toggleSaved(savedCompanies, entry)
+                setSavedCompanies(next)
+                saveSaved(next)
+              }}
+              className="transition hover:opacity-80"
+              style={{ minHeight: 36, cursor: "pointer", color: currentSaved ? C.amber : C.secondary }}
+            >
+              {currentSaved ? "★ 已保存" : "☆ 保存到研究架"}
+            </button>
             <button
               type="button"
               data-change-company
               onClick={() => setCompanyQuery((q) => (q === null ? "" : null))}
-              className="transition hover:opacity-100"
-              style={{ minHeight: 36 }}
+              className="transition hover:opacity-80"
+              style={{ minHeight: 36, cursor: "pointer" }}
             >
               更换公司 →
             </button>
+            {resolvingName && (
+              <span data-resolving className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
+                Resolving {resolvingName}…
+              </span>
+            )}
+            <button
+              type="button"
+              data-ui
+              data-demo-start
+              onClick={demoStart}
+              className="border px-2 font-mono text-[10.5px] transition hover:opacity-80"
+              style={{ borderColor: C.hair, color: C.ink, minHeight: 30, cursor: "pointer" }}
+            >
+              ▶ 60s 演示
+            </button>
             {companyQuery !== null && (
-              <div data-company-search className="absolute right-0 top-10 w-[320px] border bg-white p-3" style={{ borderColor: C.hair }}>
+              <div data-ui data-company-search className="absolute right-0 top-10 w-[340px] border bg-white p-3" style={{ borderColor: C.hair }}>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] tracking-[0.22em]" style={{ color: C.secondary }}>
+                    CHANGE COMPANY
+                  </span>
+                  {payload && (
+                    <span data-last-research className="font-mono text-[9.5px]" style={{ color: C.secondary }}>
+                      {lastResearchFor(payload.company.stockCode) ?? ""}
+                    </span>
+                  )}
+                </div>
+                {payload && (
+                  <button
+                    type="button"
+                    data-refresh-research
+                    onClick={() => {
+                      const code = payloadRef.current?.company.stockCode
+                      if (!code) return
+                      setRefreshNote("Refreshing…")
+                      void switchCompanyRef.current?.(code)
+                      window.setTimeout(() => setRefreshNote(null), 1600)
+                    }}
+                    className="mt-1 font-mono text-[10px] underline decoration-dotted transition hover:opacity-80"
+                    style={{ color: C.secondary, minHeight: 26, cursor: "pointer" }}
+                  >
+                    Refresh research
+                  </button>
+                )}
+                {refreshNote && (
+                  <span className="ml-2 font-mono text-[9.5px]" style={{ color: C.secondary }}>
+                    {refreshNote}
+                  </span>
+                )}
+                {savedCompanies.length > 0 && (
+                  <>
+                    <div className="mt-3 font-mono text-[9.5px] tracking-[0.2em]" style={{ color: C.secondary }}>
+                      SAVED
+                    </div>
+                    <ul data-shelf-saved className="mt-1">
+                      {savedCompanies.map((c) => (
+                        <li key={c.stockCode}>
+                          <button
+                            type="button"
+                            data-saved-company={c.stockCode}
+                            onClick={() => void switchCompany(c.stockCode)}
+                            className="flex w-full items-center gap-2 px-2 text-left text-[12px] hover:bg-black/[0.04]"
+                            style={{ minHeight: 34, color: C.ink, cursor: "pointer" }}
+                          >
+                            <span style={{ color: C.amber }}>★</span>
+                            <span>{c.name}</span>
+                            <span className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
+                              {c.stockCode}
+                            </span>
+                            {lastResearchFor(c.stockCode) && (
+                              <span className="ml-auto font-mono text-[9.5px]" style={{ color: C.secondary }}>
+                                {lastResearchFor(c.stockCode)}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {recentOnly.length > 0 && (
+                  <>
+                    <div className="mt-3 font-mono text-[9.5px] tracking-[0.2em]" style={{ color: C.secondary }}>
+                      RECENT
+                    </div>
+                    <ul data-shelf-recent className="mt-1">
+                      {recentOnly.map((c) => (
+                        <li key={c.stockCode}>
+                          <button
+                            type="button"
+                            data-recent-company={c.stockCode}
+                            onClick={() => void switchCompany(c.stockCode)}
+                            className="flex w-full items-center gap-2 px-2 text-left text-[12px] hover:bg-black/[0.04]"
+                            style={{ minHeight: 34, color: C.ink, cursor: "pointer" }}
+                          >
+                            <span>{c.name}</span>
+                            <span className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
+                              {c.stockCode}
+                            </span>
+                            {lastResearchFor(c.stockCode) && (
+                              <span className="ml-auto font-mono text-[9.5px]" style={{ color: C.secondary }}>
+                                {lastResearchFor(c.stockCode)}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <div className="my-2 h-px w-full" style={{ background: C.hair }} />
                 <input
                   autoFocus
                   value={companyQuery}
@@ -1688,7 +2401,7 @@ export default function ResearchCanvas() {
 
       <div className="pointer-events-none absolute bottom-6 left-8 z-50 font-mono text-[11px] tracking-[0.26em]" style={{ color: C.secondary }}>
         {payload
-          ? `${payload.company.industryName === "白色家电" ? "WHITE GOODS" : (payload.company.industryName ?? "").toUpperCase()} · ${anchors.length} RESEARCH DIMENSIONS`
+          ? `${payload.company.industryName === "白色家电" ? "WHITE GOODS" : (payload.company.industryName ?? "").toUpperCase()} · ${anchors.length} RESEARCH DIMENSIONS${formatLastResearch(lastResearchAt) ? ` · ${formatLastResearch(lastResearchAt)}` : ""}`
           : "—"}
       </div>
 
@@ -1801,6 +2514,69 @@ export default function ResearchCanvas() {
             overscrollBehavior: "contain",
           }}
         >
+          {/* §D37/§D38：唯一折叠入口在 Thread header */}
+          <div
+            data-ai-thread-header
+            className="mb-3 flex items-center justify-between gap-3 border-b pb-2"
+            style={{ borderColor: C.hair }}
+          >
+            <span className="font-mono text-[10.5px] tracking-[0.14em]" style={{ color: C.secondary }}>
+              {payload.company.stockName} / {aiScope.type === "company" ? "Company Research" : scopeLabel(aiScope)}
+            </span>
+            <span className="flex items-center gap-3">
+              <button
+                type="button"
+                data-ai-collapse-thread
+                onClick={collapseThread}
+                title="Collapse"
+                className="font-mono text-[12px]"
+                style={{ color: C.secondary, minHeight: 26, minWidth: 26, cursor: "pointer" }}
+              >
+                —
+              </button>
+              <button
+                type="button"
+                data-ai-close-thread
+                onClick={collapseThread}
+                title="Close (history kept)"
+                className="font-mono text-[12px]"
+                style={{ color: C.secondary, minHeight: 26, minWidth: 26, cursor: "pointer" }}
+              >
+                ×
+              </button>
+              <button
+                type="button"
+                data-ai-thread-menu
+                onClick={() => setThreadMenuOpen((v) => !v)}
+                title="Thread options"
+                className="font-mono text-[11px]"
+                style={{ color: C.secondary, minHeight: 26, minWidth: 26, cursor: "pointer" }}
+              >
+                •••
+              </button>
+            </span>
+          </div>
+          {threadMenuOpen && (
+            <div data-ai-thread-menu-panel className="mb-3 flex items-center gap-3 border px-3 py-2" style={{ borderColor: C.hair }}>
+              {clearConfirm ? (
+                <>
+                  <span className="font-mono text-[10.5px]" style={{ color: C.ink }}>
+                    Clear thread?
+                  </span>
+                  <button type="button" data-ai-clear-confirm onClick={clearThread} className="font-mono text-[10.5px]" style={{ color: C.coral, minHeight: 26, cursor: "pointer" }}>
+                    Confirm
+                  </button>
+                  <button type="button" onClick={() => setClearConfirm(false)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 26, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" data-ai-clear-thread onClick={() => setClearConfirm(true)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 26, cursor: "pointer" }}>
+                  Clear thread
+                </button>
+              )}
+            </div>
+          )}
           {aiThreads[payload.company.stockCode].map((entry, i, arr) => (
             <div key={entry.id} className="mb-4 last:mb-0">
               {i > 0 && arr[i - 1].scopeLabel !== entry.scopeLabel && (
@@ -1925,15 +2701,6 @@ export default function ResearchCanvas() {
                             {d.label} ↗
                           </button>
                         ))}
-                      <button
-                        type="button"
-                        data-ai-collapse
-                        onClick={() => setAiOpen(false)}
-                        className="ml-auto font-mono text-[10px]"
-                        style={{ color: C.secondary, minHeight: 28 }}
-                      >
-                        Collapse
-                      </button>
                     </div>
                   )}
                 </div>
@@ -2007,6 +2774,57 @@ export default function ResearchCanvas() {
         >
           {aiNotice}
         </div>
+      )}
+
+      {/* §C20：首次访问轻提示（非 Modal），关闭后不再自动出现 */}
+      {demoPrompt && demoIndex === null && payload && (
+        <div
+          data-demo-prompt
+          className="absolute right-8 top-20 z-[62] w-[300px] border p-4 backdrop-blur"
+          style={{ borderColor: C.hair, background: "rgba(255,255,255,0.95)", boxShadow: "0 14px 44px rgba(17,21,27,0.10)" }}
+        >
+          <div className="font-mono text-[10.5px] tracking-[0.18em]" style={{ color: C.secondary }}>
+            第一次使用 STOCKLENS？
+          </div>
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              type="button"
+              data-ui
+              data-demo-prompt-start
+              onClick={demoStart}
+              className="text-left text-[12.5px] transition hover:opacity-75"
+              style={{ color: C.blue, minHeight: 30, cursor: "pointer" }}
+            >
+              ▶ 观看 60 秒演示
+            </button>
+            <button
+              type="button"
+              data-demo-prompt-dismiss
+              onClick={() => {
+                markDemoSeen()
+                setDemoPrompt(false)
+              }}
+              className="text-left text-[12.5px] transition hover:opacity-75"
+              style={{ color: C.secondary, minHeight: 30, cursor: "pointer" }}
+            >
+              自行探索 →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* §C22：DemoController 的视觉层（只展示，不产生业务逻辑） */}
+      {demoIndex !== null && (
+        <DemoOverlay
+          step={stepAt(demoIndex)}
+          index={demoIndex}
+          total={DEMO_STEPS.length}
+          paused={demoPaused}
+          reducedMotion={reducedMotion}
+          onTogglePause={() => setDemoPaused((v) => !v)}
+          onSkip={() => setDemoIndex((i) => (i === null ? null : isLastStep(i) ? i : stepBy(i, 1)))}
+          onExit={() => demoExit(false)}
+        />
       )}
 
       {/* §52：?aiDebug=1 */}
@@ -2159,6 +2977,39 @@ export default function ResearchCanvas() {
       )}
 
       <style jsx global>{`
+        /* §E43：所有可见可点对象都有响应；§E44：键盘可达 + focus-visible */
+        [data-anchor-id],
+        [data-evidence-node],
+        [data-ai-send],
+        [data-ai-anchor],
+        [data-ai-dimlink],
+        [data-suggestion],
+        [data-suggestion-trigger],
+        [data-zoom-in],
+        [data-zoom-out],
+        [data-zoom-fit],
+        [data-zoom-fit-all],
+        [data-hit],
+        button:not([data-demo-overlay] *) {
+          cursor: pointer;
+        }
+        [data-anchor-id]:hover,
+        [data-evidence-node]:hover,
+        [data-suggestion]:hover,
+        [data-suggestion-trigger]:hover {
+          opacity: 0.82;
+        }
+        [data-anchor-id],
+        [data-evidence-node],
+        [data-ai-anchor],
+        [data-ai-dimlink],
+        button {
+          transition: opacity 160ms ease;
+        }
+        :focus-visible {
+          outline: 2px solid rgba(47,102,255,0.55);
+          outline-offset: 2px;
+        }
         @keyframes v5-in {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }

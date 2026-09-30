@@ -3076,7 +3076,7 @@ export default function ResearchCanvas() {
       )}
 
       {/* §C20：首次访问轻提示（非 Modal），关闭后不再自动出现 */}
-      {demoPrompt && demoIndex === null && payload && (
+      {demoPrompt && demoIndex === null && payload && companyQuery === null && (
         <div
           data-demo-prompt
           className="absolute right-8 top-20 z-[62] w-[300px] border p-4 backdrop-blur"

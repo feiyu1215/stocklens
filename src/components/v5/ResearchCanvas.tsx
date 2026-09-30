@@ -2626,7 +2626,7 @@ export default function ResearchCanvas() {
                       <button
                         type="button"
                         data-company-result={r.stockCode}
-                        onClick={() => void switchCompany(r.stockCode)}
+                        onClick={() => void switchCompany(r.stockCode, { name: r.stockName })}
                         className="w-full px-2 text-left text-[12px] hover:bg-black/[0.04]"
                         style={{ minHeight: 36, color: C.ink }}
                       >

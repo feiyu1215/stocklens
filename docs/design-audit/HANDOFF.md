@@ -1,108 +1,132 @@
 # StockLens — 交接文档（给下一个会话）
 
-> 生成时间：2026-10-01 · 作者：上一会话（ZCode）· 用途：无缝接手，不要重新发现已知事实
+> 生成时间：2026-10-01 · 上一会话（ZCode）· 用途：无缝接手，不要重新发现已知事实
+> 上一版在 `16.2A-R3`（六个 Gate 全部未过）；本版在 **16.2A 验收已完成** 之后。
 
 ## 0. 一句话现状
 
-产品主体已完成并在线；**当前卡在 Task 16.2A 的关键浏览器验收**（六个 Gate 里只有 duplicate-init 关闭，B1/B2/B3/B4/B5 均未完成），**READY FOR 16.2B = NO**，**禁止开始 Task 17**。
+**六个 Gate 全部拿到真实浏览器证据并通过**（duplicate-init / B1 / B2 / B3 / B4 / B5），其中 B2、B4 依赖本轮新修的三个真缺陷。**仍不满足 Task 17 的前置条件**：交互清单里还有 11 项 `NOT TESTED`（详见 §5），且提交包早于本轮修复，需要重跑。**Task 17 未获准，不要开始。**
 
 ## 1. 工程与部署
 
 | 项 | 值 |
 |---|---|
 | 仓库 | `D:\zcode存储\stocklens`（Next.js 16 App Router + React 19 + TS + Tailwind 4 + Vitest） |
-| 生产 URL | https://stocklens-blush.vercel.app/observatory-v5 （**本轮验收对象**；生产 `/observatory` 未改动） |
+| 生产 URL | https://stocklens-blush.vercel.app/observatory-v5**?live=1**（`?live=1` 是必须的，见 §2） |
 | 本地 dev | `npm run dev` → http://localhost:3000/observatory-v5 |
 | 部署 | `export VERCEL_TOKEN=$(cat .tools/vercel-token) && npx vercel --prod --yes --token=$VERCEL_TOKEN` |
 | git push | 需要代理：`git -c http.proxy=http://127.0.0.1:7890 push origin HEAD` |
-| 最近提交 | `0f3c1e5` fix(v5): single in-flight research/init…（duplicate-init 修复）；此前 `dd7f9c1`（demo scene 6 先关 Reading）、`b8dcb4a`（demo 调度 ref 修复） |
-| 校验命令 | `npx tsc --noEmit` · `npx eslint src/components/v5 src/lib/v5` · `npx vitest run`（**385 tests / 28 files 全过**）· `npx next build` |
+| 校验四件套 | `npx tsc --noEmit` · `npx eslint src/components/v5 src/lib/v5` · `npx vitest run`（**385 tests / 28 files 全过**）· `npx next build` |
+| 本轮提交 | `0ad691e`（搜索名称）→ `3809567`（过渡层遮挡）→ `63e2d84`（Demo CTA）→ `1835581`（提示卡遮挡）→ `4d2a5fd`（非生产失败注入） |
 
 ## 2. 产品结构（研究主链）
 
-`Company Canvas → Focus Aperture → Reading → Evidence Inspection`，AI Research Thread 是并行的工具层，Command Palette 是临时控制层。
+`Company Canvas → Focus Aperture → Reading → Evidence Inspection`，AI Research Thread 是并行工具层，Command Palette 是临时控制层。
 
-关键文件：
 - `src/components/v5/ResearchCanvas.tsx`（主编排，约 3000 行，所有交互都在这）
-- `src/components/v5/CompanyTransition.tsx`（**Task 16.1A** 全屏研究过渡：`fixed inset-0 z-[110]`）
-- `src/components/v5/DemoOverlay.tsx` + `src/lib/v5/demo.ts`（**Guided Demo V2**：6 场景 / 50s）
-- `src/lib/v5/shelf.ts`（Research Shelf：收藏/最近/每公司画布快照）、`src/lib/v5/switch-guard.ts`（过期响应守卫）、`src/lib/v5/perf.ts`（`?perfDebug=1` 交互计时）
-- `src/components/v3/ReadingV3.tsx`（Reading，被 v3/v4/v5 共用；新增 props 必须保持可选）
-- 后端（**本阶段冻结，勿改语义**）：`src/app/api/{stocks/search, research/init, research/dimension, followup, observatory/*}/route.ts`；真值/指标/证据/framer/composer 在 `src/lib/{data,metrics,evidence,research,world,ai}/`
+- `src/components/v5/CompanyTransition.tsx`（全屏研究过渡，`fixed inset-0 z-[110]`）
+- `src/components/v5/DemoOverlay.tsx` + `src/lib/v5/demo.ts`（Guided Demo V2：6 场景 / 50s）
+- `src/lib/v5/shelf.ts`（Research Shelf）、`src/lib/v5/switch-guard.ts`、`src/lib/v5/perf.ts`
+- `src/lib/v5/test-failure.ts`（**本轮新增**：仅非生产的失败注入，见 §4）
+- `src/components/v3/ReadingV3.tsx`（被 v3/v4/v5 共用；新增 props 必须保持可选）
+- 后端（冻结）：`src/app/api/{stocks/search, research/init, research/dimension, followup, observatory/*}/route.ts`
 
-调试开关：`?aiDebug=1`（scope/线程调试面板）、`?perfDebug=1`（交互延迟面板）、`?fixture=…`、`?live=1`。
+**⚠ `?live=1` 是必须的**：v5 页面默认从 `/api/observatory/fixture?name=midea-artdirection` 加载 payload，只有带 `?live=1` 才会真的调 `/api/research/init`。公司切换永远走真实 API（`switchCompany` 里没有 fixture 分支），所以 fixture 模式下「首屏是假数据、切公司是真数据」。
 
-## 3. 任务历史与既定工作方式
+调试开关：`?aiDebug=1`、`?perfDebug=1`、`?fixture=<name>`、`?live=1`、`?testFailure=…`（非生产）。
 
-用户（Spec AI / 产品经理）逐轮下发 Task prompt，**ZCode 只实现、不自由设计**；每轮产出可运行中间状态 + git 提交 + Completion Report，然后**停下**，绝不自动推进下一轮。已完成：Task 15/15.x（语义缩放、研究画布）、**Task 16**（导航闭环 / Research Shelf / Guided Demo V1 / Thread 打磨 / 打包脚本 0.63MB）、**Task 16.1**（即时响应 / 公司切换双路径 / 乐观加维度 / Demo V2 / 后端延迟审计）、**Task 16.1A**（全屏研究过渡）。当前：**Task 16.2A-R3 未完成**。
+## 3. 六个 Gate 的真实状态（本轮实测）
 
-## 4. 六个 Gate 的当前真实状态（勿重复宣称已通过）
+| Gate | 状态 | 关键数字 |
+|---|---|---|
+| duplicate `research/init` | **PASS** | 未缓存切换只发 1 次 init（boot 14 878ms + switch 19 691ms，无第三条） |
+| B1 Guided Demo V2 | **PASS** | 1/6→6/6 全程；Scene 6 顺序 close-reading → Add research angle → Research Shelf；演示期间零业务请求；Exit 六项现场精确还原 |
+| B2 Full-Screen Transition | **PASS** | 真指针→DOM **3–4ms**；`fixed`/`z-110`/整屏；目标名 **招商银行**；5 占位；取消按钮 **50/50 可命中**；`cancelRestoreMs=3ms`；30s 后无迟到覆盖（被中止的 init `dur=53ms`） |
+| B3 Cached Restore | **PASS** | 五项目全等（zoom 125 / 已挪维度 / 便签 / AI 线程 / 活跃光圈维度）；`init ×0`；**15.8ms**；锚点 ID 前后相同 |
+| B4 Failure States | **PASS** | 三类失败态 + Retry/Back 全部真指针验证；注入代码在**生产包里不存在** |
+| B5 Console / Network | **PASS** | 本地动作 0 业务请求；console **0 uncaught / 0 error / 0 warn / 0 React / 0 hydration**；切换 init×1、缓存恢复 init×0、followup×1、search×1 |
 
-| Gate | 状态 | 已有证据 | 缺口 |
-|---|---|---|---|
-| duplicate `research/init` | **FIXED** | 真指针点击一次招商银行 → init **= 1**（修复前 2）；在途去重按 stockCode，Refresh 的 `force` 绕过去重 | — |
-| B1 Guided Demo V2 | **FAIL** | 场景 1–5 + 结束帧实测通过（`1/6→6/6` 单焦点推进；全程 followup/dimension/init = 0）；调度 bug（永远停 Scene 1）已修 | **Scene 6「研究架可见」未复验**（已加 `close-reading` 动作但没重跑）；Demo Exit 的完整现场恢复（zoom 120% / 挪维度 / 光圈）未测 |
-| B2 Full-Screen Transition | **FAIL** | 真指针：过渡层 ≤150ms 出现、`position:fixed / z-index:110`、整屏、旧 Canvas 不可操作（`elementFromPoint` 命中过渡层）、目标身份 + `已等待 00 秒` + 5 个中性占位 + `← 返回美的集团`；约 12.5s 后真实维度出现 | **取消路径**（≤300ms 恢复 + 快照恢复）、**30s 迟到 CMB 响应不得覆盖**未测 |
-| B3 Cached Restore | **FAIL** | 缓存切回美的 **139ms**、init 计数零新增 | zoom 120% / 手动挪维度 / pinned note / AI thread / active dimension 的**完整现场恢复**未测 |
-| B4 Failure States | **FAIL — test environment blocker** | — | `testFailure=research-init|dimension|followup` 注入**尚未实现**；生产 URL 不许让用户触发失败态，需 dev/staging 注入后测三类失败与 Retry/Back |
-| B5 Console / Network | **FAIL — test environment blocker** | 局部：`window.__err = 0`、init=1、search=1 | 完整旅程的 console（0 uncaught / 0 React / 0 hydration）、local 零业务请求、三类远程各 ≤1 的完整断言 |
+详见 `docs/design-audit/task16-2/RELEASE_GATE.md`（含每一项的证据句）与 `INTERACTION_MANIFEST.md`（46 行的逐控件结果）。
 
-## 5. 未修的缺陷清单（按优先级）
+## 4. 本轮修了什么（4 个真缺陷 + 1 个功能）
 
-1. **MINOR（本轮新发现）**：从**搜索结果**切换公司时，全屏过渡层的目标身份显示成代码而不是名称（头部读作 `600036.SH | 600036.SH`，应为「招商银行」）。修法：`[data-company-result]` 点击时把 `meta.name`（结果行里的 stockName）传给 `switchCompany`。
-2. **MINOR**：`TrendGlyph` 未使用（lint warning）；README 的测试数陈旧（309/356 vs 现在 385）。
-3. **MAJOR（后端，冻结范围内未修）**：`runFramer/runComposer/runFollowup` 在"修复重试"时只上报最后一次尝试的 `latencyMs`，第一次失败尝试不可见（重试跑残差 5.4–14.5s vs 无重试 0.37–0.75s）。
-4. **MINOR（后端，未改）**：`gatherMarketContext`（`src/lib/data/industry.ts:200-204`）把 CSI300 与行业上下文串行 await，二者本可 `Promise.all`（§22 要求先测后优化）。
-5. 陈旧 `readingId` 类问题只对 Reading 做了对账（`payload` 变化时校验维度仍存在）；aperture/evidence 同类情形未系统对账。
+| 提交 | 问题 | 影响 |
+|---|---|---|
+| `0ad691e` | 从搜索结果切换时，过渡层显示股票代码而不是公司名 | MINOR |
+| `3809567` | **`[data-transition-cancel]` 被同级的 `absolute inset-0` 内容层盖住，50 个采样点全部点不到** —— 代码注释承诺的“始终可用的返回”实际不可用，用户只能干等 15–30s | **MAJOR** |
+| `63e2d84` | **`[data-demo-finish]`「开始研究 →」在 Demo 的 `pointer-events-none` 层里**，结束帧无法用自己的按钮退出 | **MAJOR** |
+| `1835581` | **首次访问提示卡（`z-62`，右上角）盖住公司切换器 SAVED/RECENT 行 92% 的宽度**，首次用户点不了任何最近公司 | **MAJOR** |
+| `4d2a5fd` | 新增 `src/lib/v5/test-failure.ts`：`?testFailure=research-init｜dimension｜followup`，只让**第一次**匹配请求失败（所以 Retry 验证的是“恢复”），`NODE_ENV` 编译期常量保证生产包内不存在 | B4 前置 |
 
-## 6. 后端实测延迟（`docs/design-audit/task16-1/PERFORMANCE_AUDIT.md`，n=4 真实运行）
+**教训**：三个 MAJOR 都是同一类——「视觉上存在、真实指针点不到」。`elementFromPoint` / `elementsFromPoint` 扫描是发现它们的唯一手段，不要用「元素在 DOM 里 + `isVisible()` 为真」当作可点击证据。
 
-search 中位 **81ms**（首次 353ms）· init 美的 000333.SZ **16.8s** · init 招行 600036.SH **15.6s** · dimension（库存与周转压力）**1.8s** · followup **8.0s**。
-**init 的 94–97% 花在两个 LLM 调用**（framer 中位 3.8s + composer 中位 7.0s），Fuyao 真值层热态仅 0.17–0.6s。→ 公司切换慢的根因是模型串行调用；按用户要求**本轮不做流式、不做并行化改造**。
+## 5. 还没测的（11 项，Task 17 之前应清）
 
-LOCAL 交互实测（`?perfDebug=1`，`pointerdown → 首个 rAF 视觉提交`）：Dimension click **35ms** · Explore→Reading **74ms** · AI Thread open **11ms** · Command Palette **40ms** · Company Switcher **52ms**，全部 `net: no`（0 业务请求）。
+- ⌘K 命令面板（键盘）、Shift+1/2、Alt+←/→（驱动器发不出可靠修饰键组合）
+- Marquee 多选 / Focus selected / Gather / Spread / Park
+- `Refresh research`（`[data-refresh-research]`，强刷路径与「正在刷新…」文案）
+- 建议维度的拖拽入画布（`[data-suggestion-trigger]`）
+- 三种视口尺寸的正式矩阵（本轮只用 1280×720）
+- 减弱动效（reduced motion）下的 Demo
+- Reading 里的 Claim 列表 / ASK / CHALLENGE
+- Reading 证据字段（metric/value/period/unit/source/calculation）归属校验
+- 浏览器 Back/Forward 的语义后退（Esc 已 PASS）
+- Demo 的 Pause / Resume / Skip（Exit 与结束帧 CTA 已 PASS）
+- 演示被打断 → 自动暂停
 
-## 7. 浏览器验收怎么做（关键经验，别再踩坑）
+## 6. 浏览器验收怎么做（本轮踩过的坑，别再踩）
 
-**必须用真指针**（用户明确要求：最终 Gate 禁用 `dispatchEvent`；合成事件只能用于 debug）。
+**必须用真指针。** 但 `locator.click()` 在这个 IAB 构建里**完全不可用**（连 `force: true` 都超时）；可用路径是：
 
 ```js
-// 每次新 kernel 都要重跑 bootstrap
 const root = process.env.ZCODE_PLUGIN_ROOT;
 const { join } = await import("node:path");
 const { pathToFileURL } = await import("node:url");
 const { setupBrowserRuntime } = await import(pathToFileURL(join(root, "scripts", "browser-client.mjs")).href);
 await setupBrowserRuntime({ globals: globalThis });
 const browser = await agent.browsers.get("iab");
-const tab = await browser.tabs.get("iab-tab:1c4fb4e3-40e5-4f62-ad46-739c652cc408"); // 失效就先 tabs.list() 再 get
+const tab = await browser.tabs.new();               // 每轮一条新标签页
+const ev = (fn, arg) => tab.playwright.evaluate(fn, arg);
+const rectOf = (sel) => ev((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; }, sel);
+await tab.cua.click({ x: /* rect */, y: /* rect */ });   // 真指针，isTrusted=true
 ```
 
-坑与对策：
-- **`locator.click()` 不能传 `{ timeout }`**（harness 返回 `unrecognized_keys`）→ 只写 `.click()` / `.fill(v)`。
-- 每次 run 前：`goto(URL)` → 清 `localStorage`/`sessionStorage` → `reload()` → 等 9s（首屏 payload 需 6–9s）→ 再装 `fetch`/`error` 钩子（**reload 会清掉钩子**）。
-- 关键选择器：`[data-company-identity]`（打开切换器）· `[data-company-search] input` · `[data-company-result="<code>"]` · `[data-saved-company]` / `[data-recent-company]` · `[data-anchor-id]` · `[data-aperture]` · `[data-reading-sheet]` · `[data-evidence-breadcrumb]` · `[data-ai-lens] textarea` · `[data-ai-send]`/`[data-ai-stop]`/`[data-ai-retry]` · `[data-demo-start]`/`[data-demo-pause]`/`[data-demo-skip]`/`[data-demo-exit]` · `[data-company-transition]`/`[data-transition-cancel]`/`[data-transition-elapsed]` · `[data-zoom-pct]` · `[data-ticker]`。
-- **截图/录制捕获面经常超时**（`screenshot surface preparation timed out`），且**录制与截图同时做必失败**；本轮结论以浏览器观测 + 网络/时序日志为准，用户已同意截图 OPTIONAL、不做视频。
-- 页面偶发"回落到 Reading/隐藏头部 chrome"的状态：用 Esc 逐层退出，或 `goto` 重载；这是已知小毛病（见 §5）。
-- 每步都要**声明式断言**（ticker、维度数、zoom、`window.__api` 计数、`window.__err`），不要只看"没报错"。
+- `cua.click` 的事件 `isTrusted: true`，合规；**不要**用 `dispatchEvent`。
+- **一条标签页的输入通道会退化**：先是每次点击从 ~50ms 涨到 ~5s，然后彻底不投递事件（返回成功但页面收不到任何 pointerdown）。对策：**每轮一条新标签页，整轮塞进一个 JS cell 里**（cell 上限 120s，`timeout_ms` 要设到 118000）。
+- **不要依赖 `reload()`**：重载会和应用的 history 状态机打架（reload 后 `historyState` 带着旧 `{stockCode, dim, read:true}`），而且第二次 reload 后输入通道基本必坏。干净起点 = `tabs.new()` + `goto` + 清 storage + 一次 `reload`。
+- **首屏要轮询，不要固定等待**：`/api/research/init` 实测 14.3s / 15.1s / 15.6s / 19.7s / 21.4s / 25.2s / 27.6s。所有"等 9s / 等 19.5s"的做法都会翻车。
+- 计时用**页内标记**（`performance.now()` + capture 阶段 `pointerdown` 监听 + MutationObserver），不要用 Node 侧时间差——`cua.*` 本身有 40ms–5s 的派发开销，会把测量污染成 3s。
+- 截图/录制：本轮完全没用（上一轮已与用户约定不做）。判定依据是 DOM 断言、命中测试、Resource Timing、页内计时。
+- 断言 Resource Timing 时注意：**注入的失败请求不会产生 resource entry**（是合成的 `Response`，没有真实网络），所以失败态的"请求计数"要用别的方式验证（比如 Retry 后真实请求出现）。
 
-## 8. 下一轮的最小执行顺序（照做即可）
+## 7. 下一轮的最小执行顺序
 
-1. **修 §5.1 的搜索名称回退**（小改，随手一起提交）。
-2. **B2**：按 §7 准备美的现场（zoom 120% + 挪一个维度 + 开一个光圈 + 至少 1 轮 AI 历史）→ 清 `stocklens.canvas.600036.SH` → 真指针切招商银行 → 确认全屏过渡 → 4s 后真指针点 `← 返回美的集团` → 记录 `cancelRestoreMs`（目标 ≤300ms）→ 逐项比对现场恢复 → **再等 30s** 断言美的未被迟到 CMB 响应覆盖。
-3. **B1**：从 1/6 完整跑 Demo V2，重点肉眼确认 Scene 6 依次出现「Add research angle」和「Research Shelf/Company Switcher」；全程 `research/init = 0`、`research/dimension = 0`、`followup = 0`；Exit 后比对 demo 前现场。
-4. **B3**：美的与招商都先完成一次 session → 在美的预置 zoom/挪维度/pin note/AI 历史 → CMB→美的 真指针往返 → 断言 `init = 0`、`restoreMs < 400ms`、五项目现场全恢复（**不允许再用 dynamic-id drift 解释**，这条路径不重新 init）。
-5. **B4**：在 `NODE_ENV !== "production"` 下实现 `?testFailure=research-init|dimension|followup`（生产默认关闭）→ 三类失败态 + Retry/Back 各真指针验证。
-6. **B5**：干净 context 跑完整旅程（Canvas→Dimension→Aperture→Reading→Evidence→AI→未缓存切换→缓存恢复）→ 断言 console 0 uncaught / 0 React / 0 hydration、local 动作 0 业务请求、三类远程各 ≤1、duplicate = 0。
-7. 全部跑完后才更新 `docs/design-audit/task16-2/{RELEASE_GATE,INTERACTION_MANIFEST,KNOWN_BUGS}.md`（用户要求：**先测后写文档**）。
+1. 决定是否补测 §5 的 11 项；其中「三种视口矩阵」和「⌘K / 修饰键」需要新的驱动能力（本轮驱动器发不出修饰键）。
+2. 若要闭环 Task 16.2B：重跑 `npm run package:submission`（当前 `dist-submission/StockLens_Submission.zip` 是 0.63MB，**早于本轮 5 个提交**），并把它计入「提交包不含 `docs/design-audit/`」的既有约定。
+3. README 的测试数（309/356 → 385）与 `?testFailure` 的说明属于 Task 17 范围。
+4. **不要**在没有新一轮 Task prompt 的情况下动产品代码。
 
-## 9. 硬约束（违反即返工）
+## 8. 硬约束（违反即返工）
 
 - 不得新增产品能力（Compare / Time Travel / Voice / 新数据源 / 新指标 / 新渲染器 / 新 AI 架构）；不得重设计 UI。
-- 后端语义冻结；`src/lib/research|world|evidence` 不做改造；不得为提速删除校验/证据/真值层。
-- 不得输出确定性涨跌预测、收益承诺、买卖建议；事实/推断/未知必须区分；证据不足必须标 UNKNOWN；不得静默生成"正常"结论。
-- 不得提交 API Key / 隐私数据 / 受限数据；演示与测试只用构造数据；`docs/design-audit/` 与第三方参考截图不进提交包。
+- 后端语义冻结；`src/lib/research|world|evidence` 不做改造。
+- 不得输出确定性涨跌预测、收益承诺、买卖建议；事实/推断/未知必须区分；证据不足必须标 UNKNOWN。
+- 不得提交 API Key / 隐私数据 / 受限数据；`docs/design-audit/` 与第三方参考截图不进提交包。
 - **Task 17 未获准**：不做 README 定稿、不做根路由切换、不生成最终 ZIP/MP4、不宣布产品完成。
+
+## 9. 未修的缺陷（本轮新发现，已记录未动）
+
+`docs/design-audit/task16-2/KNOWN_BUGS.md` #14–#18，要点：
+- Demo 提示卡写「观看 **60** 秒演示」，实际 50s（文案）。
+- `cancelSwitch` 设的「已取消等待」永远不可见——`pendingCompany` 同一次提交里就被置空，过渡层立即卸载。
+- **整页 reload 不恢复画布快照**：`sessionStorage["stocklens.canvas.*"]` 里存着 `camera.scale` 和挪动位置，但 boot 路径只写 `payloadCacheRef`、从不调 `applySession`（AI 线程倒是会从 `stocklens.thread.*` 恢复）。会话内缓存往返是好的（B3 PASS）。
+- 切换器面板处在 `z-50` 的 header 层叠上下文里，任何 `z ≥ 55` 的浮层都能盖住它（#12 就是被 `z-62` 的提示卡盖住；`?perfDebug=1` 的 `z-[70]` 和 `?aiDebug=1` 的 `z-[75]` 面板也在这个角）。
+- **OBSERVED ONCE, NOT REPRODUCED**：一次未缓存切换后 `localStorage["stocklens.shelf.recent"]` 只剩新公司，美的从 RECENT 消失。随后 5 次运行（含挂 `localStorage.setItem` 追踪器的一次）都写出 `["600036.SH","000333.SZ"]` 正确。`recordVisit` 从渲染闭包读 `recentCompanies`，是唯一找到的可疑机制，但没复现。
 
 ## 10. 产物索引
 
-`docs/design-audit/task16/`（导航闭环 + Shelf + Demo V1 的 8 张图 + STATUS + guided-demo.webm 66s）· `task16-1/`（PERFORMANCE_AUDIT.md、PERFORMANCE_RESULTS.md、INTERACTION_LATENCY_MATRIX.md、LOADER_REFERENCE_AUDIT.md）· `task16-2/`（INTERACTION_MANIFEST.md、RELEASE_GATE.md、KNOWN_BUGS.md）· `docs/final/`（REQUIREMENT_MATRIX.md 17 行 15 PASS/2 PARTIAL、PACKAGE_MANIFEST.md、5 个骨架文件待 Task 17 定稿）· `dist-submission/StockLens_Submission.zip`（0.63MB，密钥扫描 PASS；**最后一次打包早于最近几次修复，Task 17 需重跑**）· 打包命令 `npm run package:submission`。
+- `docs/design-audit/task16-2/`：`RELEASE_GATE.md`（六 Gate 状态 + 证据句 + 未测清单）、`INTERACTION_MANIFEST.md`（46 行逐控件结果，PASS 29 / PARTIAL 6 / NOT TESTED 11）、`KNOWN_BUGS.md`（#1–#18 + 两条“这是有意设计”）
+- `docs/design-audit/task16-1/`：PERFORMANCE_AUDIT、PERFORMANCE_RESULTS、INTERACTION_LATENCY_MATRIX、LOADER_REFERENCE_AUDIT
+- `docs/design-audit/task16/`：导航闭环 + Shelf + Demo V1 的 8 张图 + STATUS + guided-demo.webm 66s
+- `docs/final/`：`REQUIREMENT_MATRIX.md`（17 行 15 PASS / 2 PARTIAL）、PACKAGE_MANIFEST、5 个骨架文件待 Task 17 定稿
+- `dist-submission/StockLens_Submission.zip`（0.63MB，密钥扫描 PASS；**早于本轮 5 个提交，Task 17 需重跑**）· 打包命令 `npm run package:submission`

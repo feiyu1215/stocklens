@@ -525,7 +525,9 @@ export default function ResearchCanvas() {
             : prev,
         )
         setPositions((p) => ({ ...p, [dim.dimensionId]: { x: world.x, y: world.y } }))
-        setApertureId(dim.dimensionId)
+        // §6：新维度原地转为 ready/partial/unknown；不自动打开 Aperture（保持标签可见）
+        setApertureId(null)
+        setDisplaced({})
         setAdding(null)
       } catch {
         setAdding(null)
@@ -692,7 +694,7 @@ export default function ResearchCanvas() {
   // ---- derived ----
   const transform = `translate3d(${-camera.x * camera.scale}px, ${-camera.y * camera.scale}px, 0) scale(${camera.scale})`
   const zoomPct = Math.round(camera.scale * 100)
-  const panelW = readingId ? Math.round(viewport.width * 0.36) : viewport.width
+  const panelW = readingId ? Math.round(Math.max(viewport.width * 0.3, 300)) : viewport.width
   const visible = anchors.filter((a) => !parked.includes(a.dimensionId))
   const suggestions = (payload?.suggestions ?? []).slice(0, 2)
   const readingDimension = payload && readingId ? payload.dimensions.find((d) => d.dimensionId === readingId) ?? null : null
@@ -709,7 +711,7 @@ export default function ResearchCanvas() {
   }
 
   return (
-    <main className="relative h-screen w-screen select-none overflow-hidden" style={{ background: C.bg, color: C.ink }}>
+    <main className="relative h-screen w-screen select-none overflow-hidden overflow-x-hidden" style={{ background: C.bg, color: C.ink }}>
       {/* 画布底纹（§12） */}
       <div
         aria-hidden
@@ -1270,10 +1272,10 @@ export default function ResearchCanvas() {
             data-ui
             data-breadcrumb
             onClick={closeReading}
-            className="pointer-events-auto font-mono text-[11px] tracking-[0.14em]"
+            className="pointer-events-auto absolute left-8 top-16 font-mono text-[11px] tracking-[0.14em]"
             style={{ color: C.secondary, minHeight: 36 }}
           >
-            {payload.company.stockName} / <span style={{ color: C.ink }}>{readingDimension?.label}</span> ✕
+            ← {payload.company.stockName} / <span style={{ color: C.ink }}>{readingDimension?.label}</span>
           </button>
         ) : (
           <div data-ui className="pointer-events-auto relative flex items-center gap-5 font-mono text-[12px] tracking-[0.14em]" style={{ color: C.secondary }}>
@@ -1347,7 +1349,8 @@ export default function ResearchCanvas() {
         data-ui
         data-lens-trigger
         onClick={() => setLensOpen(true)}
-        className="absolute bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border px-5 backdrop-blur"
+        className="absolute bottom-6 z-50 -translate-x-1/2 rounded-full border px-5 backdrop-blur"
+        style-panel="1"
         style={{
           borderColor: C.hair,
           background: "rgba(255,255,255,0.8)",
@@ -1356,6 +1359,7 @@ export default function ResearchCanvas() {
           fontFamily: "ui-monospace, monospace",
           fontSize: 11,
           letterSpacing: "0.18em",
+          left: readingId ? panelW / 2 : viewport.width / 2,
         }}
       >
         ⌘K&nbsp;&nbsp;Explore · Focus · Add

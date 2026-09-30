@@ -1,0 +1,56 @@
+{
+  "capturedAt": "2026-09-30T20:40:02.262Z",
+  "viewport": "1440x900 & 1280x800",
+  "calls": [
+    {
+      "endpoint": "/__nextjs_original-stack-frames",
+      "method": "POST",
+      "ms": 24,
+      "ok": true,
+      "query": null,
+      "status": 200,
+      "stockCode": null,
+      "t": "2026-09-30T20:38:37.772Z"
+    },
+    {
+      "endpoint": "/api/followup",
+      "method": "POST",
+      "ms": 8815,
+      "ok": true,
+      "query": null,
+      "status": 200,
+      "stockCode": "000333.SZ",
+      "t": "2026-09-30T20:38:48.274Z"
+    },
+    {
+      "endpoint": "/__nextjs_original-stack-frames",
+      "method": "POST",
+      "ms": 13,
+      "ok": true,
+      "query": null,
+      "status": 200,
+      "stockCode": null,
+      "t": "2026-09-30T20:38:50.052Z"
+    },
+    {
+      "endpoint": "/api/stocks/search",
+      "method": "GET",
+      "ms": 338,
+      "ok": true,
+      "query": "q=%E6%8B%9B%E5%95%86%E9%93%B6%E8%A1%8C",
+      "status": 200,
+      "stockCode": null,
+      "t": "2026-09-30T20:39:05.673Z"
+    },
+    {
+      "endpoint": "/api/research/init",
+      "method": "POST",
+      "ms": 16779,
+      "ok": true,
+      "query": null,
+      "status": 200,
+      "stockCode": "600036.SH",
+      "t": "2026-09-30T20:39:34.360Z"
+    }
+  ]
+}

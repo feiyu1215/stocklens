@@ -145,19 +145,31 @@ export default function ReadingV3({
   const railMetrics = (railEvidence?.metricIds ?? []).map((m) => space.metrics.find((x) => x.metricId === m)).filter((m): m is MetricResult => Boolean(m))
 
   return (
-    <div className="absolute inset-0 z-50 flex" style={{ background: V3_PALETTE.bg, color: V3_PALETTE.ink }}>
-      {/* 左 media strip（§53：10–20% Company Visual，保持在同一世界） */}
-      <MediaStrip />
+    <div
+      className="absolute inset-0 z-50 grid"
+      style={{
+        background: V3_PALETTE.bg,
+        color: V3_PALETTE.ink,
+        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 22vw)",
+        overflowX: "hidden",
+      }}
+    >
       {/* 中：Claim Spine */}
-      <div className="relative flex-1 overflow-y-auto px-14 pb-32 pt-10">
+      <div className="relative min-w-0 overflow-y-auto overflow-x-hidden px-12 pb-36 pt-10">
         <div className="font-mono text-[10px] tracking-[0.28em]" style={{ color: V3_PALETTE.secondary }}>
           {space.company.stockCode} · RESEARCH READING
         </div>
         <div className="mt-2 flex items-end justify-between">
           <h1
             ref={titleRef}
-            className="text-[46px] font-medium leading-[1.05] tracking-[-0.01em]"
-            style={{ wordBreak: "keep-all" }}
+            className="font-medium leading-[1.06] tracking-[-0.01em]"
+            style={{
+              fontSize: "clamp(38px, 3.4vw, 52px)",
+              whiteSpace: "normal",
+              overflow: "visible",
+              wordBreak: "keep-all",
+              maxWidth: "100%",
+            }}
           >
             {dimension.label}
           </h1>
@@ -182,7 +194,7 @@ export default function ReadingV3({
           <span>{dimension.status.toUpperCase()}</span>
         </div>
 
-        <ol className="mt-12 max-w-[720px] space-y-12">
+        <ol className="mt-12 space-y-12" style={{ maxWidth: 720 }}>
           {spine.map((claim, index) => {
             const isActive = activeClaimId === claim.claimId
             const isChallenge = challengeId === claim.claimId
@@ -366,13 +378,16 @@ export default function ReadingV3({
       </div>
 
       {/* 右：Evidence Rail（editorial column + 竖 rule，§55） */}
-      <aside className="relative w-[352px] shrink-0 border-l pl-7 pr-8 pt-10" style={{ borderColor: "rgba(16,19,24,0.1)" }}>
+      <aside
+        className="relative min-w-0 overflow-y-auto border-l pl-6 pr-6 pt-10"
+        style={{ borderColor: "rgba(16,19,24,0.1)", width: 316 }}
+      >
         {railEvidence ? (
           <>
             <div className="flex items-center justify-between font-mono text-[9.5px] tracking-[0.24em]" style={{ color: V3_PALETTE.secondary }}>
               <span>{previewId && previewId !== pinnedId ? "PREVIEWING" : pinnedId ? "PINNED" : "EVIDENCE"}</span>
-              <span style={{ color: railEvidence.type === "inference" ? V3_PALETTE.violet : V3_PALETTE.blue }}>
-                {railEvidence.type.toUpperCase()}
+              <span style={{ color: V3_PALETTE.secondary }}>
+                {railEvidence.verifyStatus === "verified" ? "VERIFIED" : "UNVERIFIED"}
               </span>
             </div>
             <h3 className="mt-4 text-[19px] font-medium leading-snug">{railEvidence.title}</h3>
@@ -448,21 +463,3 @@ export default function ReadingV3({
 }
 
 /** 左侧 media strip：小幅静态 cool media（§53 continuity；零逐帧成本） */
-function MediaStrip() {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const c = ref.current
-    if (!c) return
-    c.width = 260
-    c.height = 1100
-    const ctx = c.getContext("2d")
-    if (!ctx) return
-    void import("@/lib/v3/media").then((m) => m.paintCoolMedia(ctx, c.width, c.height, 20261001))
-  }, [])
-  return (
-    <div className="relative w-[9%] shrink-0 overflow-hidden" aria-hidden>
-      <canvas ref={ref} className="absolute left-0 top-0 h-full w-full" style={{ filter: "blur(10px) brightness(1.02)" }} />
-      <div className="absolute inset-y-0 right-0 w-px" style={{ background: "rgba(16,19,24,0.12)" }} />
-    </div>
-  )
-}

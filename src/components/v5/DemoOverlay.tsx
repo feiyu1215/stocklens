@@ -50,7 +50,7 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
         {final ? (
           <div
             data-demo-final
-            className="border px-6 py-5 backdrop-blur"
+            className="pointer-events-auto border px-6 py-5 backdrop-blur"
             style={{ borderColor: C.hair, background: "rgba(255,255,255,0.96)", boxShadow: "0 16px 48px rgba(17,21,27,0.12)" }}
           >
             <div className="text-[19px] leading-snug" style={{ color: C.ink }}>

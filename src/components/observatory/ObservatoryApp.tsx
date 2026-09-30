@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { StockSearchItem } from "@/lib/data/stock-search"
 import { Discovery } from "./Discovery"
-import { SpaceView } from "./SpaceView"
 import { FocusView } from "./FocusView"
+import { ResearchWorkspace, type WorkspaceActions } from "./ResearchWorkspace"
+import { PearlFieldRenderer } from "./renderers/pearl"
+import { DuskRenderer } from "./renderers/dusk"
 import { OBSERVATORY_COLORS, type AddedDimensionResult, type ObservatoryScene, type ResearchSpacePayload } from "./theme"
 
 // Observatory 主控（Architecture §31/§85–§86 + Visual Spec §3–§5/§54–§69）：
@@ -29,8 +31,10 @@ export function ObservatoryApp({
   const [addText, setAddText] = useState("")
   const [addStatus, setAddStatus] = useState<"idle" | "submitting" | "unknown" | "ready" | "error" | "redirect">("idle")
   const [addMessage, setAddMessage] = useState<string | null>(null)
-  const [assemblingDimensionId, setAssemblingDimensionId] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [rendererId, setRendererId] = useState<"pearl" | "dusk">("pearl")
+  const [workspaceActions, setWorkspaceActions] = useState<WorkspaceActions | null>(null)
+  const [isCompact, setIsCompact] = useState(false)
   const [commandText, setCommandText] = useState("")
   const addInputRef = useRef<HTMLInputElement>(null)
   const commandInputRef = useRef<HTMLInputElement>(null)
@@ -97,6 +101,13 @@ export function ObservatoryApp({
     }
   }, [fixture, initialStockCode, loadSpace])
 
+  useEffect(() => {
+    const update = () => setIsCompact(window.innerWidth < 1024)
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
+
   // ⌘K / Ctrl+K 打开 Command Lens
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -149,7 +160,6 @@ export function ObservatoryApp({
         return
       }
       // 新对象以 outline 形式先进入空间（assembling → 结果状态）
-      setAssemblingDimensionId(body.dimensionId ?? null)
       setSpace((prev) =>
         prev
           ? {
@@ -171,7 +181,6 @@ export function ObservatoryApp({
       )
       setAddText("")
       // 保持 Lens 打开以展示结果（ready/unknown 提示），用户自行关闭
-      setTimeout(() => setAssemblingDimensionId(null), 900)
     } catch {
       setAddStatus("error")
       setAddMessage("无法连接研究服务。")
@@ -180,19 +189,37 @@ export function ObservatoryApp({
 
   const commandActions = useMemo(() => {
     if (!space) return []
+    const spatial = workspaceActions
+      ? [
+          { label: "Gather", run: () => { setCommandOpen(false); workspaceActions.gather() } },
+          { label: "Spread", run: () => { setCommandOpen(false); workspaceActions.spread() } },
+          { label: "Fit", run: () => { setCommandOpen(false); workspaceActions.fit() } },
+          { label: "Reset layout", run: () => { setCommandOpen(false); workspaceActions.resetLayout() } },
+          { label: "Focus selected", run: () => { setCommandOpen(false); workspaceActions.focusSelected() } },
+          { label: "Show all", run: () => { setCommandOpen(false); workspaceActions.showAll() } },
+          { label: "Collapse summaries", run: () => { setCommandOpen(false); workspaceActions.collapseSummaries() } },
+        ]
+      : []
+    const appearance = [
+      { label: rendererId === "pearl" ? "Dusk" : "Pearl", run: () => { setCommandOpen(false); setRendererId((r) => (r === "pearl" ? "dusk" : "pearl")) } },
+    ]
     if (selectedDimension) {
       return [
         { label: `Ask about ${selectedDimension.label}`, run: () => { setCommandOpen(false) } },
         { label: "Inspect evidence", run: () => { setCommandOpen(false); setScene("DIMENSION_FOCUS") } },
         { label: "Add related dimension", run: () => { setCommandOpen(false); setAddLensOpen(true) } },
+        ...spatial,
+        ...appearance,
       ]
     }
     return [
       { label: "Ask about this company", run: () => { setCommandOpen(false) } },
       { label: "Add dimension", run: () => { setCommandOpen(false); setAddLensOpen(true) } },
       { label: "Search another company", run: () => { setCommandOpen(false); setScene("DISCOVERY"); setSpace(null) } },
+      ...spatial,
+      ...appearance,
     ]
-  }, [space, selectedDimension])
+  }, [space, selectedDimension, workspaceActions, rendererId])
 
   const handleSelect = (item: StockSearchItem) => {
     setActiveStockCode(item.stockCode)
@@ -278,11 +305,11 @@ export function ObservatoryApp({
           </div>
         )}
 
-        {scene === "SPACE_OVERVIEW" && space && (
-          <SpaceView
+        {scene === "SPACE_OVERVIEW" && space && !isCompact && (
+          <ResearchWorkspace
             space={space}
-            selectedDimensionId={selectedDimensionId}
-            onDimensionSelect={(id) => {
+            renderer={rendererId === "pearl" ? PearlFieldRenderer : DuskRenderer}
+            onOpenDimension={(id) => {
               setSelectedDimensionId(id)
               setScene("DIMENSION_FOCUS")
             }}
@@ -290,10 +317,32 @@ export function ObservatoryApp({
             onSuggestionAdd={(label) => void submitAddDimension(label)}
             onSuggestionDismiss={(label) => setDismissedSuggestions((prev) => [...prev, label])}
             dismissedSuggestions={dismissedSuggestions}
-            addingDimensionId={assemblingDimensionId}
             addLensOpen={addLensOpen}
-            onOpenCommandLens={() => setCommandOpen(true)}
+            registerActions={setWorkspaceActions}
           />
+        )}
+
+        {scene === "SPACE_OVERVIEW" && space && isCompact && (
+          <div className="flex h-full w-full flex-col justify-center gap-4 overflow-x-auto px-5">
+            <div className="text-center">
+              <div className="text-[18px] font-medium" style={{ color: "#F1F3F5" }}>{space.company.stockName}</div>
+              <div className="mt-1 font-mono text-[11.5px] text-[#8C94A8]">{space.company.stockCode}{space.company.industryName ? ` · ${space.company.industryName}` : ""}</div>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {space.dimensions.map((d) => (
+                <button
+                  key={d.dimensionId}
+                  type="button"
+                  onClick={() => { setSelectedDimensionId(d.dimensionId); setScene("DIMENSION_FOCUS") }}
+                  className="min-w-[160px] shrink-0 rounded-xl border border-[#232838] bg-[#12161F]/85 px-3.5 py-3 text-left"
+                >
+                  <div className="text-[14px] text-[#F1F3F5]" style={{ wordBreak: "keep-all" }}>{d.label}</div>
+                  <div className="mt-1 text-[11px] text-[#8C94A8]">{d.evidenceIds.length} evidence</div>
+                </button>
+              ))}
+            </div>
+            <div className="text-center text-[11px] text-[#6C7488]">点击维度进入研究面</div>
+          </div>
         )}
 
         {scene === "DIMENSION_FOCUS" && space && selectedDimension && (

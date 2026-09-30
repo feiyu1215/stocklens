@@ -95,6 +95,11 @@
 4. 冷调 media 为程序绘制抽象图；进入正式内容系统后可替换为公司专属影像（§32 已说明本轮不解决）
 5. Reading 的 `06/07` 帧未做逐帧放大对比；webm 为准
 
+## Production
+
+https://stocklens-blush.vercel.app/observatory-v3 —— 线上复验通过（7 objects / identity / chrome 全在），
+生产 `/observatory` 未受影响。线上截图：`10-production-v3.png`。
+
 ## Verification
 
 `npx tsc --noEmit` PASS · `npx eslint src/components/v3 src/lib/v3 src/app/observatory-v3` 0 error 0 warning ·

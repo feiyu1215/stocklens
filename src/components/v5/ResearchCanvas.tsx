@@ -61,17 +61,27 @@ interface AiScope {
   evidenceId?: string
 }
 
+type TurnStatus = "running" | "completed" | "stopped" | "failed"
+
 interface AiEntry {
   id: string
   question: string
+  stockName: string
   scopeType: AiScopeType
   scopeLabel: string
-  status: "loading" | "done" | "failed"
+  /** §21：发送瞬间冻结的 scope + 证据（历史 Turn 永远用它自己的上下文） */
+  dimensionId?: string
+  claimId?: string
+  evidenceIds: string[]
+  status: TurnStatus
+  createdAt: string
+  generatedAt?: string
   summary?: string
   confirmed?: string[]
   unknowns?: string[]
-  evidenceIds: string[]
   message?: string
+  /** §37：本地保存问题以便 Edit question（Retry 用冻结上下文） */
+  frozenQuestion: string
 }
 
 function aiSuggestionsFor(scope: AiScope, payload: ResearchSpacePayload | null): string[] {
@@ -121,7 +131,18 @@ export default function ResearchCanvas() {
   /** §6：scope 自动来自 activeCompany / dimension / claim / evidence */
   const [aiScopeOverride, setAiScopeOverride] = useState<AiScope | null>(null)
   const [aiDebugOn, setAiDebugOn] = useState(false)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
+  // 贴底跟随用 ref：避免闭包/提交时序导致「上翻仍被强制拉到底」
+  const atBottomRef = useRef(true)
+  const [hasNewResponse, setHasNewResponse] = useState(false)
+  const [threadReady, setThreadReady] = useState<Record<string, boolean>>({})
   const aiInputRef = useRef<HTMLTextAreaElement>(null)
+  const aiThreadRef = useRef<HTMLDivElement>(null)
+  /** §12/§25：第一版单活跃任务 */
+  const aiAbortRef = useRef<AbortController | null>(null)
+  const focusAiLensRef = useRef<((scope: AiScope | null, preset?: string) => void) | null>(null)
+  const askRef = useRef<((q: string, scope: AiScope) => Promise<void>) | null>(null)
+  const aiRunningStockRef = useRef<string | null>(null)
   /** 最近一次 Aperture 的客观度量（§43/§49：碰撞前后数量、位移对象数） */
   const [apertureMetrics, setApertureMetrics] = useState<{
     rect: Rect
@@ -193,6 +214,53 @@ export default function ResearchCanvas() {
       cancelled = true
     }
   }, [])
+
+  // §4：session 内持久化（仅 thread 数据，不含任何 secret）
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      try {
+        const next: Record<string, AiEntry[]> = {}
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i)
+          if (key?.startsWith("stocklens.thread.")) {
+            next[key.replace("stocklens.thread.", "")] = JSON.parse(sessionStorage.getItem(key) ?? "[]")
+          }
+        }
+        if (Object.keys(next).length > 0) {
+          setAiThreads(next)
+          // 恢复的历史必须可见：有历史就把线程展开，并贴到最新一轮
+          if (Object.values(next).some((turns) => turns.length > 0)) {
+            setAiOpen(true)
+            window.setTimeout(() => {
+              const el = aiThreadRef.current
+              if (el) {
+                el.scrollTop = el.scrollHeight
+                atBottomRef.current = true
+              }
+            }, 150)
+          }
+        }
+      } catch {
+        // 忽略存储异常
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    for (const [code, turns] of Object.entries(aiThreads)) {
+      try {
+        sessionStorage.setItem(`stocklens.thread.${code}`, JSON.stringify(turns))
+      } catch {
+        // 配额/隐私模式：忽略
+      }
+    }
+  }, [aiThreads])
 
   useEffect(() => {
     const update = () => {
@@ -334,7 +402,11 @@ export default function ResearchCanvas() {
       }
       if (e.key === "Escape") {
         if (lensOpen) { setLensOpen(false); return }
-        if (aiOpen) { setAiOpen(false); return }
+        if (aiOpen) {
+          setAiOpen(false)
+          aiInputRef.current?.blur()
+          return
+        }
         closeAperture()
         setSuggestOpen(null)
         setAsk(null)
@@ -342,7 +414,7 @@ export default function ResearchCanvas() {
       }
       if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
         e.preventDefault()
-        focusAiLens(null)
+        focusAiLensRef.current?.(null)
       }
       if (e.key === " " && !e.repeat) {
         spaceRef.current = true
@@ -367,7 +439,8 @@ export default function ResearchCanvas() {
       window.removeEventListener("keydown", onDown)
       window.removeEventListener("keyup", onUp)
     }
-  }, [fitAll, fitSelection])
+    // 事件回调在触发时读取最新 state；此处依赖稳定回调即可
+  }, [fitAll, fitSelection, aiOpen, lensOpen, closeAperture])
 
   // ---- pointer 仲裁（§17：5px 阈值，click 与 drag 分离） ----
   const onPointerDown = useCallback(
@@ -712,23 +785,39 @@ export default function ResearchCanvas() {
       if (!payload || q.length === 0) return
       const stockCode = payload.company.stockCode
       const evidenceIds = scopeEvidenceIds(scope)
+      // §25：单活跃任务——运行中不允许再发问
+      if (aiAbortRef.current) {
+        setAiNotice("Stop the current response before asking another question.")
+        return
+      }
       const entry: AiEntry = {
         id: `ai-${Date.now()}`,
         question: q,
+        frozenQuestion: q,
+        stockName: payload.company.stockName,
         scopeType: scope.type,
         scopeLabel: scopeLabel(scope),
-        status: "loading",
+        ...(scope.dimensionId ? { dimensionId: scope.dimensionId } : {}),
+        ...(scope.claimId ? { claimId: scope.claimId } : {}),
         evidenceIds,
+        status: "running",
+        createdAt: new Date().toISOString(),
       }
       setAiThreads((t) => ({ ...t, [stockCode]: [...(t[stockCode] ?? []), entry] }))
       setAiInput("")
+      setAiNotice(null)
       setAiStatus("loading")
       setAiOpen(true)
+      setHasNewResponse(false)
+      const controller = new AbortController()
+      aiAbortRef.current = controller
+      aiRunningStockRef.current = stockCode
       try {
         const res = await fetch("/api/followup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stockCode, question: q, evidenceIds }),
+          signal: controller.signal,
         })
         const body = await res.json()
         const patch = (updates: Partial<AiEntry>) =>
@@ -741,28 +830,75 @@ export default function ResearchCanvas() {
           return
         }
         if (body.mode === "compliance_redirect") {
-          patch({ status: "done", summary: body.compliance?.message ?? "不提供买卖建议。" })
+          patch({ status: "completed", summary: body.compliance?.message ?? "不提供买卖建议。", generatedAt: new Date().toISOString() })
           return
         }
         const syn = body.synthesis
         patch({
-          status: "done",
+          status: "completed",
+          generatedAt: new Date().toISOString(),
           summary: syn?.summary?.text,
           confirmed: (syn?.confirmedFacts ?? []).map((x: { text: string; evidenceIds?: string[] }) => x.text),
           unknowns: (syn?.unknowns ?? []).map((x: { text: string }) => x.text),
         })
-      } catch {
+      } catch (err) {
+        const aborted = err instanceof DOMException && err.name === "AbortError"
         setAiThreads((t) => ({
           ...t,
           [stockCode]: (t[stockCode] ?? []).map((x) =>
-            x.id === entry.id ? { ...x, status: "failed", message: "AI interpretation is temporarily unavailable." } : x,
+            x.id === entry.id
+              ? aborted
+                ? { ...x, status: "stopped", message: "Stopped by you" }
+                : { ...x, status: "failed", message: "AI interpretation is temporarily unavailable." }
+              : x,
           ),
         }))
       } finally {
+        aiAbortRef.current = null
+        aiRunningStockRef.current = null
         setAiStatus("idle")
       }
     },
     [payload, scopeEvidenceIds, scopeLabel],
+  )
+
+  /** §11–§13：Stop = abort 客户端等待；不声称服务端模型已终止 */
+  const stopAi = useCallback(() => {
+    const c = aiAbortRef.current
+    if (!c) return
+    c.abort()
+  }, [])
+
+  /** §17：Retry 使用冻结的问题与证据上下文（不改为当前 scope） */
+  const retryTurn = useCallback(
+    (entry: AiEntry) => {
+      const scope: AiScope =
+        entry.scopeType === "dimension"
+          ? { type: "dimension", dimensionId: entry.dimensionId }
+          : entry.scopeType === "claim"
+            ? { type: "claim", claimId: entry.claimId }
+            : entry.scopeType === "evidence"
+              ? { type: "evidence", evidenceId: entry.evidenceIds[0] }
+              : { type: "company" }
+      void askRef.current?.(entry.frozenQuestion, scope)
+    },
+    [],
+  )
+
+  /** §15：Edit question = 把原问题放回输入框，并恢复其 scope */
+  const editTurn = useCallback(
+    (entry: AiEntry) => {
+      const scope: AiScope =
+        entry.scopeType === "dimension"
+          ? { type: "dimension", dimensionId: entry.dimensionId }
+          : entry.scopeType === "claim"
+            ? { type: "claim", claimId: entry.claimId }
+            : entry.scopeType === "evidence"
+              ? { type: "evidence", evidenceId: entry.evidenceIds[0] }
+              : { type: "company" }
+      focusAiLensRef.current?.(scope, entry.frozenQuestion)
+    },
+    [],
   )
 
   /** §23–§25：所有 Ask 入口只改变 scope 并聚焦同一个 Lens */
@@ -772,6 +908,22 @@ export default function ResearchCanvas() {
     if (preset !== undefined) setAiInput(preset)
     window.setTimeout(() => aiInputRef.current?.focus(), 60)
   }, [])
+
+  useEffect(() => {
+    focusAiLensRef.current = focusAiLens
+    askRef.current = handleAskAI
+  }, [focusAiLens, handleAskAI])
+
+  const externalJob = useMemo(() => {
+    const code = payload?.company.stockCode
+    if (!code) return null
+    const rows = Object.entries(aiThreads).filter(
+      ([c, turns]) =>
+        c !== code &&
+        turns.some((t) => t.status === "running" || (t.status === "completed" && !threadReady[c])),
+    )
+    return rows.length > 0 ? rows : null
+  }, [aiThreads, payload, threadReady])
 
   const closeReading = useCallback(() => {
     setReadingId(null)
@@ -871,6 +1023,18 @@ export default function ResearchCanvas() {
   useEffect(() => {
     addDimensionRef.current = addDimension
   }, [addDimension])
+
+  // §8：贴底才自动跟随；上翻时只标记有未读
+  useEffect(() => {
+    const el = aiThreadRef.current
+    if (!el || !aiOpen) return
+    const raf = window.requestAnimationFrame(() => {
+      if (atBottomRef.current) el.scrollTop = el.scrollHeight
+      else setHasNewResponse(true)
+    })
+    return () => window.cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在线程内容长度变化时触发
+  }, [aiThreads, aiOpen])
 
   // ---- derived ----
   const transform = `translate3d(${-camera.x * camera.scale}px, ${-camera.y * camera.scale}px, 0) scale(${camera.scale})`
@@ -1117,6 +1281,8 @@ export default function ResearchCanvas() {
           })}
 
           {/* Focus Aperture（§5–§14/§33）：专属排除区 + 半透明白面，非 SaaS 卡 */}
+          {/* 菜单项里的 ref 读取发生在点击回调内（非渲染期），编译器保守报错 */}
+          {/* eslint-disable-next-line react-hooks/refs */}
           {apertureId && apertureMetrics && (() => {
             const a = anchors.find((x) => x.dimensionId === apertureId)
             if (!a) return null
@@ -1243,7 +1409,7 @@ export default function ResearchCanvas() {
                   >
                     {[
                       { label: "Pin summary", key: "pin", run: () => pinNote(a) },
-                      { label: "Ask about this", key: "ask", run: () => focusAiLens({ type: "dimension", dimensionId: a.dimensionId }) },
+                      { label: "Ask about this", key: "ask", run: () => focusAiLensRef.current?.({ type: "dimension", dimensionId: a.dimensionId }) },
                       { label: "Park", key: "park", run: () => park(a.dimensionId) },
                     ].map((item) => (
                       <button
@@ -1530,6 +1696,7 @@ export default function ResearchCanvas() {
       <div
         data-ui
         data-ai-lens
+        onPointerDown={() => setAiOpen(true)}
         className="absolute bottom-6 z-[55] flex items-center gap-3 rounded-full border px-4 backdrop-blur"
         style={{
           left: readingId ? panelW / 2 : viewport.width / 2,
@@ -1567,12 +1734,12 @@ export default function ResearchCanvas() {
         <button
           type="button"
           data-ai-send
-          onClick={() => void handleAskAI(aiInput, aiScope)}
+          onClick={() => (aiStatus === "loading" ? stopAi() : void handleAskAI(aiInput, aiScope))}
           className="font-mono text-[12px]"
-          style={{ color: aiInput.trim() ? C.blue : C.secondary, minWidth: 28, minHeight: 36 }}
-          title="Send (Enter)"
+          style={{ color: aiStatus === "loading" ? C.coral : aiInput.trim() ? C.blue : C.secondary, minWidth: 28, minHeight: 36 }}
+          title={aiStatus === "loading" ? "Stop" : "Send (Enter)"}
         >
-          ↵
+          {aiStatus === "loading" ? "■" : "↵"}
         </button>
         <button
           type="button"
@@ -1585,8 +1752,11 @@ export default function ResearchCanvas() {
         </button>
       </div>
 
-      {/* §30：聚焦后的建议问题（最多 3，随 scope 变化） */}
-      {aiOpen && aiInput.length === 0 && aiStatus === "idle" && (
+      {/* §30：聚焦后的建议问题（最多 3，随 scope 变化）；线程有历史时让位，避免遮住 Retry/Stop */}
+      {aiOpen &&
+        aiInput.length === 0 &&
+        aiStatus === "idle" &&
+        (aiThreads[payload?.company.stockCode ?? ""]?.length ?? 0) === 0 && (
         <div
           data-ui
           data-ai-suggestions
@@ -1612,14 +1782,23 @@ export default function ResearchCanvas() {
         <div
           data-ui
           data-ai-thread
+          ref={aiThreadRef}
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+            atBottomRef.current = nearBottom
+            if (nearBottom) setHasNewResponse(false)
+          }}
           className="absolute z-[54] overflow-y-auto border px-5 py-4"
           style={{
             left: readingId ? Math.min(panelW / 2, viewport.width / 2 - 300) : viewport.width / 2 - 320,
             bottom: 108,
             width: 640,
-            maxHeight: 366,
+            maxHeight: 420,
             borderColor: C.hair,
             background: "rgba(255,255,255,0.94)",
+            overscrollBehavior: "contain",
           }}
         >
           {aiThreads[payload.company.stockCode].map((entry, i, arr) => (
@@ -1633,17 +1812,53 @@ export default function ResearchCanvas() {
                 {entry.question}
               </p>
               <div className="mt-1.5 h-px w-full" style={{ background: C.hair }} />
-              {entry.status === "loading" && (
-                <p className="mt-2 font-mono text-[11px]" style={{ color: C.secondary }}>
-                  Reviewing current evidence…
-                </p>
+              {entry.status === "running" && (
+                <div className="mt-2 flex items-center gap-3" data-ai-thinking>
+                  <p className="font-mono text-[11px]" style={{ color: C.secondary }}>
+                    Reviewing {entry.evidenceIds.length > 0 ? entry.evidenceIds.length + " evidence objects" : "current evidence"}…
+                  </p>
+                  <button
+                    type="button"
+                    data-ai-stop
+                    onClick={stopAi}
+                    className="rounded-[4px] border px-2.5 font-mono text-[10.5px]"
+                    style={{ borderColor: C.hair, color: C.coral, minHeight: 30 }}
+                  >
+                    ■ Stop
+                  </button>
+                </div>
               )}
               {entry.status === "failed" && (
-                <p className="mt-2 text-[12px] leading-relaxed" style={{ color: C.secondary }}>
-                  AI interpretation is temporarily unavailable. Current evidence remains available.
-                </p>
+                <div className="mt-2 space-y-1.5" data-ai-failed>
+                  <p className="text-[12px] leading-relaxed" style={{ color: C.secondary }}>
+                    AI interpretation is temporarily unavailable. Current evidence remains available.
+                  </p>
+                  <div className="flex gap-3">
+                    <button type="button" data-ai-retry onClick={() => retryTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.blue, minHeight: 28 }}>
+                      Retry answer
+                    </button>
+                    <button type="button" onClick={() => editTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 28 }}>
+                      Edit question
+                    </button>
+                  </div>
+                </div>
               )}
-              {entry.status === "done" && (
+              {entry.status === "stopped" && (
+                <div className="mt-2 space-y-1.5" data-ai-stopped>
+                  <p className="font-mono text-[11px]" style={{ color: C.coral }}>
+                    Stopped by you
+                  </p>
+                  <div className="flex gap-3">
+                    <button type="button" data-ai-retry onClick={() => retryTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.blue, minHeight: 28 }}>
+                      Retry answer
+                    </button>
+                    <button type="button" onClick={() => editTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 28 }}>
+                      Edit question
+                    </button>
+                  </div>
+                </div>
+              )}
+              {entry.status === "completed" && (
                 <div className="mt-2 space-y-2 text-[12.5px] leading-relaxed" style={{ color: C.secondary }}>
                   {entry.summary && <p style={{ color: C.ink }}>{entry.summary}</p>}
                   {entry.confirmed?.length ? (
@@ -1692,8 +1907,27 @@ export default function ResearchCanvas() {
                           {["①", "②", "③", "④"][j]}
                         </button>
                       ))}
+                      {payload.dimensions
+                        .filter((d) => d.dimensionId !== entry.dimensionId && (entry.summary ?? "").includes(d.label))
+                        .slice(0, 2)
+                        .map((d) => (
+                          <button
+                            key={d.dimensionId}
+                            type="button"
+                            data-ai-dimlink={d.dimensionId}
+                            onClick={() => {
+                              const anchor = anchors.find((x) => x.dimensionId === d.dimensionId)
+                              if (anchor) openAperture(anchor)
+                            }}
+                            className="font-mono text-[10.5px]"
+                            style={{ color: C.blue, minHeight: 28 }}
+                          >
+                            {d.label} ↗
+                          </button>
+                        ))}
                       <button
                         type="button"
+                        data-ai-collapse
                         onClick={() => setAiOpen(false)}
                         className="ml-auto font-mono text-[10px]"
                         style={{ color: C.secondary, minHeight: 28 }}
@@ -1706,6 +1940,72 @@ export default function ResearchCanvas() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* §8/§9：用户上翻时不强制拉回底部，出现 ↓ New response */}
+      {hasNewResponse && aiOpen && (
+        <button
+          type="button"
+          data-ui
+          data-ai-new
+          onClick={() => {
+            const el = aiThreadRef.current
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+            setHasNewResponse(false)
+            atBottomRef.current = true
+          }}
+          className="absolute z-[56] rounded-full border px-3 font-mono text-[10.5px] backdrop-blur"
+          style={{ left: readingId ? panelW / 2 : viewport.width / 2, transform: "translateX(-50%)", bottom: 96, borderColor: C.hair, background: "rgba(255,255,255,0.92)", color: C.blue, minHeight: 30 }}
+        >
+          ↓ New response
+        </button>
+      )}
+
+      {/* §18/§23/§46：跨公司后台任务胶囊（不劫持当前公司） */}
+      {externalJob && payload && (
+          <button
+            type="button"
+            data-ui
+            data-ai-capsule
+            onClick={() => {
+              const other = Object.entries(aiThreads).find(([code, turns]) => code !== payload.company.stockCode && turns.length > 0)
+              if (other) {
+                setThreadReady((r) => ({ ...r, [other[0]]: true }))
+                void switchCompany(other[0])
+              }
+            }}
+            className="absolute bottom-6 left-8 z-[56] flex items-center gap-2 rounded-full border px-3 font-mono text-[10.5px] backdrop-blur"
+            style={{ borderColor: C.hair, background: "rgba(255,255,255,0.92)", color: C.secondary, minHeight: 36 }}
+          >
+            {Object.entries(aiThreads)
+              .filter(([code, turns]) => code !== payload.company.stockCode && turns.some((t) => t.status === "running"))
+              .map(([code, turns]) => {
+                const running = turns.filter((t) => t.status === "running").slice(-1)[0]
+                return (
+                  <span key={code} data-ai-background-job={code}>
+                    ✦ {running?.stockName ?? code} · {running?.scopeLabel ?? ""} · Answering… ■
+                  </span>
+                )
+              })}
+            {Object.entries(aiThreads)
+              .filter(([code, turns]) => code !== payload.company.stockCode && turns.some((t) => t.status === "completed") && !turns.some((t) => t.status === "running") && !threadReady[code])
+              .map(([code, turns]) => (
+                <span key={code + "-ready"} data-ai-answer-ready={code}>
+                  ✓ {turns[turns.length - 1]?.stockName ?? code} · Answer ready
+                </span>
+              ))}
+          </button>
+        )}
+
+      {/* §25：单活跃任务提示 */}
+      {aiNotice && (
+        <div
+          data-ui
+          className="absolute z-[56] rounded border px-3 py-2 font-mono text-[10.5px]"
+          style={{ left: readingId ? panelW / 2 : viewport.width / 2, transform: "translateX(-50%)", bottom: 64, borderColor: C.hair, background: "rgba(255,255,255,0.94)", color: C.coral }}
+        >
+          {aiNotice}
         </div>
       )}
 

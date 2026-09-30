@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import CompanyTransition from "@/components/v5/CompanyTransition"
 import DemoOverlay from "@/components/v5/DemoOverlay"
 import { instrumentPointer, interactionPerf, perfDebugEnabled, type InteractionRecord } from "@/lib/v5/perf"
 import { DEMO_ANGLE_PLACEHOLDER, DEMO_SCENES, DEMO_TYPED_QUESTION, isLastScene, sceneAt, sceneBy, type DemoActionKind } from "@/lib/v5/demo"
@@ -190,7 +191,7 @@ export default function ResearchCanvas() {
   /** 切换公司时的解析中提示（§B13） */
   const [resolvingName, setResolvingName] = useState<string | null>(null)
   const [researchTimes, setResearchTimes] = useState<Record<string, number>>({})
-  const switchCompanyRef = useRef<((stockCode: string) => Promise<void>) | null>(null)
+  const switchCompanyRef = useRef<((stockCode: string, meta?: { name?: string; industry?: string }, opts?: { mode?: "refresh"; force?: boolean }) => Promise<void>) | null>(null)
   /** 切换序号：过期请求不得覆盖新选择（防止连点两次落到错的公司） */
   const switchSeqRef = useRef(0)
   /** §B15：待恢复的研究焦点（等该公司 anchors 就绪后打开一次） */
@@ -241,6 +242,13 @@ export default function ResearchCanvas() {
   const [revealCount, setRevealCount] = useState(99)
   const [perfOn, setPerfOn] = useState(false)
   const [perfRows, setPerfRows] = useState<InteractionRecord[]>([])
+  // §1–§21：全屏 Research Transition（仅未缓存公司切换 / Refresh）
+  const [switchStartedAt, setSwitchStartedAt] = useState<number | null>(null)
+  const [elapsedSec, setElapsedSec] = useState(0)
+  const [switchMorph, setSwitchMorph] = useState(false)
+  const [switchMode, setSwitchMode] = useState<"company" | "refresh">("company")
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null)
+  const [lastCompanyName, setLastCompanyName] = useState<string | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
   // §D39/§D40：••• 菜单 + Clear thread 二次确认（视觉关闭 ≠ 删除历史）
   const [threadMenuOpen, setThreadMenuOpen] = useState(false)
@@ -1186,12 +1194,17 @@ export default function ResearchCanvas() {
     setSwitchError(null)
     setResolvingName(null)
     setRevealCount(99)
+    setSwitchMorph(false)
+    setSwitchStartedAt(null)
+    // §16：只说事实——不声称服务端 AI 计算已取消
+    setCancelNotice("已取消等待")
+    window.setTimeout(() => setCancelNotice(null), 1800)
   }, [])
 
   const switchCompany = useCallback(
-    async (stockCode: string, meta?: { name?: string; industry?: string }) => {
+    async (stockCode: string, meta?: { name?: string; industry?: string }, opts?: { mode?: "refresh"; force?: boolean }) => {
       const currentCode = payloadRef.current?.company.stockCode
-      if (currentCode === stockCode) {
+      if (currentCode === stockCode && !opts?.force) {
         switchSeqRef.current += 1
         switchAbortRef.current?.abort()
         setPendingCompany(null)
@@ -1210,8 +1223,8 @@ export default function ResearchCanvas() {
       setCompanyQuery(null)
       setCompanyResults([])
 
-      // ---- §6 CACHED PATH：有会话就不调用 /api/research/init ----
-      const cached = payloadCacheRef.current[stockCode]
+      // ---- §6/§20 CACHED PATH：有会话就不调用 /api/research/init，也不开全屏 ----
+      const cached = opts?.force ? undefined : payloadCacheRef.current[stockCode]
       if (cached) {
         const seq = ++switchSeqRef.current
         interactionPerf.markStart(`company:cache:${stockCode}`, "local")
@@ -1225,6 +1238,11 @@ export default function ResearchCanvas() {
       // ---- §7–§13 UNCACHED PATH：立即过渡，不让界面看起来卡住 ----
       const seq = ++switchSeqRef.current
       interactionPerf.markStart(`company:init:${stockCode}`, "remote")
+      setLastCompanyName(payloadRef.current?.company.stockName ?? null)
+      setSwitchMode(opts?.mode ?? "company")
+      setSwitchStartedAt(Date.now())
+      setElapsedSec(0)
+      setCancelNotice(null)
       setPendingCompany(target)
       setSwitchPhase("resolving")
       setSwitchError(null)
@@ -1246,9 +1264,14 @@ export default function ResearchCanvas() {
         if (seq !== switchSeqRef.current) return // §15：过期响应不得覆盖更新的目标
         applySession(data, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
         recordVisit(stockCode, data.company.stockName, data.company.industryName ?? undefined)
-        setPendingCompany(null)
-        setSwitchPhase("idle")
-        setSwitchError(null)
+        // §17/§18：不硬切——身份保持位置连续，占位逐个被真实维度取代后再退出
+        setSwitchMorph(true)
+        window.setTimeout(() => {
+          setSwitchMorph(false)
+          setPendingCompany(null)
+          setSwitchPhase("idle")
+          setSwitchError(null)
+        }, 900)
       } catch (e) {
         if (seq !== switchSeqRef.current) return
         if ((e as Error)?.name === "AbortError") return
@@ -1290,6 +1313,13 @@ export default function ResearchCanvas() {
     const raf = window.requestAnimationFrame(() => openAperture(anchor))
     return () => window.cancelAnimationFrame(raf)
   }, [payload, anchors, openAperture])
+
+  // §9：真实 elapsed（来自 requestStart，不是预测）
+  useEffect(() => {
+    if (switchPhase !== "resolving" || switchStartedAt === null) return
+    const id = window.setInterval(() => setElapsedSec(Math.floor((Date.now() - switchStartedAt) / 1000)), 1000)
+    return () => window.clearInterval(id)
+  }, [switchPhase, switchStartedAt])
 
   // §3：?perfDebug=1 才启用的交互计时（自动标记 pointer → 首个视觉更新）
   useEffect(() => {
@@ -1788,8 +1818,8 @@ export default function ResearchCanvas() {
             transform,
             transformOrigin: "0 0",
             transition: "transform 560ms cubic-bezier(0.22,1,0.36,1), opacity 320ms ease, filter 320ms ease",
-            opacity: switchPhase === "resolving" ? 0.32 : 1,
-            filter: switchPhase === "resolving" && !reducedMotion ? "blur(0.6px)" : "none",
+            opacity: 1,
+            filter: "none",
           }}
         >
           {/* Evidence Trace（§13） */}
@@ -2483,8 +2513,8 @@ export default function ResearchCanvas() {
                       const code = payloadRef.current?.company.stockCode
                       if (!code) return
                       setRefreshNote("Refreshing…")
-                      void switchCompanyRef.current?.(code)
-                      window.setTimeout(() => setRefreshNote(null), 1600)
+                      void switchCompanyRef.current?.(code, undefined, { mode: "refresh", force: true })
+                      window.setTimeout(() => setRefreshNote(null), 2600)
                     }}
                     className="mt-1 font-mono text-[10px] underline decoration-dotted transition hover:opacity-80"
                     style={{ color: C.secondary, minHeight: 26, cursor: "pointer" }}
@@ -2980,78 +3010,25 @@ export default function ResearchCanvas() {
         </div>
       )}
 
-      {/* §11/§42：未缓存研究空间的占位（中性骨架，不含任何虚构研究概念）与失败态 */}
-      {(switchPhase === "resolving" || switchPhase === "failed") && pendingCompany && (
-        <div
-          data-company-transition
-          className="pointer-events-none absolute left-1/2 top-[46%] z-[58] w-[560px] -translate-x-1/2 -translate-y-1/2"
-        >
-          <div className="flex items-baseline justify-between">
-            <div>
-              <div className="text-[30px] leading-tight" style={{ color: C.ink }}>
-                {pendingCompany.name}
-              </div>
-              <div className="mt-1 font-mono text-[11px] tracking-[0.2em]" style={{ color: C.secondary }}>
-                {pendingCompany.stockCode}
-                {pendingCompany.industry ? ` · ${pendingCompany.industry}` : ""}
-              </div>
-            </div>
-            {switchPhase === "resolving" && (
-              <span data-transition-copy className="font-mono text-[11px]" style={{ color: C.secondary }}>
-                正在构建研究空间…
-              </span>
-            )}
-          </div>
-          <div className="mt-7 space-y-4" data-placeholder-set>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} data-placeholder className="flex items-center gap-4" style={{ opacity: 0.55, animation: reducedMotion ? "none" : `v5-placeholder 2.4s ease-in-out ${i * 0.18}s infinite` }}>
-                <span className="font-mono text-[10px]" style={{ color: C.secondary }}>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="block h-px flex-1" style={{ background: "rgba(17,21,27,0.18)" }} />
-                <span className="font-mono text-[10px]" style={{ color: C.secondary }}>
-                  research angle resolving
-                </span>
-              </div>
-            ))}
-          </div>
-          {switchPhase === "failed" && (
-            <div data-transition-failed className="pointer-events-auto mt-8 flex items-center gap-4">
-              <span className="text-[13px]" style={{ color: C.coral }}>
-                {switchError ?? "研究空间暂时无法完成"}
-              </span>
-              <button
-                type="button"
-                data-transition-retry
-                onClick={() => void switchCompanyRef.current?.(pendingCompany.stockCode)}
-                className="font-mono text-[11px]"
-                style={{ color: C.blue, minHeight: 30, cursor: "pointer" }}
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                data-transition-cancel
-                onClick={cancelSwitch}
-                className="font-mono text-[11px]"
-                style={{ color: C.secondary, minHeight: 30, cursor: "pointer" }}
-              >
-                返回上一家公司
-              </button>
-            </div>
-          )}
-          {switchPhase === "resolving" && (
-            <button
-              type="button"
-              data-transition-cancel
-              onClick={cancelSwitch}
-              className="pointer-events-auto mt-8 font-mono text-[11px]"
-              style={{ color: C.secondary, minHeight: 30, cursor: "pointer" }}
-            >
-              取消 · 返回 {payload?.company.stockName ?? "上一家公司"}
-            </button>
-          )}
-        </div>
+      {/* §1–§21：Full-Screen Research Transition（Transition 就是当前页面） */}
+      {pendingCompany && (switchPhase === "resolving" || switchPhase === "failed" || switchMorph) && (
+        <CompanyTransition
+          target={pendingCompany}
+          mode={switchMode}
+          phase={switchPhase === "failed" ? "failed" : "resolving"}
+          elapsedSec={elapsedSec}
+          error={switchError}
+          notice={switchMorph ? null : cancelNotice}
+          reducedMotion={reducedMotion}
+          previousName={lastCompanyName ?? undefined}
+          exiting={switchMorph}
+          onCancel={cancelSwitch}
+          onRetry={() => {
+            setSwitchPhase("resolving")
+            setSwitchError(null)
+            void switchCompanyRef.current?.(pendingCompany.stockCode, { name: pendingCompany.name, industry: pendingCompany.industry }, { force: true, mode: switchMode === "refresh" ? "refresh" : undefined })
+          }}
+        />
       )}
 
       {/* §3：开发期交互计时面板（仅 ?perfDebug=1） */}
@@ -3313,6 +3290,18 @@ export default function ResearchCanvas() {
         :focus-visible {
           outline: 2px solid rgba(47,102,255,0.55);
           outline-offset: 2px;
+        }
+        @keyframes v5-transition-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes v5-transition-out {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+        @keyframes v5-scan {
+          0% { transform: translateY(-40vh); }
+          100% { transform: translateY(120vh); }
         }
         @keyframes v5-placeholder {
           0%, 100% { opacity: 0.32; }

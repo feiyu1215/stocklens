@@ -1554,6 +1554,8 @@ export default function ResearchCanvas() {
   const demoTimersRef = useRef<number[]>([])
   const demoTypeTimerRef = useRef<number | null>(null)
 
+  const enterSceneRef = useRef<((index: number) => void) | null>(null)
+
   const clearDemoTimers = useCallback(() => {
     demoTimersRef.current.forEach((id) => window.clearTimeout(id))
     demoTimersRef.current = []
@@ -1707,13 +1709,18 @@ export default function ResearchCanvas() {
 
   // 场景调度：进入场景时排布该场景内的动作/字幕；暂停即清表
   useEffect(() => {
+    enterSceneRef.current = enterScene
+  }, [enterScene])
+
+  useEffect(() => {
     if (demoIndex === null || demoPaused || demoFinal) return
-    const raf = window.requestAnimationFrame(() => enterScene(demoIndex))
+    // 只按场景号驱动：定时器不再被无关重渲染清掉（否则会永远停在 Scene 1）
+    const id = window.setTimeout(() => enterSceneRef.current?.(demoIndex), 0)
     return () => {
-      window.cancelAnimationFrame(raf)
+      window.clearTimeout(id)
       clearDemoTimers()
     }
-  }, [demoIndex, demoPaused, demoFinal, enterScene, clearDemoTimers])
+  }, [demoIndex, demoPaused, demoFinal, clearDemoTimers])
 
   // §37：用户主动操作 → 暂停演示（不抢鼠标，也不吞掉控件点击）
   useEffect(() => {

@@ -3,7 +3,8 @@
 ## Commit
 
 - Baseline: `a3b8918`（00-before-*.png 摄于此提交）
-- Implementation: 见 git log（本轮 feat commit）
+- Implementation: `eb81de3`（feat: terrain as information architecture + true semantic morph）
+- Verification record: 生产复验 commit（19-production-overview.png）
 
 ## Production URL
 

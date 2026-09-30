@@ -44,6 +44,7 @@ function EvidenceRail({
   onPin,
   claimContext,
   onReturnToClaim,
+  activeEvidenceId = null,
 }: {
   evidence: Evidence[]
   metrics: MetricResult[]
@@ -54,6 +55,8 @@ function EvidenceRail({
   claimContext?: string | null
   /** §95：Evidence Rail 的 Return to claim */
   onReturnToClaim?: () => void
+  /** §45：锚点点击后对应 Evidence 视觉权重上升 */
+  activeEvidenceId?: string | null
 }) {
   const id = previewId ?? pinnedId ?? evidence[0]?.evidenceId ?? null
   const current = evidence.find((e) => e.evidenceId === id) ?? null
@@ -73,11 +76,12 @@ function EvidenceRail({
     .filter((mm): mm is MetricResult => Boolean(mm))
   const color = evidenceColor(current)
 
+  const emphasized = activeEvidenceId === current.evidenceId
   return (
     <aside
       className="flex w-[340px] shrink-0 flex-col border-l border-black/10"
       aria-label="Evidence Rail"
-      style={{ transition: "opacity 120ms ease-out" }}
+      style={{ transition: "opacity 120ms ease-out, box-shadow 340ms ease-out", boxShadow: emphasized ? "inset 3px 0 0 rgba(46,155,224,0.55)" : "none" }}
     >
       <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
         <span className="font-mono text-[10px] tracking-wider text-[#676A70]">
@@ -98,7 +102,11 @@ function EvidenceRail({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div
+        key={current.evidenceId}
+        className="flex-1 overflow-y-auto px-5 py-4"
+        style={{ animation: "observatory-rail-in 320ms ease-out" }}
+      >
         <div className="text-[14px] font-medium text-[#14161B]">{current.title}</div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-[#3A3D45]">{current.statement}</p>
 
@@ -271,6 +279,8 @@ export function FocusView({
   onClaimFocus,
   onEvidenceFocus,
   onReturnToClaim,
+  embedded = false,
+  claimRevealBaseDelayMs = 0,
 }: {
   space: ResearchSpacePayload
   dimension: ResearchDimension
@@ -283,6 +293,10 @@ export function FocusView({
   onClaimFocus?: (claimId: string) => void
   onEvidenceFocus?: (evidenceId: string, claimId: string) => void
   onReturnToClaim?: () => void
+  /** Task 15.1：嵌在 MorphSurface 内（顶部偏移由 surface 承担；claims 从 region 内部 reveal §35） */
+  embedded?: boolean
+  /** claims reveal 的基础延迟（ms）＝ morph 时长 × 0.55（Frame 4） */
+  claimRevealBaseDelayMs?: number
 }) {
   const dimensionEvidence = useMemo(
     () =>
@@ -358,8 +372,31 @@ export function FocusView({
     }
   }
 
+  // Task 15.1 §48：anchor → rail 的空间 tether（表达「这条 Evidence 支撑当前 Claim」）。
+  // 两端坐标在锚点点击时一次性测量（事件期读 ref 合法），render 期不读 ref。
+  const [tether, setTether] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+
   return (
-    <div className="flex h-full w-full pt-14" style={{ background: OBSERVATORY_COLORS.readingSheet, color: OBSERVATORY_COLORS.readingInk }}>
+    <div
+      ref={rootRef}
+      data-reading-surface={dimension.dimensionId}
+      className={`relative flex h-full w-full ${embedded ? "" : "pt-14"}`}
+      style={{ background: OBSERVATORY_COLORS.readingSheet, color: OBSERVATORY_COLORS.readingInk }}
+    >
+      {/* anchor → rail tether（极轻，非装饰） */}
+      {tether && (
+        <svg aria-hidden className="pointer-events-none absolute inset-0 z-10 h-full w-full">
+          <path
+            d={`M ${tether.x1} ${tether.y1} C ${(tether.x1 + tether.x2) / 2 + 40} ${tether.y1 + 30}, ${tether.x2 + 28} ${tether.y1 - 20}, ${tether.x2} ${tether.y2}`}
+            fill="none"
+            stroke={OBSERVATORY_COLORS.readingSecondary}
+            strokeWidth={1}
+            strokeDasharray="2 4"
+            opacity={0.4}
+          />
+        </svg>
+      )}
       {/* 左 Context Strip */}
       <div className="flex w-[220px] shrink-0 flex-col border-r border-black/10 px-5 py-6">
         <div className="text-[13px] font-medium">{space.company.stockName}</div>
@@ -381,9 +418,10 @@ export function FocusView({
         <button
           type="button"
           onClick={onBack}
-          className="mt-5 self-start text-[12px] text-[#45B8FF] transition hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+          title="返回区域（面包屑为语义主入口）"
+          className="mt-5 self-start font-mono text-[10.5px] text-[#9A9BA0] transition hover:text-[#676A70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
         >
-          ← Back to space
+          ← terrain
         </button>
 
         <div className="mt-6 border-t border-black/10 pt-3">
@@ -430,6 +468,12 @@ export function FocusView({
                   opacity:
                     activeClaimId && activeClaimId !== claim.claimId ? (activeEvidenceId ? 0.34 : 0.6) : 1,
                   transition: "opacity 280ms ease-out",
+                  ...(embedded
+                    ? {
+                        animation: `observatory-claim-reveal 420ms ease-out both`,
+                        animationDelay: `${claimRevealBaseDelayMs + index * 70}ms`,
+                      }
+                    : {}),
                 }}
               >
                 <div className="flex items-start gap-3">
@@ -444,7 +488,11 @@ export function FocusView({
                       )}
                     </div>
                     <p
-                      className="mt-1.5 cursor-text text-[15px] leading-relaxed text-[#14161B]"
+                      className={`mt-1.5 cursor-text leading-relaxed text-[#14161B] ${
+                        activeEvidenceId && activeClaimId === claim.claimId
+                          ? "line-clamp-2 text-[13.5px]"
+                          : "text-[15px]"
+                      }`}
                       onClick={() => onClaimFocus?.(claim.claimId)}
                     >
                       {claim.text}
@@ -457,9 +505,21 @@ export function FocusView({
                           onMouseEnter={() => setPreviewId(claim.evidenceIds[anchors.indexOf(n)] ?? null)}
                           onMouseLeave={() => setPreviewId(null)}
                           onFocus={() => onClaimFocus?.(claim.claimId)}
-                          onClick={() => {
+                          onClick={(e) => {
                             const evidenceId = claim.evidenceIds[anchors.indexOf(n)] ?? null
                             setPinnedId(evidenceId)
+                            // §48：tether 从锚点指向 Evidence Rail
+                            const rootRect = rootRef.current?.getBoundingClientRect()
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                            if (rootRect) {
+                              const railX = rootRect.width - 348
+                              setTether({
+                                x1: rect.right - rootRect.left + 6,
+                                y1: rect.top - rootRect.top + 8,
+                                x2: railX,
+                                y2: 44,
+                              })
+                            }
                             if (evidenceId) onEvidenceFocus?.(evidenceId, claim.claimId)
                           }}
                           aria-label={`查看证据 ${n}`}
@@ -636,7 +696,15 @@ export function FocusView({
             ? (claims.find((c) => c.claimId === activeClaimId)?.text ?? null)
             : null
         }
-        {...(activeEvidenceId ? { onReturnToClaim } : {})}
+        activeEvidenceId={activeEvidenceId}
+        {...(activeEvidenceId && onReturnToClaim
+          ? {
+              onReturnToClaim: () => {
+                setTether(null)
+                onReturnToClaim()
+              },
+            }
+          : {})}
       />
     </div>
   )

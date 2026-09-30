@@ -54,6 +54,16 @@ import type { DimensionHandlers, SuggestionHandlers, WorldRenderer } from "./ren
 // ResearchWorkspace（Task 13 §1）：Camera / SpatialState / Layout / Interaction / Objects / Renderer。
 // 组件本身不包含任何视觉隐喻分支——所有外观经 WorldRenderer contract 输出。
 
+/** morph 源对象（屏幕坐标；Task 15.1 §28–§32） */
+export interface RegionMorphSource {
+  dimensionId: string
+  label: string
+  cx: number
+  cy: number
+  radius: number
+  seed: string
+}
+
 export interface WorkspaceActions {
   gather: () => void
   spread: () => void
@@ -62,6 +72,8 @@ export interface WorkspaceActions {
   focusSelected: () => void
   showAll: () => void
   collapseSummaries: () => void
+  /** region 的屏幕几何（morph 源）；Command Lens / 键盘路径与点击路径共用 */
+  regionSource: (dimensionId: string) => RegionMorphSource | null
 }
 
 interface DragState {
@@ -89,6 +101,7 @@ export function ResearchWorkspace({
   onSuggestionDismiss,
   registerActions,
   onCameraSample,
+  addingSuggestion = null,
   semanticState,
   onSemanticEvent,
   addLensOpen = false,
@@ -103,6 +116,8 @@ export function ResearchWorkspace({
   registerActions?: (actions: WorkspaceActions) => void
   /** 仅开发/评审：把空间 camera 采样给 ?experienceDebug=1 面板（§99） */
   onCameraSample?: (camera: import("@/lib/spatial/camera").CameraState) => void
+  /** Task 15.1 §23–§24：in-flight 研究方向 → region seed（unresolved contour） */
+  addingSuggestion?: string | null
   /** Task 15：语义状态由 App 单一持有（§10），workspace 只派发事件 */
   semanticState?: import("@/lib/experience/state").ExperienceState
   onSemanticEvent?: (event: import("@/lib/experience/state").ExperienceEvent) => void
@@ -242,8 +257,24 @@ export function ResearchWorkspace({
       focusSelected: () => setFocus((f) => focusSelected(f.selected)),
       showAll: () => setFocus(showAll()),
       collapseSummaries: () => setSummaries(collapseSummaries()),
+      regionSource: (dimensionId: string) => {
+        const l = layoutById.get(dimensionId)
+        const dim = space.dimensions.find((d) => d.dimensionId === dimensionId)
+        if (!l || !dim) return null
+        const richness = Math.min(dim.evidenceIds.length / 8, 1)
+        const radius = (74 + richness * 26) * Math.max(l.width / 176, 0.85) * camera.scale
+        const screen = toScreen(l.x, l.y)
+        return {
+          dimensionId,
+          label: dim.label,
+          cx: screen.x,
+          cy: screen.y,
+          radius,
+          seed: `${dim.dimensionId}:${dim.priority}`,
+        }
+      },
     })
-  }, [registerActions, fit, resetLayout])
+  }, [registerActions, fit, resetLayout, layoutById, space.dimensions, camera.scale, toScreen])
 
   // ---- Wheel zoom（§10，pointer-relative；trackpad 平滑） ----
   useEffect(() => {
@@ -431,9 +462,10 @@ export function ResearchWorkspace({
       if (dimensionId) setHoveredDimensionId(dimensionId)
     },
     onMouseLeave: () => setHoveredDimensionId(null),
+    onExplore: (dimensionId) => onOpenDimension(dimensionId),
     // getContainerRect/setDragState 每次渲染重建但语义稳定（前者读 state、后者 useCallback 包装）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [layoutById, toWorld, containerRect])
+  }), [layoutById, toWorld, containerRect, onOpenDimension])
 
   const suggestionHandlers = useMemo<SuggestionHandlers>(() => ({
     onPointerDown: (e) => {
@@ -479,6 +511,10 @@ export function ResearchWorkspace({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [peekDimensionId, onOpenDimension])
+
+  // Task 15.1 §29–§31：renderer 声明 inlineRegionPeek 时，单击 region 的展开概览
+  // 呈现在 region 内部（terrain），不再渲染独立 peek 卡片；交互状态机不变（复用 peek 状态）。
+  const inlineRegionPeek = Boolean(renderer.capabilities?.inlineRegionPeek)
 
   // ---- Derived: focus zone / proximity / peek / minimap ----
   const focusZoneActive = useMemo(
@@ -575,6 +611,8 @@ export function ResearchWorkspace({
             const l = layoutById.get(dim.dimensionId)
             return { dimension: dim, x: l?.x ?? 0, y: l?.y ?? 0, width: l?.width ?? 176 }
           }),
+          selectedDimensionId: focus.selected.length === 1 ? focus.selected[0] : null,
+          inlinePeekDimensionId: peekDimensionId,
           onRegionPointerEnter: (dimensionId) => setHoveredDimensionId(dimensionId),
           onRegionPointerLeave: () => setHoveredDimensionId(null),
           onRegionClick: (dimensionId) => {
@@ -627,6 +665,7 @@ export function ResearchWorkspace({
               expandedSummary: (claims[0]?.text ?? dim.researchQuestion).slice(0, 96),
               // summary 已是 claims[0]，列表从第二条开始，避免同一句话出现两次
               expandedClaims: claims.slice(1, 4).map((c) => c.text.slice(0, 56)),
+              inlinePeek: inlineRegionPeek && peekDimensionId === dim.dimensionId,
               ...(dragging && dragPosition ? { dragPosition: { x: dragPosition.x, y: dragPosition.y } } : {}),
             },
             dimensionHandlers,
@@ -707,10 +746,32 @@ export function ResearchWorkspace({
               suggestionHandlers,
             )
           })}
+
+      {/* Adding seed（Task 15.1 §23–§24）：region seed + unresolved contour，非 Spinner */}
+      {addingSuggestion && renderer.renderSuggestion(
+        {
+          label: addingSuggestion,
+          rationale: "",
+          x: 470,
+          y: -160 + space.suggestions.filter((sg) => !dismissedSuggestions.includes(sg.label)).slice(0, 3).length * 160,
+          expanded: false,
+          dragging: false,
+          overAddZone: false,
+          mode: "adding",
+        },
+        {
+          onPointerDown: () => undefined,
+          onMouseEnter: () => undefined,
+          onMouseLeave: () => undefined,
+          onAdd: () => undefined,
+          onDismiss: () => undefined,
+        },
+      )}
       </div>
 
-      {/* Peek（§25–§28）：空间保持，只在对象邻近展开 */}
-      {peekDimension && peekLayout && peekPosition && (
+      {/* Peek（§25–§28）：空间保持，只在对象邻近展开；
+          renderer 声明 inlineRegionPeek（terrain）时由 region 内联展开承载（§29–§31） */}
+      {!inlineRegionPeek && peekDimension && peekLayout && peekPosition && (
         <div
           className="absolute z-30 rounded-2xl border p-4 shadow-lg"
           style={{

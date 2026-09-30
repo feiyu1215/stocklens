@@ -27,17 +27,18 @@ export function contourPath(
   center: Point,
   baseRadius: number,
   seedKey: string,
-  options: { points?: number; roughness?: number } = {},
+  options: { points?: number; roughness?: number; squash?: number } = {},
 ): string {
   const points = options.points ?? 14
   const roughness = options.roughness ?? 0.18
+  const squash = options.squash ?? 0.72
   const seed = stableHashUnit(seedKey)
   const wobble = seededSequence(seed * 7, points)
   const coords: Point[] = []
   for (let i = 0; i < points; i++) {
     const angle = (i / points) * Math.PI * 2
     const r = baseRadius * (1 + (wobble[i] - 0.5) * 2 * roughness)
-    coords.push({ x: center.x + Math.cos(angle) * r, y: center.y + Math.sin(angle) * r * 0.72 })
+    coords.push({ x: center.x + Math.cos(angle) * r, y: center.y + Math.sin(angle) * r * squash })
   }
   // 平滑闭合：二次贝塞尔经过中点
   let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`
@@ -47,6 +48,83 @@ export function contourPath(
     const midX = (current.x + next.x) / 2
     const midY = (current.y + next.y) / 2
     d += ` Q ${current.x.toFixed(1)} ${current.y.toFixed(1)} ${midX.toFixed(1)} ${midY.toFixed(1)}`
+  }
+  return d + " Z"
+}
+
+/**
+ * 未闭合轮廓（Task 15.1 §17/§26）：UNKNOWN region 的「未完成边界」——
+ * 只画约 78% 的弧段，留出可见缺口，不做闭合虚线（closed dashed 已被 PARTIAL 占用）。
+ */
+export function openContourPath(
+  center: Point,
+  baseRadius: number,
+  seedKey: string,
+  options: { points?: number; roughness?: number; squash?: number } = {},
+): string {
+  const points = options.points ?? 12
+  const roughness = options.roughness ?? 0.22
+  const squash = options.squash ?? 0.72
+  const seed = stableHashUnit(seedKey)
+  const wobble = seededSequence(seed * 11, points)
+  const coords: Point[] = []
+  const sweep = Math.PI * 2 * 0.78
+  for (let i = 0; i < points; i++) {
+    const angle = -Math.PI / 2 + (i / (points - 1)) * sweep
+    const r = baseRadius * (1 + (wobble[i] - 0.5) * 2 * roughness)
+    coords.push({ x: center.x + Math.cos(angle) * r, y: center.y + Math.sin(angle) * r * squash })
+  }
+  let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`
+  for (let i = 1; i < coords.length - 1; i++) {
+    const current = coords[i]
+    const next = coords[i + 1]
+    d += ` Q ${current.x.toFixed(1)} ${current.y.toFixed(1)} ${((current.x + next.x) / 2).toFixed(1)} ${((current.y + next.y) / 2).toFixed(1)}`
+  }
+  return d
+}
+
+/**
+ * CONFLICT 小断裂（Task 15.1 §18）：region 内部一条 2–3 段的细小交叉断裂线。
+ * 尺寸受控（≈ radius*0.5），禁止巨型裂缝。
+ */
+export function fracturePath(center: Point, radius: number, seedKey: string): string {
+  const seed = stableHashUnit(seedKey)
+  const [u1, u2, u3] = seededSequence(seed * 13, 3)
+  const len = radius * 0.42
+  const angle = u1 * Math.PI
+  const dir = { x: Math.cos(angle), y: Math.sin(angle) * 0.72 }
+  const mid = { x: center.x + dir.x * len * (0.3 + u2 * 0.3), y: center.y + dir.y * len * (0.3 + u2 * 0.3) }
+  const p0 = { x: center.x - dir.x * len * 0.5, y: center.y - dir.y * len * 0.5 }
+  const p2 = { x: center.x + dir.x * len * 0.55, y: center.y + dir.y * len * 0.55 }
+  const cross = { x: mid.x - dir.y * len * (0.12 + u3 * 0.1), y: mid.y + dir.x * len * (0.12 + u3 * 0.1) }
+  return `M ${p0.x.toFixed(1)} ${p0.y.toFixed(1)} L ${mid.x.toFixed(1)} ${mid.y.toFixed(1)} L ${p2.x.toFixed(1)} ${p2.y.toFixed(1)} M ${mid.x.toFixed(1)} ${mid.y.toFixed(1)} L ${cross.x.toFixed(1)} ${cross.y.toFixed(1)}`
+}
+
+/** Company Territory 轮廓（Task 15.1 §6/§9）：整片地形，一整块而非群岛 */
+export function territoryContourPath(envelope: {
+  centerX: number
+  centerY: number
+  radiusX: number
+  radiusY: number
+}, seedKey: string): string {
+  const points = 18
+  const seed = stableHashUnit(seedKey)
+  const wobble = seededSequence(seed * 17, points)
+  const coords: Point[] = []
+  for (let i = 0; i < points; i++) {
+    const angle = (i / points) * Math.PI * 2
+    const wobbleX = 1 + (wobble[i] - 0.5) * 0.16
+    const wobbleY = 1 + (wobble[(i + 5) % points] - 0.5) * 0.16
+    coords.push({
+      x: envelope.centerX + Math.cos(angle) * envelope.radiusX * wobbleX,
+      y: envelope.centerY + Math.sin(angle) * envelope.radiusY * wobbleY,
+    })
+  }
+  let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`
+  for (let i = 1; i <= coords.length; i++) {
+    const current = coords[i % coords.length]
+    const next = coords[(i + 1) % coords.length]
+    d += ` Q ${current.x.toFixed(1)} ${current.y.toFixed(1)} ${((current.x + next.x) / 2).toFixed(1)} ${((current.y + next.y) / 2).toFixed(1)}`
   }
   return d + " Z"
 }

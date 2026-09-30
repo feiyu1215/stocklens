@@ -1,0 +1,99 @@
+{
+  "task": "15.1",
+  "viewport": "1440x900",
+  "renderer": "terrain",
+  "commit": "a3b8918 (baseline) → implementation commit (see TASK15_1_STATUS.md)",
+  "captureAid": "?captureSlow=1 multiplies morph/reverse durations ×5 for frame sampling; real interaction and real rendering only; final screenshots contain no debug panel",
+  "scenarios": [
+    {
+      "id": "before-baseline",
+      "start": "company",
+      "action": "open ?stockCode=000333.SZ, then Explore region (pre-implementation)",
+      "end": "claim",
+      "frames": ["00-before-terrain.png", "00-before-reading.png"],
+      "result": "pass",
+      "note": "Before: Company Core ball + six contour blobs + field dots + rectangular suggestion cards; reading entered as page switch"
+    },
+    {
+      "id": "terrain-overview",
+      "start": "company",
+      "action": "open ?stockCode=000333.SZ",
+      "end": "company",
+      "frames": ["01-after-terrain-overview.png"],
+      "result": "pass",
+      "note": "After: one Company Territory landmass + RESEARCH TERRITORY map title (no core ball) + regions with sampling landmarks + small conflict fractures + edge UNEXPLORED fog regions"
+    },
+    {
+      "id": "region-hover",
+      "start": "company",
+      "action": "hover 盈利质量 region",
+      "end": "company",
+      "frames": ["02-region-hover.png"],
+      "result": "pass",
+      "note": "Hovered region clarifies, other regions retreat (§13); landmarks belong to their region (§11–§13)"
+    },
+    {
+      "id": "region-selected",
+      "start": "company",
+      "action": "click 现金转化 region",
+      "end": "company",
+      "frames": ["03-region-selected.png"],
+      "result": "pass",
+      "note": "Click = selected/expanded overview only (§29–§30): region scales up, interior panel shows summary + top claims + evidence state, terrain context visible, explicit 'Explore region →' affordance"
+    },
+    {
+      "id": "dimension-morph",
+      "start": "company",
+      "action": "click region then 'Explore region →' (captureSlow: 600ms→3000ms)",
+      "end": "claim",
+      "frames": ["04-morph-frame-01.png", "05-morph-frame-02.png", "06-morph-frame-03.png", "07-reading-surface.png"],
+      "result": "pass",
+      "note": "Frame1 region enlarged at source position; Frame2 terrain recedes + region contour morphs into surface boundary + label in flight; Frame3 label arrives at title position; Frame4 settled Editorial Research Surface + Claim Spine + Evidence Rail. Boundary and label both continuous (§37)"
+    },
+    {
+      "id": "claim-evidence",
+      "start": "claim",
+      "action": "click claim text, then click anchor ①",
+      "end": "evidence",
+      "frames": ["08-claim-evidence-frame-01.png", "09-claim-evidence-frame-02.png", "10-evidence-detail.png"],
+      "result": "pass",
+      "note": "Claim focus dims mirrors; anchor click raises evidence weight (rail inset accent + 320ms slide-in), claim kept as CLAIM CONTEXT spine, light dashed anchor→rail tether, breadcrumb extends to claim segment, '← Return to claim' reverses"
+    },
+    {
+      "id": "unknown-growth",
+      "start": "company",
+      "action": "Add Lens → submit 海外业务 → wait UNKNOWN response → Explore region",
+      "end": "claim",
+      "frames": ["11-unknown-seed.png", "12-unknown-growing.png", "13-unknown-region.png", "14-unknown-reading.png"],
+      "result": "pass",
+      "note": "Seed = RESOLVING dashed contour (no spinner card, §24); response UNKNOWN → fog region with open contour lands (amber, 0 evidence incomplete); reading shows 'Current evidence is incomplete.' + Currently missing ×5 (amber left rule, not error)"
+    },
+    {
+      "id": "suggestion-growth",
+      "start": "company",
+      "action": "hover suggestion → Explore + → wait response",
+      "end": "company",
+      "frames": ["15-suggestion-unexplored.png", "16-suggestion-adding.png", "17-suggestion-resolved.png"],
+      "result": "pass",
+      "note": "Suggestion = UNEXPLORED fog region at territory edge (no rectangle card); hover reveals rationale + Explore + / Dismiss; adding shows RESOLVING seed; resolved region replaces suggestion at territory interior (source suggestion dismissed)"
+    },
+    {
+      "id": "degraded-localized",
+      "start": "company",
+      "action": "open ?fixture=one-other-industry (real degraded payload: ai=partial_failure, 0 claims)",
+      "end": "company",
+      "frames": ["18-degraded-localized.png"],
+      "result": "pass",
+      "note": "Each region shows local 'AI interpretation unavailable'; one faint page-level line; zero page-level failure banner (§54–§57); evidence/regions fully visible (Truth Layer unaffected)"
+    },
+    {
+      "id": "reverse-morph",
+      "start": "claim",
+      "action": "click company segment in semantic breadcrumb",
+      "end": "company",
+      "frames": [],
+      "result": "pass",
+      "note": "Reading surface collapses back into region (collapsing phase), regions regain contour, camera restored = Zoom Out not Back Page (§40–§43); '← terrain' demoted to faint link; Escape keeps keyboard parity"
+    }
+  ]
+}

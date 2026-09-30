@@ -38,6 +38,14 @@ import {
 } from "@/lib/experience/state"
 import { contextCommands } from "@/lib/experience/detail"
 import { COPY } from "@/lib/experience/copy"
+import { MorphSurface } from "./MorphSurface"
+import type { RegionMorphSource } from "./ResearchWorkspace"
+import {
+  TERRAIN_MOTION,
+  motionScaleForQuery,
+  readingRectFor,
+} from "@/lib/world/terrain-coverage"
+import type { MorphPhase } from "./renderers/types"
 import type { AddedDimensionResult, ObservatoryScene, ResearchSpacePayload } from "./theme"
 
 // Observatory 主控（Architecture §31/§85–§86 + Visual Spec §3–§5/§54–§69）：
@@ -60,6 +68,8 @@ export function ObservatoryApp({
   const [addLensOpen, setAddLensOpen] = useState(false)
   const [addText, setAddText] = useState("")
   const [addStatus, setAddStatus] = useState<"idle" | "submitting" | "unknown" | "ready" | "error" | "redirect">("idle")
+  /** §23–§24：in-flight 的研究方向 → workspace 渲染 region seed（RESOLVING），不用 Spinner Card */
+  const [addingSuggestion, setAddingSuggestion] = useState<string | null>(null)
   const [addMessage, setAddMessage] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [rendererId, setRendererId] = useState<WorldRendererId>("terrain")
@@ -74,6 +84,15 @@ export function ObservatoryApp({
   const [experienceDebug, setExperienceDebug] = useState(false)
   /** Company World 的空间 camera（仅用于 debug 面板显示，§99） */
   const [spaceCamera, setSpaceCamera] = useState<CameraState>({ ...IDENTITY_CAMERA })
+  // Task 15.1 §28–§43：semantic morph（Region → Reading，边界 + label 连续）
+  const [morph, setMorph] = useState<{ phase: MorphPhase; source: RegionMorphSource } | null>(null)
+  const morphProgressRef = useRef({ progress: 0, phase: "idle" })
+  const [morphDebug, setMorphDebug] = useState({ progress: 0, phase: "idle" })
+  /** 面包屑反向 morph 的落点（§42） */
+  const pendingJumpRef = useRef<"company" | "dimension">("company")
+  /** 采样辅助（真实交互、真实渲染，仅放慢；STATUS 已披露） */
+  const [captureSlow, setCaptureSlow] = useState(false)
+  const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 })
   const [localWorld, setLocalWorld] = useState<LocalResearchWorld>(() => ({ recentCompanies: [], savedCompanies: [] }))
   const [worldCamera, setWorldCamera] = useState<CameraState>({ ...IDENTITY_CAMERA })
   const [activeCompanyCode, setActiveCompanyCode] = useState<string | null>(null)
@@ -246,6 +265,7 @@ export function ObservatoryApp({
       if (cancelled) return
       const params = new URLSearchParams(window.location.search)
       if (params.get("experienceDebug") === "1") setExperienceDebug(true)
+      if (params.get("captureSlow") === "1") setCaptureSlow(true)
     })()
     return () => {
       cancelled = true
@@ -253,7 +273,10 @@ export function ObservatoryApp({
   }, [])
 
   useEffect(() => {
-    const update = () => setIsCompact(window.innerWidth < 1024)
+    const update = () => {
+      setIsCompact(window.innerWidth < 1024)
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight })
+    }
     update()
     window.addEventListener("resize", update)
     return () => window.removeEventListener("resize", update)
@@ -290,6 +313,46 @@ export function ObservatoryApp({
   )
   const renderer = rendererById[rendererId]
 
+  const motionScale = captureSlow ? motionScaleForQuery("1") : motionScaleForQuery(null)
+  const morphDurationMs = Math.round(TERRAIN_MOTION.regionToReading * motionScale)
+  const reverseDurationMs = Math.round(TERRAIN_MOTION.reverse * motionScale)
+
+  // debug 面板的 morph 进度（仅 debug 开启时轮询 ref，不影响渲染路径）
+  useEffect(() => {
+    if (!experienceDebug || !morph) return
+    const timer = window.setInterval(() => {
+      setMorphDebug({ ...morphProgressRef.current })
+    }, 120)
+    return () => window.clearInterval(timer)
+  }, [experienceDebug, morph])
+
+  /** 进入研究面（携带 region 源 → semantic morph，§28–§31） */
+  const openDimensionWithMorph = useCallback(
+    (dimensionId: string) => {
+      const source = workspaceActions?.regionSource(dimensionId) ?? null
+      setSelectedDimensionId(dimensionId)
+      if (source) setMorph({ phase: "expanding", source })
+      dispatchExperience({ type: "open_research", dimensionId, source: "click" })
+      setScene("DIMENSION_FOCUS")
+    },
+    [workspaceActions, dispatchExperience],
+  )
+
+  /** 反向 morph（§40–§43）：Reading 收缩回 Region，面包屑是主入口 */
+  const collapseToOverview = useCallback(
+    (pending: "company" | "dimension") => {
+      pendingJumpRef.current = pending
+      setMorph((m) => (m && m.phase !== "collapsing" ? { ...m, phase: "collapsing" } : m))
+      if (!morph) {
+        // 无源（如直接深链进入阅读面）：退化为普通返回
+        dispatchExperience({ type: "back" })
+        setScene("SPACE_OVERVIEW")
+        if (pending === "company") setSelectedDimensionId(null)
+      }
+    },
+    [morph, dispatchExperience],
+  )
+
   const globalUnavailable = useMemo(() => {
     if (!space) return false
     return shouldShowGlobalError({
@@ -307,6 +370,7 @@ export function ObservatoryApp({
   const submitAddDimension = async (text: string) => {
     if (!space || text.trim().length === 0) return
     setAddStatus("submitting")
+    setAddingSuggestion(text.trim())
     setAddMessage(null)
     try {
       const res = await fetch("/api/research/dimension", {
@@ -321,11 +385,13 @@ export function ObservatoryApp({
       })
       const body = (await res.json()) as AddedDimensionResult
       if (body.mode === "compliance_redirect") {
+        setAddingSuggestion(null)
         setAddStatus("redirect")
         setAddMessage(body.compliance?.message ?? "不提供买卖建议。")
         return
       }
       if (!body.dimension) {
+        setAddingSuggestion(null)
         setAddStatus("error")
         setAddMessage("该研究角度暂未加入，请稍后重试。")
         return
@@ -344,6 +410,9 @@ export function ObservatoryApp({
             }
           : prev,
       )
+      setAddingSuggestion(null)
+      // 同名建议已落为 Region：从边缘撤下，避免重复身份（Task 15.1 §25）
+      setDismissedSuggestions((prev) => (prev.includes(text.trim()) ? prev : [...prev, text.trim()]))
       setAddStatus(body.dimension.status === "unknown" ? "unknown" : "ready")
       setAddMessage(
         body.dimension.status === "unknown"
@@ -353,6 +422,7 @@ export function ObservatoryApp({
       setAddText("")
       // 保持 Lens 打开以展示结果（ready/unknown 提示），用户自行关闭
     } catch {
+      setAddingSuggestion(null)
       setAddStatus("error")
       setAddMessage("研究服务暂时未响应。")
     }
@@ -410,15 +480,12 @@ export function ObservatoryApp({
             }
             break
           case "open_research":
-            if (selectedDimensionId) {
-              dispatchExperience({ type: "open_research", dimensionId: selectedDimensionId, source: "command" })
-              setScene("DIMENSION_FOCUS")
-            }
+            if (selectedDimensionId) openDimensionWithMorph(selectedDimensionId)
             break
           case "inspect_evidence":
             if (focusedClaim) {
               dispatchExperience({ type: "select_claim", claimId: focusedClaim, source: "command" })
-              setScene("DIMENSION_FOCUS")
+              if (selectedDimensionId && scene !== "DIMENSION_FOCUS") openDimensionWithMorph(selectedDimensionId)
             }
             break
           case "return_to_claim":
@@ -474,6 +541,8 @@ export function ObservatoryApp({
     activeCompanyCode,
     enterResearch,
     dispatchExperience,
+    openDimensionWithMorph,
+    scene,
   ])
 
   const addCompanyToWorld = useCallback((item: StockSearchItem) => {
@@ -525,11 +594,13 @@ export function ObservatoryApp({
         >
           STOCKLENS
         </button>
-        {space && worldLevel === "COMPANY" && scene !== "DIMENSION_FOCUS" && (
+        {space && worldLevel === "COMPANY" && (
           <nav
             aria-label="Semantic location"
             className="pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center gap-2 font-mono text-[11px]"
-            style={{ color: renderer.tokens.textSecondary }}
+            style={{
+              color: scene === "DIMENSION_FOCUS" ? "#676A70" : renderer.tokens.textSecondary,
+            }}
           >
             {breadcrumbSegments(experience, {
               company: space.company.stockName,
@@ -542,9 +613,31 @@ export function ObservatoryApp({
                 {i > 0 && <span style={{ opacity: 0.45 }}>/</span>}
                 <button
                   type="button"
-                  onClick={() => jumpToLevel(seg.level, space.company.stockCode)}
+                  onClick={() => {
+                    // §42：阅读面中点击面包屑 = 反向 morph（Zoom Out），不是换页
+                    if (scene === "DIMENSION_FOCUS" && morph && morph.phase !== "collapsing") {
+                      collapseToOverview(seg.level === "company" ? "company" : "dimension")
+                      return
+                    }
+                    if (scene === "DIMENSION_FOCUS") {
+                      dispatchExperience({ type: "back" })
+                      setScene("SPACE_OVERVIEW")
+                      if (seg.level === "company") setSelectedDimensionId(null)
+                      return
+                    }
+                    jumpToLevel(seg.level, space.company.stockCode)
+                  }}
                   className="transition hover:opacity-75 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-                  style={{ color: i === 0 ? renderer.tokens.textPrimary : renderer.tokens.textSecondary }}
+                  style={{
+                    color:
+                      scene === "DIMENSION_FOCUS"
+                        ? i === 0
+                          ? "#14161B"
+                          : "#676A70"
+                        : i === 0
+                          ? renderer.tokens.textPrimary
+                          : renderer.tokens.textSecondary,
+                  }}
                 >
                   {seg.label}
                 </button>
@@ -673,13 +766,10 @@ export function ObservatoryApp({
             key={`${space.company.stockCode}:${spaceInteractionSeed}`}
             space={space}
             renderer={renderer}
-            onOpenDimension={(id) => {
-              setSelectedDimensionId(id)
-              dispatchExperience({ type: "open_research", dimensionId: id, source: "click" })
-              setScene("DIMENSION_FOCUS")
-            }}
+            onOpenDimension={openDimensionWithMorph}
             onAddDimension={() => setAddLensOpen(true)}
             onSuggestionAdd={(label) => void submitAddDimension(label)}
+            addingSuggestion={addingSuggestion}
             onSuggestionDismiss={(label) => setDismissedSuggestions((prev) => [...prev, label])}
             dismissedSuggestions={dismissedSuggestions}
             addLensOpen={addLensOpen}
@@ -718,25 +808,73 @@ export function ObservatoryApp({
         )}
 
         {worldLevel === "COMPANY" && scene === "DIMENSION_FOCUS" && space && selectedDimension && (
-          <FocusView
-            space={space}
-            dimension={selectedDimension}
-            metrics={space.metrics}
-            activeClaimId={experience.activeClaim ?? null}
-            activeEvidenceId={experience.activeEvidence ?? null}
-            onClaimFocus={(claimId) =>
-              dispatchExperience({ type: "select_claim", claimId, source: "click" })
-            }
-            onEvidenceFocus={(evidenceId, claimId) => {
-              dispatchExperience({ type: "select_claim", claimId, source: "click" })
-              dispatchExperience({ type: "select_evidence", evidenceId, source: "click" })
-            }}
-            onReturnToClaim={() => dispatchExperience({ type: "clear_evidence", source: "back" })}
-            onBack={() => {
-              dispatchExperience({ type: "back" })
-              setScene("SPACE_OVERVIEW")
-            }}
-          />
+          morph ? (
+            <MorphSurface
+              phase={morph.phase}
+              source={morph.source}
+              target={readingRectFor(viewportSize)}
+              durationMs={morph.phase === "collapsing" ? reverseDurationMs : morphDurationMs}
+              renderer={renderer}
+              tokens={renderer.tokens}
+              onSettled={() => {
+                if (morph.phase === "expanding") {
+                  setMorph((m) => (m ? { ...m, phase: "settled" } : m))
+                  return
+                }
+                // collapsing 结束（§43）：region 重新获得轮廓，周围 region 回归
+                const pending = pendingJumpRef.current
+                setMorph(null)
+                setScene("SPACE_OVERVIEW")
+                dispatchExperience({ type: "back" })
+                if (pending === "company") setSelectedDimensionId(null)
+              }}
+              onProgress={(progress, phase) => {
+                morphProgressRef.current = { progress, phase }
+              }}
+            >
+              <FocusView
+                space={space}
+                dimension={selectedDimension}
+                metrics={space.metrics}
+                embedded
+                claimRevealBaseDelayMs={Math.round(morphDurationMs * 0.55)}
+                activeClaimId={experience.activeClaim ?? null}
+                activeEvidenceId={experience.activeEvidence ?? null}
+                onClaimFocus={(claimId) =>
+                  dispatchExperience({ type: "select_claim", claimId, source: "click" })
+                }
+                onEvidenceFocus={(evidenceId, claimId) => {
+                  dispatchExperience({ type: "select_claim", claimId, source: "click" })
+                  dispatchExperience({ type: "select_evidence", evidenceId, source: "click" })
+                }}
+                onReturnToClaim={() => dispatchExperience({ type: "clear_evidence", source: "back" })}
+                onBack={() => {
+                  // §40–§41：主入口是面包屑；保留键盘 Escape 等价路径
+                  collapseToOverview("dimension")
+                }}
+              />
+            </MorphSurface>
+          ) : (
+            <FocusView
+              space={space}
+              dimension={selectedDimension}
+              metrics={space.metrics}
+              activeClaimId={experience.activeClaim ?? null}
+              activeEvidenceId={experience.activeEvidence ?? null}
+              onClaimFocus={(claimId) =>
+                dispatchExperience({ type: "select_claim", claimId, source: "click" })
+              }
+              onEvidenceFocus={(evidenceId, claimId) => {
+                dispatchExperience({ type: "select_claim", claimId, source: "click" })
+                dispatchExperience({ type: "select_evidence", evidenceId, source: "click" })
+              }}
+              onReturnToClaim={() => dispatchExperience({ type: "clear_evidence", source: "back" })}
+              onBack={() => {
+                dispatchExperience({ type: "back" })
+                setScene("SPACE_OVERVIEW")
+              }}
+            />
+          )
         )}
       </div>
 
@@ -896,6 +1034,13 @@ export function ObservatoryApp({
           </div>
           <div>objectDetail: {spaceCamera.scale < 0.8 ? "micro" : spaceCamera.scale >= 1.15 ? "expanded-capable" : "compact"}</div>
           <div>transitionSource: {experience.transitionSource}</div>
+          <div>morphPhase: {morph ? morph.phase : "idle"}</div>
+          <div>morphProgress: {Math.round(morphDebug.progress * 100)}%</div>
+          <div>
+            sourceObject: {morph ? `${morph.source.dimensionId} @ ${Math.round(morph.source.cx)},${Math.round(morph.source.cy)} r=${Math.round(morph.source.radius)}` : "—"}
+          </div>
+          <div>targetObject: {morph ? `reading ${Math.round(readingRectFor(viewportSize).width)}x${Math.round(readingRectFor(viewportSize).height)}` : "—"}</div>
+          <div>captureSlow: {captureSlow ? "1" : "0"}</div>
         </div>
       )}
 
@@ -907,6 +1052,18 @@ export function ObservatoryApp({
         @keyframes observatory-breathe {
           0%, 100% { opacity: 0.5; }
           50% { opacity: 0.85; }
+        }
+        @keyframes observatory-claim-reveal {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes observatory-rail-in {
+          from { opacity: 0.35; transform: translateX(14px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes terrain-region-expand {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
         }
         @keyframes observatory-recede {
           from { opacity: 0; }

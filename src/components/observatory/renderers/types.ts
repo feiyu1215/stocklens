@@ -53,6 +53,9 @@ export interface DimensionRenderState {
   expandedClaims?: string[]
   /** 拖动中的实时位置覆盖（世界坐标） */
   dragPosition?: { x: number; y: number }
+  /** Task 15.1 §29–§30：inline region expansion（renderer 声明 capabilities.inlineRegionPeek 时，
+      单击 region 的展开概览呈现在 region 内部，workspace 不再渲染独立 peek 卡片） */
+  inlinePeek?: boolean
 }
 
 export interface SuggestionRenderState {
@@ -63,6 +66,8 @@ export interface SuggestionRenderState {
   expanded: boolean
   dragging: boolean
   overAddZone: boolean
+  /** Task 15.1 §23–§26：unexplored（待探索）／adding（已提交、region seed 解析中） */
+  mode?: "unexplored" | "adding"
 }
 
 export interface EvidenceFieldRenderState {
@@ -75,6 +80,9 @@ export interface EvidenceFieldRenderState {
   showLabels?: boolean
   /** Terrain 渲染区域几何所需的世界坐标（其它 renderer 忽略） */
   dimensionLayouts?: { dimension: ResearchDimension; x: number; y: number; width: number }[]
+  /** Task 15.1：选中 region（Region 扩大 §30）与 inline 展开的 region id（terrain 消费，其它忽略） */
+  selectedDimensionId?: string | null
+  inlinePeekDimensionId?: string | null
   /** Task 15 §37–§39：Terrain Region 自身作为 hit target（DOM button 仍作可访问性代理） */
   onRegionPointerEnter?: (dimensionId: string) => void
   onRegionPointerLeave?: () => void
@@ -95,6 +103,8 @@ export interface DimensionHandlers {
   onClick: (e: import("react").MouseEvent) => void
   onMouseEnter: (e: import("react").MouseEvent) => void
   onMouseLeave: () => void
+  /** Task 15.1 §31：显式 Explore region →（触发 semantic morph） */
+  onExplore?: (dimensionId: string) => void
 }
 
 export interface SuggestionHandlers {
@@ -117,9 +127,45 @@ export interface WorldMapRenderState {
   onToggleSaved: (stockCode: string) => void
 }
 
+// ---------- Semantic Morph（Task 15.1 §28–§43） ----------
+
+/** morph 源对象（屏幕坐标，由 workspace 经布局+相机推导） */
+export interface MorphSourceObject {
+  dimensionId: string
+  label: string
+  /** region 中心（屏幕坐标） */
+  cx: number
+  cy: number
+  /** region 视觉半径（屏幕坐标） */
+  radius: number
+  /** 轮廓种子（renderer 复现同一形状，保证边界连续 §37） */
+  seed: string
+}
+
+export type MorphPhase = "expanding" | "settled" | "collapsing"
+
+export interface MorphOverlayState {
+  phase: MorphPhase
+  /** 0–1（expanding/collapsing 各自的进度） */
+  progress: number
+  source: MorphSourceObject
+  /** 阅读面目标矩形（屏幕坐标） */
+  target: { x: number; y: number; width: number; height: number }
+  tokens: RendererTokens
+  /** 阅读面内容（MorphSurface 注入；renderer 只负责承载与边界/label 连续） */
+  children: ReactNode
+}
+
+/** Renderer 能力声明（workspace 据此调整交互呈现，不出现 renderer id 分支） */
+export interface RendererCapabilities {
+  /** 单击 region 的展开概览呈现在 region 内部（terrain） */
+  inlineRegionPeek?: boolean
+}
+
 export interface WorldRenderer {
   id: WorldRendererId
   tokens: RendererTokens
+  capabilities?: RendererCapabilities
   renderBackground(): ReactNode
   renderEvidenceField(state: EvidenceFieldRenderState): ReactNode
   renderCompany(state: CompanyRenderState): ReactNode
@@ -127,4 +173,6 @@ export interface WorldRenderer {
   renderSuggestion(state: SuggestionRenderState, handlers: SuggestionHandlers): ReactNode
   /** My World 世界层（可选能力；Pearl/Dusk 提供简化版本，Terrain/Cosmos 完整实现） */
   renderWorld?(state: WorldMapRenderState): ReactNode
+  /** Semantic Morph 承载（可选；未声明时 MorphSurface 退化为简单过渡） */
+  renderMorphOverlay?(state: MorphOverlayState): ReactNode
 }

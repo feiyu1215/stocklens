@@ -4,15 +4,24 @@ import { useEffect, useMemo, useState } from "react"
 
 import type { Evidence } from "@/lib/evidence/types"
 import type { ResearchDimension } from "@/lib/research/dimension-schema"
-import { computeDimensionLayout, computeFieldNodes, selectFieldEvidence, LAYOUT_SPACE } from "@/lib/presentation/constellation-layout"
+import {
+  CONSTELLATION,
+  computeAddNodeLayout,
+  computeDimensionLayout,
+  computeFieldNodes,
+  computeSuggestionLayout,
+  selectFieldEvidence,
+} from "@/lib/presentation/constellation-layout"
 import { OBSERVATORY_COLORS, STATUS_LABEL, anchorGlyph, evidenceColor, type ResearchSpacePayload } from "./theme"
 
-// Scene C｜Space Overview（Visual Spec §20–§26/§54–§65/§71–§76）：
-// Company Core 居中 + 确定性 radial 维度对象 + Evidence Field（真实节点/边/unknown 虚线与 conflict 分裂笔画）
-// + AI 建议 ghost 对象 + 「＋ Add research angle」节点。
+// Scene C｜Space Overview（Task 12 §20–§26 + Task 12.1 Polish §1–§25）：
+// 主 Research Space 占据视口主体：Company Core（208px + 同心焦点环）居中，
+// 确定性 radial 维度对象（碰撞消解、UNKNOWN 同尺寸虚线表达），
+// Evidence Field 真实节点/边（hover 聚焦 cluster），
+// 右侧外围 AI 建议 ghost 对象（hover 展开），独立 ＋Add 节点。
 
-const FIELD_W = 1500
-const FIELD_H = 900
+const FIELD_W = 1560
+const FIELD_H = 1000
 
 function EvidenceField({
   evidence,
@@ -58,7 +67,6 @@ function EvidenceField({
       width={FIELD_W}
       height={FIELD_H}
       viewBox={`${-FIELD_W / 2} ${-FIELD_H / 2} ${FIELD_W} ${FIELD_H}`}
-      style={{ opacity: 0.9 }}
     >
       {edges.map((edge) => (
         <line
@@ -68,9 +76,9 @@ function EvidenceField({
           x2={edge.x2}
           y2={edge.y2}
           stroke={edge.color}
-          strokeWidth={edge.conflict ? 1.4 : 0.7}
-          strokeDasharray={edge.conflict ? "3 3" : undefined}
-          opacity={0.5}
+          strokeWidth={edge.conflict ? 1.5 : 0.9}
+          strokeDasharray={edge.conflict ? "4 3" : undefined}
+          opacity={0.6}
         />
       ))}
       {nodes.map((node) => {
@@ -84,32 +92,36 @@ function EvidenceField({
               key={node.evidenceId}
               cx={node.x}
               cy={node.y}
-              r={13}
+              r={14}
               fill="none"
               stroke={color}
-              strokeWidth={1}
-              strokeDasharray="2.5 3.5"
-              opacity={dimmed ? 0.12 : 0.75}
-              style={{ transition: "opacity 160ms ease-out" }}
+              strokeWidth={1.2}
+              strokeDasharray="3 4"
+              opacity={dimmed ? 0.1 : 0.8}
+              style={{ transition: "opacity 200ms ease-out" }}
             />
           )
         }
         if (e.type === "inference") {
           return (
-            <g key={node.evidenceId} opacity={dimmed ? 0.12 : 0.95} style={{ transition: "opacity 160ms ease-out" }}>
+            <g
+              key={node.evidenceId}
+              opacity={dimmed ? 0.1 : 0.96}
+              style={{ transition: "opacity 200ms ease-out" }}
+            >
               <circle
                 onMouseEnter={() => onNodeHover(node.evidenceId)}
                 onMouseLeave={() => onNodeHover(null)}
                 cx={node.x}
                 cy={node.y}
-                r={9}
+                r={10}
                 fill="rgba(7,9,14,0.9)"
                 stroke={color}
-                strokeWidth={e.signal === "conflict" ? 2.4 : 1.6}
-                strokeDasharray={e.signal === "conflict" ? "4 2.5" : undefined}
+                strokeWidth={e.signal === "conflict" ? 2.6 : 1.8}
+                strokeDasharray={e.signal === "conflict" ? "5 3" : undefined}
                 className="pointer-events-auto"
               />
-              <circle cx={node.x} cy={node.y} r={3} fill={color} />
+              <circle cx={node.x} cy={node.y} r={3.4} fill={color} />
             </g>
           )
         }
@@ -120,10 +132,10 @@ function EvidenceField({
             onMouseLeave={() => onNodeHover(null)}
             cx={node.x}
             cy={node.y}
-            r={4.5}
+            r={5}
             fill={color}
-            opacity={dimmed ? 0.15 : 0.9}
-            style={{ transition: "opacity 160ms ease-out", pointerEvents: "auto" }}
+            opacity={dimmed ? 0.12 : 1}
+            style={{ transition: "opacity 200ms ease-out", pointerEvents: "auto" }}
           />
         )
       })}
@@ -165,12 +177,30 @@ export function SpaceView({
 }) {
   const [hoveredDimension, setHoveredDimension] = useState<string | null>(null)
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null)
+  const [hoveredSuggestion, setHoveredSuggestion] = useState<string | null>(null)
+
   const layout = useMemo(() => computeDimensionLayout(space.dimensions), [space.dimensions])
   const layoutById = useMemo(() => new Map(layout.map((l) => [l.dimensionId, l] as const)), [layout])
+  const maxDimRadius = useMemo(
+    () => layout.reduce((max, l) => Math.max(max, l.radius + l.width / 2), 0),
+    [layout],
+  )
+  const addNode = useMemo(
+    () => computeAddNodeLayout(layout, { radius: CONSTELLATION.CORE_SIZE / 2 + 150 }),
+    [layout],
+  )
+  const activeSuggestions = useMemo(
+    () => space.suggestions.filter((s) => !dismissedSuggestions.includes(s.label)),
+    [space.suggestions, dismissedSuggestions],
+  )
+  // 建议对象置于维度环之外（§9–§12 的右侧外围弧），避免与任何 Dimension 对象重叠
+  const suggestionLayout = useMemo(
+    () => computeSuggestionLayout(activeSuggestions, { baseRadius: maxDimRadius + 92 }),
+    [activeSuggestions, maxDimRadius],
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setHoveredDimension(null)
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         onOpenCommandLens()
@@ -182,169 +212,221 @@ export function SpaceView({
 
   return (
     <div className="relative h-full w-full" aria-label="Research Space 总览">
-      <EvidenceField
-        evidence={space.evidence}
-        highlightedDimension={hoveredDimension ?? (selectedDimensionId ? space.dimensions.find((d) => d.dimensionId === selectedDimensionId)?.label ?? null : null) as string | null}
-        onNodeHover={setHoveredEvidenceId}
-      />
+      {/* 主 Research Space：视觉中心 (47%, 49%) */}
+      <div className="absolute" style={{ left: "47%", top: "49%", transform: "translate(-50%, -50%)" }}>
+        <div className="relative">
+          <EvidenceField
+            evidence={space.evidence}
+            highlightedDimension={hoveredDimension ?? null}
+            onNodeHover={setHoveredEvidenceId}
+          />
 
-      {/* Company Core */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-        <div
-          className="relative flex flex-col items-center justify-center rounded-full"
-          style={{
-            width: 200,
-            height: 200,
-            background: "radial-gradient(circle, rgba(69,184,255,0.10) 0%, rgba(14,17,24,0.9) 64%)",
-            border: "1px solid rgba(140,148,168,0.16)",
-            boxShadow: "0 0 60px rgba(69,184,255,0.08) inset",
-          }}
-        >
-          <div className="text-[17px] font-medium tracking-wide text-[#F1F3F5]">{space.company.stockName}</div>
-          <div className="mt-1 font-mono text-[12px] text-[#8C94A8]">{space.company.stockCode}</div>
-          {space.company.industryName && (
-            <div className="mt-1 text-[11px] text-[#5A6274]">{space.company.industryName}</div>
-          )}
+          {/* Company Core（§2）：208px + 同心焦点环 + 极轻折射光晕 */}
+          <div className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2">
+            <div className="relative flex items-center justify-center" style={{ width: 300, height: 300 }}>
+              {[300, 258, 224].map((d, i) => (
+                <span
+                  key={d}
+                  aria-hidden
+                  className="absolute rounded-full"
+                  style={{
+                    width: d,
+                    height: d,
+                    border: `1px solid rgba(140,148,168,${i === 0 ? 0.08 : 0.14})`,
+                  }}
+                />
+              ))}
+              <span
+                aria-hidden
+                className="absolute rounded-full"
+                style={{
+                  width: CONSTELLATION.CORE_SIZE,
+                  height: CONSTELLATION.CORE_SIZE,
+                  background:
+                    "radial-gradient(circle at 50% 42%, rgba(69,184,255,0.16) 0%, rgba(154,123,255,0.06) 46%, rgba(14,17,24,0.92) 72%)",
+                  border: "1px solid rgba(140,148,168,0.20)",
+                  boxShadow: "0 0 70px rgba(69,184,255,0.10) inset",
+                }}
+              />
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <div className="text-[22px] font-medium tracking-wide text-[#F1F3F5]">
+                  {space.company.stockName}
+                </div>
+                <div className="mt-1.5 font-mono text-[12px] text-[#8C94A8]">{space.company.stockCode}</div>
+                {space.company.industryName && (
+                  <div className="mt-1 text-[12px] text-[#6C7488]">{space.company.industryName}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Dimension Objects（确定性 radial + 碰撞消解） */}
+          {space.dimensions.map((dim) => {
+            const l = layoutById.get(dim.dimensionId)
+            if (!l) return null
+            const ownClaims = space.claims.filter((c) => c.dimensionId === dim.dimensionId)
+            const conflictCount = ownClaims.filter((c) => c.signal === "conflict").length
+            const dimmed = hoveredDimension !== null && hoveredDimension !== dim.label
+            const isUnknown = dim.status === "unknown"
+            const isPartial = dim.status === "partial"
+            return (
+              <button
+                key={dim.dimensionId}
+                type="button"
+                aria-label={`研究维度：${dim.label}（${STATUS_LABEL[dim.status]}，${dim.evidenceIds.length} 条证据）`}
+                title={dimensionSummaryLine(dim, space.claims)}
+                onMouseEnter={() => setHoveredDimension(dim.label)}
+                onMouseLeave={() => setHoveredDimension(null)}
+                onFocus={() => setHoveredDimension(dim.label)}
+                onBlur={() => setHoveredDimension(null)}
+                onClick={() => onDimensionSelect(dim.dimensionId)}
+                className="absolute left-0 top-0 rounded-2xl px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/70"
+                style={{
+                  width: l.width,
+                  minHeight: l.height,
+                  transform: `translate(calc(-50% + ${l.x}px), calc(-50% + ${l.y}px)) scale(${
+                    (dimmed ? 0.99 : 1) * l.scale
+                  })`,
+                  opacity: dimmed ? 0.34 : 1,
+                  border: isUnknown
+                    ? "1px dashed rgba(234,185,95,0.55)"
+                    : isPartial
+                      ? "1px solid rgba(154,123,255,0.30)"
+                      : "1px solid rgba(140,148,168,0.20)",
+                  background: isUnknown
+                    ? "rgba(12,15,22,0.42)"
+                    : isPartial
+                      ? "linear-gradient(160deg, rgba(154,123,255,0.08), rgba(12,15,22,0.72))"
+                      : "rgba(12,15,22,0.72)",
+                  backdropFilter: "blur(3px)",
+                  boxShadow: hoveredDimension === dim.label ? "0 0 34px rgba(69,184,255,0.16)" : "none",
+                  transition:
+                    "opacity 200ms ease-out, box-shadow 200ms ease-out, transform 420ms cubic-bezier(0.22,1,0.36,1)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className="text-[16px] leading-snug text-[#F1F3F5]"
+                    style={{ wordBreak: "keep-all", overflowWrap: "normal" }}
+                  >
+                    {dim.label}
+                  </span>
+                  {addingDimensionId === dim.dimensionId && (
+                    <span className="animate-pulse text-[10px] text-[#45B8FF]">…</span>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-[#8C94A8]">
+                  <span>{dim.evidenceIds.length} evidence</span>
+                  {conflictCount > 0 && (
+                    <span style={{ color: OBSERVATORY_COLORS.conflict }}>{conflictCount} conflict</span>
+                  )}
+                  {isUnknown && <span style={{ color: OBSERVATORY_COLORS.unknown }}>incomplete</span>}
+                </div>
+                {hoveredDimension === dim.label && (
+                  <div className="mt-2 border-t border-white/5 pt-1.5 text-[11px] leading-relaxed text-[#8C94A8]">
+                    {dimensionSummaryLine(dim, space.claims).slice(0, 54)}…
+                  </div>
+                )}
+              </button>
+            )
+          })}
+
+          {/* add 节点：独立 Object（§8） */}
+          <button
+            type="button"
+            onClick={onAddDimension}
+            aria-label="Add research angle"
+            className="group absolute left-0 top-0 outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/70"
+            style={{ transform: `translate(calc(-50% + ${addNode.x}px), calc(-50% + ${addNode.y}px))` }}
+          >
+            <span
+              className="flex items-center justify-center rounded-full border text-[20px] text-[#6C7488] transition group-hover:border-[#45B8FF]/70 group-hover:text-[#45B8FF]"
+              style={{
+                width: CONSTELLATION.ADD_NODE_DIAMETER,
+                height: CONSTELLATION.ADD_NODE_DIAMETER,
+                borderStyle: "dashed",
+                borderColor: "rgba(90,98,116,0.75)",
+                background: "rgba(12,15,22,0.55)",
+              }}
+            >
+              ＋
+            </span>
+            <span className="absolute left-1/2 top-full mt-2 w-max -translate-x-1/2 text-[11.5px] text-[#6C7488] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+              Add research angle
+            </span>
+          </button>
+
+          {/* AI Suggested：右侧外围 ghost 对象（§9–§12） */}
+          {suggestionLayout.map((placement, index) => {
+            const s = activeSuggestions[index]
+            if (!s) return null
+            const expanded = hoveredSuggestion === s.label
+            return (
+              <div
+                key={s.label}
+                className="absolute left-0 top-0"
+                style={{
+                  transform: `translate(calc(-50% + ${placement.x}px), calc(-50% + ${placement.y}px))`,
+                  width: expanded ? 236 : CONSTELLATION.SUGGESTION_WIDTH,
+                  transition: "width 260ms cubic-bezier(0.22,1,0.36,1), opacity 260ms ease-out",
+                  opacity: addLensOpen ? 0 : expanded ? 1 : 0.72,
+                  pointerEvents: addLensOpen ? "none" : "auto",
+                }}
+                onMouseEnter={() => setHoveredSuggestion(s.label)}
+                onMouseLeave={() => setHoveredSuggestion(null)}
+              >
+                <div
+                  className="rounded-xl border border-dashed px-3 py-2.5"
+                  style={{
+                    borderColor: "rgba(140,148,168,0.30)",
+                    background: "rgba(12,15,22,0.5)",
+                    backdropFilter: "blur(3px)",
+                  }}
+                >
+                  <div className="font-mono text-[9.5px] tracking-[0.18em] text-[#5A6274]">SUGGESTED</div>
+                  <div className="mt-1 text-[14.5px] leading-snug text-[#E6E9EE]" style={{ wordBreak: "keep-all" }}>
+                    {s.label}
+                  </div>
+                  <div className="mt-1 text-[11px] leading-relaxed text-[#6C7488]">
+                    {expanded ? s.rationale : s.rationale.slice(0, 14).replace(/[，。、]$/, "") + "…"}
+                  </div>
+                  {expanded && (
+                    <div className="mt-2 flex items-center gap-3 text-[12px]">
+                      <button
+                        type="button"
+                        onClick={() => onSuggestionAdd(s.label)}
+                        className="text-[#45B8FF] transition hover:text-[#7ED0FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+                      >
+                        ＋ Add to research
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSuggestionDismiss(s.label)}
+                        className="text-[#5A6274] transition hover:text-[#8C94A8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Dimension Objects（确定性 radial layout） */}
-      {space.dimensions.map((dim) => {
-        const l = layoutById.get(dim.dimensionId)
-        if (!l) return null
-        const ownClaims = space.claims.filter((c) => c.dimensionId === dim.dimensionId)
-        const conflictCount = ownClaims.filter((c) => c.signal === "conflict").length
-        const dimmed = hoveredDimension !== null && hoveredDimension !== dim.label
-        const isUnknown = dim.status === "unknown"
-        const isPartial = dim.status === "partial"
-        return (
-          <button
-            key={dim.dimensionId}
-            type="button"
-            aria-label={`研究维度：${dim.label}（${STATUS_LABEL[dim.status]}，${dim.evidenceIds.length} 条证据）`}
-            onMouseEnter={() => setHoveredDimension(dim.label)}
-            onMouseLeave={() => setHoveredDimension(null)}
-            onFocus={() => setHoveredDimension(dim.label)}
-            onBlur={() => setHoveredDimension(null)}
-            onClick={() => onDimensionSelect(dim.dimensionId)}
-            className="absolute left-1/2 top-1/2 outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/70"
-            style={{
-              transform: `translate(calc(-50% + ${l.x}px), calc(-50% + ${l.y}px))`,
-              width: l.size,
-              opacity: dimmed ? 0.32 : 1,
-              transition: "opacity 180ms ease-out, transform 420ms cubic-bezier(0.22,1,0.36,1)",
-            }}
-          >
-            <div
-              className="rounded-2xl px-3.5 py-3 text-left backdrop-blur-sm"
-              style={{
-                border: isUnknown
-                  ? "1px dashed rgba(234,185,95,0.55)"
-                  : isPartial
-                    ? "1px solid rgba(154,123,255,0.35)"
-                    : "1px solid rgba(140,148,168,0.22)",
-                background: isUnknown
-                  ? "rgba(14,17,24,0.35)"
-                  : isPartial
-                    ? "linear-gradient(160deg, rgba(154,123,255,0.10), rgba(14,17,24,0.85))"
-                    : "rgba(14,17,24,0.85)",
-                boxShadow: hoveredDimension === dim.label ? "0 0 32px rgba(69,184,255,0.14)" : "none",
-                transition: "box-shadow 180ms ease-out, border-color 180ms ease-out",
-              }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-[#F1F3F5]">{dim.label}</span>
-                {addingDimensionId === dim.dimensionId && (
-                  <span className="animate-pulse text-[10px] text-[#45B8FF]">assembling…</span>
-                )}
-              </div>
-              <div className="mt-1 flex items-center gap-2 text-[10px] text-[#8C94A8]">
-                <span>{dim.evidenceIds.length} evidence</span>
-                {conflictCount > 0 && <span style={{ color: OBSERVATORY_COLORS.conflict }}>{conflictCount} conflict</span>}
-                {isUnknown && <span style={{ color: OBSERVATORY_COLORS.unknown }}>evidence incomplete</span>}
-              </div>
-              {hoveredDimension === dim.label && (
-                <div className="mt-1.5 border-t border-white/5 pt-1.5 text-[10px] leading-relaxed text-[#8C94A8]">
-                  {dimensionSummaryLine(dim, space.claims).slice(0, 46)}…
-                </div>
-              )}
-            </div>
-          </button>
-        )
-      })}
-
-      {/* AI Suggested（ghost objects，不自动加入；Add Lens 打开时让位） */}
-      <div
-        className="absolute bottom-24 right-8 flex w-[230px] flex-col gap-2 transition-opacity"
-        style={{ opacity: addLensOpen ? 0 : 1, pointerEvents: addLensOpen ? "none" : "auto" }}
-      >
-        {space.suggestions
-          .filter((s) => !dismissedSuggestions.includes(s.label))
-          .slice(0, 3)
-          .map((s) => (
-          <div
-            key={s.label}
-            className="rounded-xl border border-dashed px-3 py-2.5"
-            style={{
-              borderColor: "rgba(140,148,168,0.28)",
-              background: "rgba(14,17,24,0.72)",
-              backdropFilter: "blur(4px)",
-              opacity: 0.92,
-            }}
-          >
-            <div className="text-[10px] uppercase tracking-wider text-[#5A6274]">Suggested by StockLens</div>
-            <div className="mt-1 text-[12px] text-[#F1F3F5]">{s.label}</div>
-            <div className="mt-0.5 text-[10px] leading-relaxed text-[#8C94A8]">{s.rationale}</div>
-            <div className="mt-1.5 flex gap-3 text-[11px]">
-              <button
-                type="button"
-                onClick={() => onSuggestionAdd(s.label)}
-                className="text-[#45B8FF] transition hover:text-[#7ED0FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-              >
-                ＋ Add to research
-              </button>
-              <button
-                type="button"
-                onClick={() => onSuggestionDismiss(s.label)}
-                className="text-[#5A6274] transition hover:text-[#8C94A8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ＋ Add research angle */}
-      <button
-        type="button"
-        onClick={onAddDimension}
-        aria-label="Add research angle"
-        className="group absolute left-1/2 top-1/2 outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/70"
-        style={{ transform: `translate(calc(-50% + ${LAYOUT_SPACE.coreRadius + 90}px), calc(-50% - ${LAYOUT_SPACE.coreRadius + 30}px))` }}
-      >
-        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-[#3A4156] text-[18px] text-[#5A6274] transition group-hover:border-[#45B8FF]/60 group-hover:text-[#45B8FF]">
-          ＋
-        </span>
-        <span className="mt-1 block text-[10px] text-[#5A6274] opacity-0 transition group-hover:opacity-100">
-          Add research angle
-        </span>
-      </button>
-
-      {/* hover evidence 预览条 */}
       {hoveredEvidenceId && (
         <div
-          className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-lg border px-3 py-1.5 font-mono text-[11px]"
-          style={{ borderColor: "rgba(140,148,168,0.2)", background: "rgba(14,17,24,0.9)", color: "#8C94A8" }}
+          className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded-lg border px-3.5 py-1.5 font-mono text-[11.5px]"
+          style={{ borderColor: "rgba(140,148,168,0.22)", background: "rgba(12,15,22,0.92)", color: "#8C94A8" }}
         >
           {hoveredEvidenceId}
         </div>
       )}
 
-      {/* AI 状态（partial/failed 时如实呈现，dimension 仍然可研究） */}
       {space.ai.status !== "success" && (
         <div
-          className="absolute left-6 top-20 max-w-[260px] rounded-lg border px-3 py-2 text-[11px] leading-relaxed"
+          className="absolute left-8 top-24 max-w-[280px] rounded-lg border px-3.5 py-2.5 text-[11.5px] leading-relaxed"
           style={{ borderColor: "rgba(234,185,95,0.35)", background: "rgba(234,185,95,0.06)", color: "#EAB95F" }}
         >
           Research space could not be completed. Evidence objects are still available.

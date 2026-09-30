@@ -216,18 +216,18 @@ export function ObservatoryApp({
             setSpace(null)
             setSelectedDimensionId(null)
           }}
-          className="pointer-events-auto font-mono text-[11px] tracking-[0.34em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-          style={{ color: scene === "DIMENSION_FOCUS" ? "#676A70" : "#8C94A8" }}
+          className="pointer-events-auto font-mono text-[12px] tracking-[0.34em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+          style={{ color: scene === "DIMENSION_FOCUS" ? "#676A70" : "#A6AEC0" }}
         >
           STOCKLENS
         </button>
         {space && scene !== "DIMENSION_FOCUS" && (
-          <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#232838] bg-[#0E1118]/80 px-3.5 py-1.5 backdrop-blur">
-            <span className="text-[12px] text-[#F1F3F5]">{space.company.stockName}</span>
-            <span className="font-mono text-[11px] text-[#8C94A8]">{space.company.stockCode}</span>
-            {space.company.industryName && (
-              <span className="text-[11px] text-[#5A6274]">{space.company.industryName}</span>
-            )}
+          <div
+            className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#2A3040] bg-[#12161F]/85 px-4 py-1.5 backdrop-blur"
+            title={space.company.industryName ? `所属行业：${space.company.industryName}` : undefined}
+          >
+            <span className="text-[13px] text-[#F1F3F5]">{space.company.stockName}</span>
+            <span className="font-mono text-[11.5px] text-[#A6AEC0]">{space.company.stockCode}</span>
           </div>
         )}
       </header>
@@ -308,7 +308,7 @@ export function ObservatoryApp({
 
       {/* Add Dimension Lens（§54–§60：在原位置扩张，不是中央 Modal） */}
       {addLensOpen && space && (
-        <div className="absolute bottom-24 right-10 z-40 w-[360px]">
+        <div className="absolute right-10 top-24 z-40 w-[360px]">
           <div
             className="rounded-2xl border border-[#232838] p-4 backdrop-blur"
             style={{
@@ -388,7 +388,7 @@ export function ObservatoryApp({
 
       {/* Bottom Command Lens（§5/§66–§70） */}
       {scene !== "DISCOVERY" && (
-        <div className="absolute bottom-5 left-1/2 z-40 -translate-x-1/2">
+        <div className="absolute bottom-7 left-1/2 z-40 -translate-x-1/2">
           {!commandOpen ? (
             <button
               type="button"
@@ -396,12 +396,16 @@ export function ObservatoryApp({
                 setCommandOpen(true)
                 setTimeout(() => commandInputRef.current?.focus(), 30)
               }}
-              className="flex h-[46px] w-[420px] items-center gap-3 rounded-full border border-[#232838] px-5 backdrop-blur transition hover:border-[#3A4156] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
-              style={{ background: "rgba(14,17,24,0.8)" }}
+              className="flex h-[48px] w-[500px] items-center gap-3.5 rounded-full border px-5 backdrop-blur transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#45B8FF]/60"
+              style={{
+                background: "rgba(18,22,31,0.88)",
+                borderColor: "rgba(58,65,86,0.9)",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.35)",
+              }}
               aria-label="打开命令面板（Command Lens）"
             >
-              <span className="font-mono text-[11px] text-[#8C94A8]">⌘K</span>
-              <span className="text-[12px] text-[#5A6274]">Ask · Focus · Add</span>
+              <span className="font-mono text-[12px] text-[#A6AEC0]">⌘K</span>
+              <span className="text-[13px] text-[#8C94A8]">Ask · Focus · Add</span>
             </button>
           ) : (
             <div

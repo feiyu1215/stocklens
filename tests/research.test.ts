@@ -7,7 +7,16 @@ import { makeDimensionId, DIMENSION_LIMITS, type ResearchDimension } from "@/lib
 import { validateDimensionClaims } from "@/lib/research/claims"
 import { applyTotalBudget, buildDimensionPack, parseComposerShape } from "@/lib/research/composer"
 import { lookupIndustry, INDUSTRY_REGISTRY_SIZE } from "@/lib/data/industry-registry"
-import { computeDimensionLayout, computeFieldNodes, selectFieldEvidence, stableHashUnit } from "@/lib/presentation/constellation-layout"
+import {
+  CONSTELLATION,
+  computeAddNodeLayout,
+  computeDimensionLayout,
+  computeFieldNodes,
+  computeSuggestionLayout,
+  selectFieldEvidence,
+  stableHashUnit,
+  verifyLayoutConstraints,
+} from "@/lib/presentation/constellation-layout"
 import type { Evidence, EvidenceDimension, EvidenceSignal, EvidenceType } from "@/lib/evidence/types"
 import { m } from "./evidence/helpers"
 
@@ -293,11 +302,14 @@ describe("Deterministic Layout（§62）", () => {
     expect(a).toEqual(b)
   })
 
-  it("unknown 维度尺寸更小；维度 id 稳定", () => {
+  it("维度尺寸系统一致（UNKNOWN 同体系）；维度 id 稳定", () => {
     const layout = computeDimensionLayout(dims)
     const ready = layout.find((l) => l.dimensionId.includes("增长韧性"))!
     const unknown = layout.find((l) => l.dimensionId.includes("估值定位"))!
-    expect(unknown.size).toBeLessThan(ready.size)
+    // Task 12.1 §4：UNKNOWN 与普通维度使用同一尺寸体系（差异靠样式表达，绝不窄卡）
+    expect(unknown.width).toBe(172)
+    expect(unknown.height).toBe(ready.height)
+    expect(unknown.width).toBeGreaterThanOrEqual(150)
     expect(makeDimensionId("增长韧性", 0, "ai_initial")).toBe(makeDimensionId("增长韧性", 0, "ai_initial"))
     expect(stableHashUnit("abc")).toBe(stableHashUnit("abc"))
   })
@@ -308,8 +320,8 @@ describe("Deterministic Layout（§62）", () => {
     )
     const fieldEvidence = selectFieldEvidence(evidence)
     expect(fieldEvidence.length).toBeLessThanOrEqual(18)
-    const nodesA = computeFieldNodes(fieldEvidence)
-    const nodesB = computeFieldNodes(fieldEvidence)
+    const nodesA = computeFieldNodes(fieldEvidence, 1560, 1000)
+    const nodesB = computeFieldNodes(fieldEvidence, 1560, 1000)
     expect(nodesA).toEqual(nodesB)
     expect(nodesA.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true)
   })
@@ -343,3 +355,88 @@ describe("Company Context（§16）", () => {
 })
 
 void DIMENSION_LIMITS
+
+describe("Task 12.1 Spatial Polish（布局碰撞与稳定性）", () => {
+  function makeDims(labels: string[], withLong = false): ResearchDimension[] {
+    return labels.map((label, i) => ({
+      dimensionId: makeDimensionId(label, i, "ai_initial"),
+      label: withLong && i === 0 ? "B端业务与第二曲线及海外收入结构" : label,
+      researchQuestion: "q",
+      origin: "ai_initial",
+      capabilityRefs: ["financial_growth"],
+      status: i === labels.length - 1 ? "unknown" : "ready",
+      rationale: "r",
+      priority: i + 1,
+      evidenceIds: Array.from({ length: (i % 4) + 2 }, (_, j) => `EV_${i}_${j}`),
+      claimIds: [],
+    }))
+  }
+
+  const six = makeDims(["增长韧性", "盈利质量与结构", "现金转化与分红能力", "估值与行业相对定价", "市场相对表现与波动", "事件与关注度扰动"])
+
+  it("碰撞守卫：六个维度 + 长标签下无 Core 侵入、无对象重叠", () => {
+    const layout = computeDimensionLayout(six)
+    const check = verifyLayoutConstraints(layout)
+    expect(check.ok, check.violations.join("; ")).toBe(true)
+  })
+
+  it("长中文标签不产生极窄对象（宽度固定在 150–220 区间）", () => {
+    const layout = computeDimensionLayout(makeDims(["B端业务与第二曲线"], true))
+    const l = layout[0]
+    expect(l.width).toBeGreaterThanOrEqual(150)
+    expect(l.width).toBeLessThanOrEqual(220)
+    expect(l.height).toBeGreaterThanOrEqual(60)
+  })
+
+  it("最高优先级对象尺寸略大（scale 1.08）且不改变尺寸体系", () => {
+    const layout = computeDimensionLayout(six)
+    const first = layout.find((l) => l.dimensionId.includes("增长韧性"))!
+    expect(first.scale).toBeCloseTo(1.08, 5)
+    expect(first.width).toBe(186)
+  })
+
+  it("建议对象沿右侧外围弧线稳定放置（非 Sidebar、确定性、角度在 ±40° 内）", () => {
+    const suggestions = [{ label: "A" }, { label: "B" }, { label: "C" }, { label: "D" }]
+    const a = computeSuggestionLayout(suggestions)
+    const b = computeSuggestionLayout(suggestions)
+    expect(a).toEqual(b) // 确定性
+    expect(a).toHaveLength(3) // 最多 3 个
+    for (const p of a) {
+      expect(Math.abs(p.angle)).toBeLessThanOrEqual(0.63)
+      expect(p.radius).toBeGreaterThan(150)
+    }
+    // 弧线分布：上下两个比中间的更外扩（不是规则列表）
+    expect(a[0].radius).toBeGreaterThan(a[1].radius)
+    expect(a[2].radius).toBeGreaterThan(a[1].radius)
+  })
+
+  it("建议对象置于维度环之外（baseRadius 传入时整体外移，不与维度重叠）", () => {
+    const layout = computeDimensionLayout(six)
+    const maxDimRadius = layout.reduce((max, l) => Math.max(max, l.radius + l.width / 2), 0)
+    const placements = computeSuggestionLayout([{ label: "A" }, { label: "B" }], {
+      baseRadius: maxDimRadius + 92,
+    })
+    for (const p of placements) {
+      expect(p.radius).toBeGreaterThanOrEqual(maxDimRadius + 92)
+    }
+  })
+
+  it("Add 节点独立于所有维度对象：与最近维度角距取最大角隙中点（弧距 ≥ 120px）", () => {
+    const layout = computeDimensionLayout(six)
+    const add = computeAddNodeLayout(layout)
+    const nearestAngle = layout.reduce((min, l) => {
+      const diff = Math.abs(Math.atan2(Math.sin(l.angle - add.angle), Math.cos(l.angle - add.angle)))
+      return Math.min(min, diff)
+    }, Math.PI)
+    // 6 维均匀分布时理论最大角距 ≈ 30°；换算为弧距须有充足间隔
+    const arcDistance = nearestAngle * Math.min(add.radius, CONSTELLATION.CORE_SIZE / 2 + 200)
+    expect(arcDistance).toBeGreaterThanOrEqual(120)
+    expect(nearestAngle).toBeGreaterThanOrEqual(0.45)
+  })
+
+  it("连续调用布局结果完全一致（两次渲染不漂移）", () => {
+    const a = computeDimensionLayout(six)
+    const b = computeDimensionLayout(six)
+    expect(a).toEqual(b)
+  })
+})

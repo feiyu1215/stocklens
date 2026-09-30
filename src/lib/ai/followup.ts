@@ -1,0 +1,193 @@
+import "server-only"
+
+import { randomUUID } from "node:crypto"
+
+import { gatherStockData } from "@/lib/data/stock-data"
+import { calculateMetrics } from "@/lib/metrics/engine"
+import { buildEvidence } from "@/lib/evidence/engine"
+import type { Evidence } from "@/lib/evidence/types"
+import { LLMConfigError, parseLLMJson, runLLM } from "./model"
+import {
+  FOLLOWUP_PROMPT_VERSION,
+  buildFollowupRepairPrompt,
+  buildFollowupSystemPrompt,
+  buildFollowupUserPrompt,
+} from "./prompts/followup"
+import { validateDiagnosisSynthesis } from "@/lib/validation/diagnosis"
+import type { AIInvocationTrace, DiagnosisSynthesis } from "./types"
+
+// Followup Runner（Task 06）：诊断后沿证据继续研究的追问链路。
+// 复用 Truth Layer 与 DiagnosisSynthesis schema / Validator；
+// 每次调用重新执行 Truth Layer（无持久化），保证证据始终是当次真实数据。
+
+const FOLLOWUP_TEMPERATURE = 0.2
+const FOLLOWUP_MAX_TOKENS = 1200
+
+export interface FollowupResult {
+  followupId: string
+  mode: "followup" | "compliance_redirect"
+  compliance?: { message: string; suggestedQuestions: string[] }
+  question: string
+  /** 客户端焦点证据中真实存在的那部分（伪造 ID 被过滤，不进入 grounding 声明） */
+  focusEvidenceIds: string[]
+  /** 客户端提交但不存在于证据集的 ID（用于 UI 提示，静默过滤会掩盖问题） */
+  ignoredEvidenceIds: string[]
+  synthesis: DiagnosisSynthesis | null
+  evidence: Evidence[]
+  ai: { status: "success" | "failed"; trace?: AIInvocationTrace }
+}
+
+function failedTrace(trace: AIInvocationTrace, issues: string[]): AIInvocationTrace {
+  return { ...trace, status: "failed", validationIssues: issues }
+}
+
+export async function runFollowup(input: {
+  stockCode: string
+  question: string
+  focusEvidenceIds?: string[]
+}): Promise<FollowupResult> {
+  const followupId = randomUUID()
+  const dataResp = await gatherStockData(input.stockCode)
+  const metricsResp = calculateMetrics(dataResp)
+  const bundle = buildEvidence({
+    metrics: metricsResp.metrics,
+    context: {
+      stockCode: input.stockCode,
+      stockName: dataResp.stock?.stockName ?? input.stockCode,
+      industry: dataResp.stock?.industry ?? null,
+      latestFinancialPeriod: metricsResp.latestFinancialPeriod,
+      latestPriceDate: metricsResp.latestPriceDate,
+      metricWarnings: metricsResp.warnings,
+    },
+  })
+
+  const requested = input.focusEvidenceIds ?? []
+  const focusEvidenceIds = requested.filter((id) => bundle.evidence.some((e) => e.evidenceId === id))
+  const ignoredEvidenceIds = requested.filter((id) => !focusEvidenceIds.includes(id))
+
+  const base = {
+    followupId,
+    question: input.question,
+    focusEvidenceIds,
+    ignoredEvidenceIds,
+    evidence: bundle.evidence,
+  }
+
+  // 焦点证据为空：没有可锚定的追问上下文，直接以失败返回（不编造）
+  if (focusEvidenceIds.length === 0) {
+    return {
+      ...base,
+      mode: "followup",
+      synthesis: null,
+      ai: { status: "failed" },
+    }
+  }
+
+  let first: Awaited<ReturnType<typeof runLLM>>
+  try {
+    first = await runLLM({
+      task: "diagnosis_synthesis",
+      promptVersion: FOLLOWUP_PROMPT_VERSION,
+      systemPrompt: buildFollowupSystemPrompt(),
+      userPrompt: buildFollowupUserPrompt({
+        question: input.question,
+        stock: { stockCode: input.stockCode, stockName: dataResp.stock?.stockName ?? input.stockCode },
+        context: {
+          latestFinancialPeriod: metricsResp.latestFinancialPeriod,
+          latestTradeDate: metricsResp.latestPriceDate,
+        },
+        focusEvidenceIds,
+        evidence: bundle.evidence,
+      }),
+      temperature: FOLLOWUP_TEMPERATURE,
+      maxTokens: FOLLOWUP_MAX_TOKENS,
+    })
+  } catch (err) {
+    return {
+      ...base,
+      mode: "followup",
+      synthesis: null,
+      ai: {
+        status: "failed",
+        trace: {
+          task: "diagnosis_synthesis",
+          model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+          promptVersion: FOLLOWUP_PROMPT_VERSION,
+          status: "failed",
+          latencyMs: 0,
+          retries: 0,
+          validationIssues: [err instanceof LLMConfigError ? err.message : String(err)],
+        },
+      },
+    }
+  }
+
+  const attemptValidation = (output: string) => {
+    try {
+      return validateDiagnosisSynthesis(parseLLMJson(output), bundle.evidence)
+    } catch (err) {
+      return {
+        ok: false as const,
+        issues: [{ section: "parse", rule: "invalid-json", message: err instanceof Error ? err.message : String(err) }],
+      }
+    }
+  }
+
+  if (first.trace.status === "failed") {
+    return {
+      ...base,
+      mode: "followup",
+      synthesis: null,
+      ai: { status: "failed", trace: failedTrace(first.trace, first.trace.validationIssues ?? []) },
+    }
+  }
+
+  const firstValidation = attemptValidation(first.output)
+  if (firstValidation.ok) {
+    return { ...base, mode: "followup", synthesis: firstValidation.synthesis, ai: { status: "success", trace: first.trace } }
+  }
+
+  const second = await runLLM({
+    task: "diagnosis_synthesis",
+    promptVersion: FOLLOWUP_PROMPT_VERSION,
+    systemPrompt: buildFollowupSystemPrompt(),
+    userPrompt: buildFollowupRepairPrompt(
+      first.output,
+      firstValidation.issues.map((i) => `${i.section}/${i.rule}: ${i.message}`),
+    ),
+    temperature: FOLLOWUP_TEMPERATURE,
+    maxTokens: FOLLOWUP_MAX_TOKENS,
+  })
+
+  const issues = [...firstValidation.issues]
+  if (second.trace.status === "failed") {
+    issues.push(...(second.trace.validationIssues ?? []).map((m) => ({ section: "llm", rule: "request-failed", message: m })))
+    return {
+      ...base,
+      mode: "followup",
+      synthesis: null,
+      ai: { status: "failed", trace: failedTrace(second.trace, issues.map((i) => `${i.section}/${i.rule}: ${i.message}`)) },
+    }
+  }
+  const secondValidation = attemptValidation(second.output)
+  if (!secondValidation.ok) {
+    return {
+      ...base,
+      mode: "followup",
+      synthesis: null,
+      ai: {
+        status: "failed",
+        trace: failedTrace(second.trace, [...issues, ...secondValidation.issues].map((i) => `${i.section}/${i.rule}: ${i.message}`)),
+      },
+    }
+  }
+  return {
+    ...base,
+    mode: "followup",
+    synthesis: secondValidation.synthesis,
+    ai: {
+      status: "success",
+      trace: { ...second.trace, retries: second.trace.retries + 1, validationIssues: issues.map((i) => `${i.section}/${i.rule}: ${i.message}`) },
+    },
+  }
+}

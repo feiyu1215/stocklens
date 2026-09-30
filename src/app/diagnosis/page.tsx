@@ -200,6 +200,7 @@ function DiagnosisWorkspace() {
         evidenceId={drawerEvidenceId}
         allEvidence={evidence}
         metrics={data.metrics}
+        stockCode={stockCode}
         onClose={() => setDrawer(null)}
       />
     </main>

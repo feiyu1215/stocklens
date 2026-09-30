@@ -6,6 +6,7 @@ import type { MetricResult } from "@/lib/metrics/types"
 import type { Evidence } from "@/lib/evidence/types"
 import { formatMetricValue } from "@/lib/presentation/formatters"
 import { CONFIDENCE_LABEL, CONFIDENCE_TOOLTIP, EvidenceSignalBadge, EvidenceTypeBadge } from "./badges"
+import { FollowupSection } from "./FollowupSection"
 
 // Evidence Drawer（Task 05 §27–41）：证据钻取主入口。
 // - inference：依据事实（basedOn 可点击下钻，带返回）；
@@ -53,11 +54,13 @@ export function EvidenceDrawer({
   evidenceId,
   allEvidence,
   metrics,
+  stockCode,
   onClose,
 }: {
   evidenceId: string | null
   allEvidence: Evidence[]
   metrics: MetricResult[]
+  stockCode: string
   onClose: () => void
 }) {
   // 钻取栈：当前证据 + 返回历史；切换目标证据时重置
@@ -206,6 +209,16 @@ export function EvidenceDrawer({
               </section>
             )
           )}
+
+          <FollowupSection
+            stockCode={stockCode}
+            focusEvidence={current}
+            focusEvidenceIds={[...current.basedOn, ...current.metricIds.map((id) => {
+              // 关联指标对应的证据（同指标的 fact 证据）作为追问上下文
+              return allEvidence.find((e) => e.metricIds.includes(id) && e.type === "fact")?.evidenceId ?? ""
+            }).filter(Boolean)]}
+            onOpenEvidence={(id) => setStack((s) => (s[s.length - 1] === id ? s : [...s, id]))}
+          />
         </div>
       </aside>
     </div>

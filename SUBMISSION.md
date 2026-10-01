@@ -7,7 +7,10 @@ https://stocklens-blush.vercel.app/observatory-v5
 https://github.com/feiyu1215/stocklens
 
 **生产部署对应的代码版本**
-`db618d4`（Vercel 生产别名已指向该构建；其后仅有文档提交。完整历史见仓库 `git log`。）
+`db618d4`（Vercel 生产别名已指向该构建；其后仅有文档与打包脚本提交。）
+
+**最终提交（包含全部交付物）**
+`a4692c8` — README、SUBMISSION、docs/final 全部文档、六张最终截图、以及重新生成的提交包。完整历史见仓库 `git log`。
 
 **建议环境**
 桌面浏览器，视口宽度 1280×800 或更大（1440×900 为设计基准）。

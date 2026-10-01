@@ -2198,7 +2198,7 @@ export default function ResearchCanvas() {
               data-suggestion={s.label}
               data-hit="suggestion"
               className="absolute"
-              style={{ left: 150 + i * 250, top: 806, opacity: i === 0 ? 0.95 : 0.6, zIndex: 5, ...hitStyle(hitAreas) }}
+              style={{ left: 150 + i * 250, top: 700, opacity: i === 0 ? 0.95 : 0.6, zIndex: 5, ...hitStyle(hitAreas) }}
               onPointerDown={(e) => {
                 e.stopPropagation()
                 suggestRef.current = { label: s.label, clientX: e.clientX, clientY: e.clientY }

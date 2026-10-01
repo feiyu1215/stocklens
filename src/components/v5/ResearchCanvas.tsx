@@ -278,6 +278,8 @@ export default function ResearchCanvas() {
   const spaceRef = useRef(false)
   const marqueeRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const suggestDragRef = useRef<{ label: string; x: number; y: number; over: boolean } | null>(null)
+  /** 指针捕获推迟到真正开始拖动时才做（见 onPointerMove）：pointerdown 就捕获会把 click 改派给捕获元素 */
+  const suggestCapturedRef = useRef(false)
   const addDimensionRef = useRef<((label: string, sx?: number, sy?: number) => Promise<void>) | null>(null)
 
   // ---- fixture ----
@@ -653,6 +655,14 @@ export default function ResearchCanvas() {
       }
       const sg = suggestRef.current
       if (sg) {
+        if (!suggestCapturedRef.current && Math.hypot(e.clientX - sg.clientX, e.clientY - sg.clientY) > DRAG_THRESHOLD) {
+          try {
+            ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+            suggestCapturedRef.current = true
+          } catch {
+            // 合成事件下可能失败
+          }
+        }
         const over = local.x > DESIGN.width * 0.2 && local.x < DESIGN.width * 0.95 && local.y > DESIGN.height * 0.06 && local.y < DESIGN.height * 0.94
         const next = { label: sg.label, x: local.x, y: local.y, over }
         suggestDragRef.current = next
@@ -693,6 +703,7 @@ export default function ResearchCanvas() {
       const label = suggestRef.current.label
       suggestRef.current = null
       suggestDragRef.current = null
+      suggestCapturedRef.current = false
       setSuggestDrag(null)
       if (sd?.over) void addDimensionRef.current?.(label, sd.x, sd.y)
     }
@@ -2202,11 +2213,6 @@ export default function ResearchCanvas() {
               onPointerDown={(e) => {
                 e.stopPropagation()
                 suggestRef.current = { label: s.label, clientX: e.clientX, clientY: e.clientY }
-                try {
-                  ;(e.currentTarget.parentElement as HTMLElement)?.setPointerCapture?.(e.pointerId)
-                } catch {
-                  // 合成事件下可能失败
-                }
               }}
             >
               <button

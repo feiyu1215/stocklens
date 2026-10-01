@@ -19,7 +19,7 @@
 **运行时 LLM 的准确事实**（从代码核验，非推测）：
 - 提供方与模型：**DeepSeek API，模型 `deepseek-chat`**（`DEEPSEEK_BASE_URL=https://api.deepseek.com`）；
 - 调用被**收口在唯一模块** `src/lib/ai/model.ts`（注释即写明"唯一允许直接调用大模型 API 的模块"，只做鉴权/请求/超时/网络重试）；
-- 三处调用的温度：Framer / Composer / Follow-up 分别为 0 / 0.2 / 0.2；
+- 三处调用（Research Framer / Composer / Add-dimension 与 Follow-up）在当前 v5 研究空间路径下使用 `temperature = 0.2`（`src/lib/research/init-space.ts`、`src/lib/research/add-dimension.ts`、`src/lib/ai/followup.ts`）；约束不靠采样温度，而靠**校验层**（证据绑定 / 引用完整性 / 合规扫描）；
 - 密钥只存在于服务端环境变量，前端 bundle 不含密钥。
 
 ## 2. How AI Participated in Product Development

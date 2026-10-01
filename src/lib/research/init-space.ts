@@ -101,6 +101,8 @@ async function loadTruth(stockCode: string): Promise<TruthBundle> {
     metrics: metricsResp.metrics,
     trend: makeTrendLookup(dataResp.financial),
     events: eventCtx,
+    // Task 17.1 §P0：本次运行取回数据的时间（用于 freshness.retrievedAt）
+    retrievedAt: new Date().toISOString(),
     context: {
       stockCode,
       stockName: dataResp.stock?.stockName ?? stockCode,

@@ -1,4 +1,5 @@
 import type { MetricSourceField } from "@/lib/metrics/types"
+import type { DataFreshness } from "@/lib/metrics/freshness"
 
 // Evidence 域模型 —— StockLens 的核心数据对象。
 //
@@ -53,6 +54,11 @@ export interface Evidence {
    */
   interpretationFlags?: import("@/lib/metrics/interpretation").MetricInterpretationFlag[]
   interpretationNote?: string
+  /**
+   * Task 17.1 §P0：数据新鲜度。时间敏感类（行情 / 估值 / 事件核查）按数据日期与阈值判定；
+   * 报告期数据以报告期为准。status=stale 时 statement 末尾必须带"当前状态无法由该数据确认"。
+   */
+  freshness?: DataFreshness
 }
 
 export interface EvidenceContext {

@@ -40,7 +40,7 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
             border: `1.5px solid ${C.blue}`,
             background: "rgba(47,102,255,0.16)",
             boxShadow: "0 0 0 6px rgba(47,102,255,0.07)",
-            transition: reducedMotion ? "none" : "left 900ms cubic-bezier(0.22,1,0.36,1), top 900ms cubic-bezier(0.22,1,0.36,1)",
+            transition: reducedMotion ? "none" : "left 500ms cubic-bezier(0.22,1,0.36,1), top 500ms cubic-bezier(0.22,1,0.36,1)",
           }}
         />
       )}
@@ -110,7 +110,7 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
           className="font-mono text-[10.5px]"
           style={{ color: C.ink, minHeight: 28, minWidth: 40, cursor: "pointer" }}
         >
-          Skip
+          下一步 →
         </button>
         <button
           type="button"

@@ -26,61 +26,65 @@ export interface DemoScene {
   trail?: { x: number; y: number }
 }
 
+// Task 17.1 §P2：总时长约 30 秒（3.5 / 4 / 4.5 / 7 / 5 / 6）。
+// 节奏靠"减少空等待 + 收紧 hold"实现，不是让多个动作同时发生：
+// 每个 Scene 仍然只有一个主要重点，Scene 4 保留最长阅读时间（Reading 稳定后再进 Evidence）。
 export const DEMO_SCENES: DemoScene[] = [
   {
     id: "explore",
-    actions: [{ atMs: 300, kind: "pan" }],
-    captions: [{ atMs: 900, title: "EXPLORE", text: "拖动画布，探索公司的研究空间。" }],
-    ms: 5000,
+    actions: [{ atMs: 200, kind: "pan" }],
+    captions: [{ atMs: 700, title: "EXPLORE", text: "拖动画布，探索公司的研究空间。" }],
+    ms: 3500,
     pointer: { x: 0.62, y: 0.5 },
     trail: { x: 0.44, y: 0.46 },
   },
   {
     id: "dimension",
-    actions: [{ atMs: 300, kind: "hover-dimension" }],
-    captions: [{ atMs: 700, title: "DYNAMIC DIMENSION", text: "AI 根据公司类型与当前问题生成研究维度。" }],
-    ms: 6000,
+    actions: [{ atMs: 200, kind: "hover-dimension" }],
+    captions: [{ atMs: 600, title: "DYNAMIC DIMENSION", text: "AI 根据公司类型与当前问题生成研究维度。" }],
+    ms: 4000,
     pointer: { x: 0.54, y: 0.3 },
   },
   {
     id: "focus",
-    actions: [{ atMs: 400, kind: "open-aperture" }],
+    actions: [{ atMs: 250, kind: "open-aperture" }],
     // 等位移落定后再出字幕
-    captions: [{ atMs: 1400, title: "FOCUS", text: "点击一个维度，把研究空间聚焦到当前问题。" }],
-    ms: 7000,
+    captions: [{ atMs: 1200, title: "FOCUS", text: "点击一个维度，把研究空间聚焦到当前问题。" }],
+    ms: 4500,
     pointer: { x: 0.55, y: 0.34 },
   },
   {
     id: "reading-evidence",
     actions: [
-      { atMs: 300, kind: "open-reading" },
-      { atMs: 5000, kind: "select-evidence" },
+      { atMs: 200, kind: "open-reading" },
+      // 先让 Reading 状态稳定（约 3.4s），再进入 Evidence
+      { atMs: 3600, kind: "select-evidence" },
     ],
     captions: [
-      { atMs: 1600, title: "READING", text: "沿结论继续深入。" },
-      { atMs: 5400, title: "EVIDENCE", text: "每条关键结论都可以回到指标、期次和来源。" },
+      { atMs: 900, title: "READING", text: "沿结论继续深入。" },
+      { atMs: 3900, title: "EVIDENCE", text: "每条关键结论都可以回到指标、期次和来源。" },
     ],
-    ms: 12000,
+    ms: 7000,
     pointer: { x: 0.78, y: 0.62 },
   },
   {
     id: "ai-lens",
-    actions: [{ atMs: 400, kind: "focus-ai-typing" }],
-    captions: [{ atMs: 1000, title: "AI RESEARCH LENS", text: "任何时候都可以直接问 AI，当前研究上下文会自动带入。" }],
-    ms: 8000,
+    actions: [{ atMs: 250, kind: "focus-ai-typing" }],
+    captions: [{ atMs: 700, title: "AI RESEARCH LENS", text: "任何时候都可以直接问 AI，当前研究上下文会自动带入。" }],
+    ms: 5000,
     pointer: { x: 0.5, y: 0.93 },
   },
   {
     id: "extend-shelf",
     actions: [
       // 先回到 Canvas，否则 Reading 的面包屑会占住头部，研究架打开也看不见
-      { atMs: 200, kind: "close-reading" },
-      { atMs: 900, kind: "open-add-dimension" },
-      { atMs: 4200, kind: "open-shelf" },
-      { atMs: 8200, kind: "clear-ai-input" },
+      { atMs: 150, kind: "close-reading" },
+      { atMs: 600, kind: "open-add-dimension" },
+      { atMs: 2800, kind: "open-shelf" },
+      { atMs: 5200, kind: "clear-ai-input" },
     ],
-    captions: [{ atMs: 1000, title: "EXTEND & SHELF", text: "补充研究角度，并保存公司，随时继续研究。" }],
-    ms: 12000,
+    captions: [{ atMs: 700, title: "EXTEND & SHELF", text: "补充研究角度，并保存公司，随时继续研究。" }],
+    ms: 6000,
     pointer: { x: 0.8, y: 0.7 },
   },
 ]

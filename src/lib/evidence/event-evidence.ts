@@ -1,5 +1,6 @@
 import type { EventContext, StockEvent } from "@/lib/data/events"
 import { NEWS_DISCLOSURE_BOUNDARY } from "@/lib/data/events"
+import { classifyFreshness, staleQualifier } from "@/lib/metrics/freshness"
 import type { Evidence } from "./types"
 
 // Event → Evidence（Task 10 Part B §30–33）：
@@ -13,33 +14,43 @@ const EVENT_CONFIDENCE_REASON =
 
 const DIMENSION = "risk" as const
 
-function eventToFact(e: StockEvent): Evidence {
+function eventToFact(e: StockEvent, opts?: { now?: Date; retrievedAt?: string }): Evidence {
+  const sourceFields = [
+    { source: "fuyao" as const, domain: "prices" as const, field: e.sourceEndpoint, date: e.eventDate },
+  ]
+  // Task 17.1 §P0：事件核查同样属于时间敏感数据（"当前无记录"只对核查当日成立）
+  const freshness = classifyFreshness({
+    sourceFields,
+    dimension: DIMENSION,
+    period: e.eventDate,
+    retrievedAt: opts?.retrievedAt,
+    now: opts?.now,
+  })
   return {
     evidenceId: `EV_FACT_RISK_${e.eventId.replace(/^EVT_/, "")}`,
     dimension: DIMENSION,
     title: e.title,
-    statement: e.statement,
+    statement: e.statement + staleQualifier(freshness),
     type: "fact",
     signal: "neutral",
     confidence: "high",
     metricIds: [],
     basedOn: [],
     period: e.eventDate,
-    sourceFields: [
-      { source: "fuyao", domain: "prices", field: e.sourceEndpoint, date: e.eventDate },
-    ],
+    sourceFields,
     verifyStatus: "verified",
     confidenceReason: EVENT_CONFIDENCE_REASON,
+    freshness,
   }
 }
 
-export function buildEventEvidence(context: EventContext | null): Evidence[] {
+export function buildEventEvidence(context: EventContext | null, opts?: { now?: Date; retrievedAt?: string }): Evidence[] {
   const out: Evidence[] = []
 
   if (context) {
     for (const e of context.events) {
       if (e.verifyStatus !== "verified") continue
-      out.push(eventToFact(e))
+      out.push(eventToFact(e, opts))
     }
 
     // 异动空态（§22/§32）：接口成功但无匹配记录 → UNKNOWN，明确「不能据此确认不存在其他事件」

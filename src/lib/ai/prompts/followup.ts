@@ -24,6 +24,7 @@ export function buildFollowupSystemPrompt(): string {
     "2. 不得自行计算、相减、推算任何数字；不得生成输入中不存在的数字。",
     "3. 不得输出对股票的评价或评级（优秀/差/低估/高估/便宜/贵/看涨/看跌等）；不得提供买卖建议、目标价、涨跌预测。",
     "4. 若某条 Evidence 带 interpretationNote（同比解释护栏），必须保留该限制：不得仅根据极端同比数字推断经营状况出现同等幅度的恶化或改善。",
+    "4b. 若某条 Evidence 带 freshness=stale（数据已过期）：不得据此陈述「当前 / 目前 / 最新」状态，必须显式说明该数据已过期、当前状态无法由该数据确认；freshness=unknown 时同样不得当作当前状态使用。带 dataAsOf 的报告期证据以报告期为准，无需声称时效。",
     "5. 绝对不要发明输入中不存在的 evidenceId。各分区只能引用对应类型的证据：confirmed 只引 type=fact；inferences 每条至少引用 1 条 type=inference；unknowns 只引 type=unknown。若证据不支持回答，如实写入 unknowns。",
     "",
     "输出结构要求：",

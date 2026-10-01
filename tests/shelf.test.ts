@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import { describe, expect, it } from "vitest"
 
 import { DEMO_SCENES, DEMO_TOTAL_MS, isLastScene, sceneAt, sceneBy } from "@/lib/v5/demo"
@@ -81,10 +84,40 @@ describe("Research Shelf（§B7–§B10）", () => {
 })
 
 describe("Guided Demo V2 场景（§26/§27/§30）", () => {
-  it("6 个场景，总时长落在 50–60 秒", () => {
+  it("6 个场景，总时长落在 28–35 秒（Task 17.1 §P2 收紧节奏后的契约）", () => {
     expect(DEMO_SCENES).toHaveLength(6)
-    expect(DEMO_TOTAL_MS).toBeGreaterThanOrEqual(50000)
-    expect(DEMO_TOTAL_MS).toBeLessThanOrEqual(60000)
+    expect(DEMO_TOTAL_MS).toBeGreaterThanOrEqual(28000)
+    expect(DEMO_TOTAL_MS).toBeLessThanOrEqual(35000)
+  })
+
+  it("§P2：单场景不短于 3 秒、不长于 7.5 秒，Scene 4（Reading+Evidence）最长", () => {
+    for (const scene of DEMO_SCENES) {
+      expect(scene.ms).toBeGreaterThanOrEqual(3000)
+      expect(scene.ms).toBeLessThanOrEqual(7500)
+    }
+    const longest = DEMO_SCENES.reduce((a, b) => (b.ms > a.ms ? b : a))
+    expect(longest.id).toBe("reading-evidence")
+  })
+
+  it("§P2：Scene 4 先让 Reading 稳定再进 Evidence（两次动作间隔 ≥ 3 秒）", () => {
+    const scene = DEMO_SCENES.find((s) => s.id === "reading-evidence")!
+    const read = scene.actions.find((a) => a.kind === "open-reading")!
+    const evidence = scene.actions.find((a) => a.kind === "select-evidence")!
+    expect(evidence.atMs - read.atMs).toBeGreaterThanOrEqual(3000)
+  })
+
+  it("§P2：演示入口与控制文案统一为「快速演示 / 下一步 →」，且不再承诺精确秒数", () => {
+    const canvas = readFileSync(join(process.cwd(), "src/components/v5/ResearchCanvas.tsx"), "utf8")
+    const overlay = readFileSync(join(process.cwd(), "src/components/v5/DemoOverlay.tsx"), "utf8")
+    const demo = readFileSync(join(process.cwd(), "src/lib/v5/demo.ts"), "utf8")
+    for (const src of [canvas, overlay, demo]) {
+      expect(src).not.toMatch(/60s 演示|60 秒演示|观看 60 秒/)
+    }
+    expect(canvas).toContain("▶ 快速演示")
+    expect(canvas).toContain("▶ 观看快速演示")
+    expect(overlay).toContain("下一步 →")
+    // 控件里不再出现 Skip（onSkip / data-demo-skip 属于属性名，不受影响）
+    expect(overlay).not.toMatch(/\bSkip\b/)
   })
 
   it("每条字幕最多 1 标题 + 1 句话，指针在视口内", () => {

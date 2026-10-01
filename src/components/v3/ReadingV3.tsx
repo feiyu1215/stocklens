@@ -431,6 +431,15 @@ export default function ReadingV3({
               <div>FUYAO{railEvidence.sourceFields?.[0]?.field ? ` · ${railEvidence.sourceFields[0].field}` : ""}</div>
               <div>{railEvidence.period ?? ""}</div>
               <div>{railEvidence.verifyStatus === "verified" ? "VERIFIED" : "UNVERIFIED"}</div>
+              {/* Task 17.1 §P0：时间敏感数据展示新鲜度，过期时用 coral 明示 */}
+              {railEvidence.freshness?.timeSensitive && (
+                <div
+                  data-evidence-freshness={railEvidence.freshness.status}
+                  style={railEvidence.freshness.status === "stale" ? { color: V3_PALETTE.coral } : undefined}
+                >
+                  数据截至 {railEvidence.freshness.dataAsOf ?? "未知"} · {railEvidence.freshness.status.toUpperCase()}
+                </div>
+              )}
             </div>
             {railMetrics.some((m) => m.calculationMethod && m.calculationMethod !== "-") && (
               <div className="mt-4">

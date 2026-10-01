@@ -2377,7 +2377,7 @@ export default function ResearchCanvas() {
         <div
           data-evidence-breadcrumb
           className="absolute z-[70] flex items-center gap-2 font-mono text-[10.5px]"
-          style={{ left: `calc(30% + 3rem)`, top: 96, color: C.secondary }}
+          style={{ left: `calc(30% + 3rem)`, top: 12, color: C.secondary }}
         >
           <button
             type="button"
@@ -2521,10 +2521,12 @@ export default function ResearchCanvas() {
               data-ui
               data-demo-start
               onClick={demoStart}
-              className="border px-2 font-mono text-[10.5px] transition hover:opacity-80"
-              style={{ borderColor: C.hair, color: C.ink, minHeight: 30, cursor: "pointer" }}
+              disabled={!payload}
+              className="border px-2 font-mono text-[10.5px] transition hover:opacity-80 disabled:cursor-default disabled:opacity-55"
+              style={{ borderColor: C.hair, color: C.ink, minHeight: 30, cursor: payload ? "pointer" : "default" }}
             >
-              ▶ 60s 演示
+              {/* §P2：不承诺精确秒数（Demo 约 30 秒）；研究空间未就绪时不进入演示 */}
+              {payload ? "▶ 快速演示" : "研究空间准备中…"}
             </button>
             {companyQuery !== null && (
               <div data-ui data-company-search className="absolute right-0 top-10 w-[340px] border bg-white p-3" style={{ borderColor: C.hair }}>
@@ -3032,6 +3034,17 @@ export default function ResearchCanvas() {
           </button>
         )}
 
+      {/* Task 17.1 §P3：取消等待的确认。过渡层在同一次提交里卸载，所以提示必须挂在画布上才看得见 */}
+      {cancelNotice && (
+        <div
+          data-cancel-notice
+          className="pointer-events-none absolute left-1/2 top-16 z-[60] -translate-x-1/2 font-mono text-[11px]"
+          style={{ color: C.secondary }}
+        >
+          {cancelNotice}
+        </div>
+      )}
+
       {/* §25：单活跃任务提示 */}
       {aiNotice && (
         <div
@@ -3104,7 +3117,7 @@ export default function ResearchCanvas() {
               className="text-left text-[12.5px] transition hover:opacity-75"
               style={{ color: C.blue, minHeight: 30, cursor: "pointer" }}
             >
-              ▶ 观看 60 秒演示
+              ▶ 观看快速演示
             </button>
             <button
               type="button"

@@ -63,17 +63,23 @@ export function buildEvidence({
   context,
   trend,
   events,
+  now,
+  retrievedAt,
 }: {
   metrics: MetricResult[]
   context: EvidenceContext
   trend?: TrendLookup
   events?: EventContext | null
+  /** Task 17.1 §P0：新鲜度判定的参考时间（测试可固定；缺省用当前时间） */
+  now?: Date
+  /** 数据取回时间（ISO 字符串）；未提供则 freshness 不带 retrievedAt */
+  retrievedAt?: string
 }): EvidenceBundle {
-  const facts = buildFacts(metrics)
+  const facts = buildFacts(metrics, { now, retrievedAt })
   const inferences = buildInferences(metrics, facts, trend)
   const unknowns = buildUnknowns(metrics, context)
   // 事件证据（Task 10）：FACT（异动/关注/公司行为）+ 覆盖边界 UNKNOWN
-  const eventEvidence = buildEventEvidence(events ?? null)
+  const eventEvidence = buildEventEvidence(events ?? null, { now, retrievedAt })
   const eventFacts = eventEvidence.filter((e) => e.type === "fact")
   const eventUnknowns = eventEvidence.filter((e) => e.type !== "fact")
   // 稳定排序：fact → inference → unknown（组内保持生成顺序；最终展示选择留给 Planner）

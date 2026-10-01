@@ -1,4 +1,5 @@
 import type { MetricResult } from "@/lib/metrics/types"
+import { classifyFreshness, staleQualifier } from "@/lib/metrics/freshness"
 
 import type { Evidence, EvidenceDimension, EvidenceSignal } from "./types"
 
@@ -315,7 +316,7 @@ const FACT_DEFINITIONS: FactDefinition[] = [
   },
 ]
 
-export function buildFacts(metrics: MetricResult[]): Evidence[] {
+export function buildFacts(metrics: MetricResult[], opts?: { now?: Date; retrievedAt?: string }): Evidence[] {
   const byId = new Map(metrics.map((m) => [m.metricId, m] as const))
   const facts: Evidence[] = []
   for (const def of FACT_DEFINITIONS) {
@@ -324,11 +325,20 @@ export function buildFacts(metrics: MetricResult[]): Evidence[] {
     if (!metric || metric.status !== "available" || typeof metric.value !== "number" || !Number.isFinite(metric.value)) {
       continue
     }
+    // Task 17.1 §P0：新鲜度随证据传播；过期数据必须在 statement 里显式声明
+    // "当前状态无法由该数据确认"，不允许静默支撑一个当前结论。
+    const freshness = classifyFreshness({
+      sourceFields: metric.sourceFields,
+      dimension: def.dimension,
+      period: metric.period,
+      retrievedAt: opts?.retrievedAt,
+      now: opts?.now,
+    })
     facts.push({
       evidenceId: `EV_FACT_${def.metricId}`,
       dimension: def.dimension,
       title: def.title,
-      statement: def.statement(metric),
+      statement: def.statement(metric) + staleQualifier(freshness),
       type: "fact",
       signal: def.signal(metric.value),
       confidence: "high",
@@ -339,6 +349,7 @@ export function buildFacts(metrics: MetricResult[]): Evidence[] {
       sourceFields: metric.sourceFields,
       verifyStatus: "verified",
       confidenceReason: FACT_CONFIDENCE_REASON,
+      freshness,
       // Task 10：同比解释护栏（低基数/正负切换/极端变化）随证据传播
       ...(metric.interpretationFlags && metric.interpretationFlags.length > 0
         ? { interpretationFlags: metric.interpretationFlags }

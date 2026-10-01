@@ -213,9 +213,18 @@ export interface CompactEvidenceForLLM {
   comparisonPeriod?: string
   /** Task 10：同比解释护栏提示（模型必须保留该限制） */
   interpretationNote?: string
+  /**
+   * Task 17.1 §P0：数据新鲜度。时间敏感证据（行情/估值/事件核查）必带；
+   * 任何非 fresh 的证据也必带。模型不得忽略：stale 时不能陈述"当前状态"。
+   */
+  freshness?: string
+  dataAsOf?: string
+  freshnessReason?: string
 }
 
 export function toCompactEvidence(e: Evidence): CompactEvidenceForLLM {
+  const f = e.freshness
+  const includeFreshness = Boolean(f && (f.timeSensitive || f.status !== "fresh"))
   return {
     evidenceId: e.evidenceId,
     dimension: e.dimension,
@@ -227,5 +236,12 @@ export function toCompactEvidence(e: Evidence): CompactEvidenceForLLM {
     ...(e.period ? { period: e.period } : {}),
     ...(e.comparisonPeriod ? { comparisonPeriod: e.comparisonPeriod } : {}),
     ...(e.interpretationNote ? { interpretationNote: e.interpretationNote } : {}),
+    ...(includeFreshness && f
+      ? {
+          freshness: f.status,
+          ...(f.dataAsOf ? { dataAsOf: f.dataAsOf } : {}),
+          freshnessReason: f.reason,
+        }
+      : {}),
   }
 }

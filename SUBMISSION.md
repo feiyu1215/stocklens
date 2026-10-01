@@ -1,7 +1,8 @@
 # StockLens｜个股证据诊断 — 提交说明
 
 **Web URL**
-https://stocklens-blush.vercel.app/observatory-v5
+https://stocklens-blush.vercel.app/observatory-v5　（立即加载一份录制好的示例研究空间，**切换公司 / AI 追问 / 新增角度都是实时调用**）
+https://stocklens-blush.vercel.app/observatory-v5?live=1　（完整实时链路：首屏真实取数 + 两次模型调用，约 15–30 秒，带数据新鲜度标记）
 
 **源代码仓库**
 https://github.com/feiyu1215/stocklens

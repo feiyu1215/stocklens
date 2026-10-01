@@ -2444,6 +2444,7 @@ export default function ResearchCanvas() {
             initialEvidenceId={readingEvidenceId}
             onEvidenceFocus={setReadingEvidenceId}
             onAsk={(claimId) => focusAiLens({ type: "claim", claimId })}
+            escOwnedByParent
             onBack={closeReading}
           />
         </div>

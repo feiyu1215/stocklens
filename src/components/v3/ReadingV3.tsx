@@ -44,6 +44,7 @@ export default function ReadingV3({
   onEvidenceFocus,
   onAsk,
   onBack,
+  escOwnedByParent,
 }: {
   space: SpaceLike
   dimension: ResearchDimension
@@ -54,6 +55,8 @@ export default function ReadingV3({
   onEvidenceFocus?: (evidenceId: string | null) => void
   /** §24/§26：ASK 统一聚焦全局 AI Lens（单 composer），不再内联第二套输入框 */
   onAsk?: (claimId: string) => void
+  /** §A2：上层已持有单一 Esc 优先级链时置 true——本组件只处理自己的局部状态，退出 Reading 交给上层 */
+  escOwnedByParent?: boolean
   onBack: () => void
 }) {
   const claims = useMemo(
@@ -97,12 +100,12 @@ export default function ReadingV3({
       if (e.key === "Escape") {
         if (thread) setThread(null)
         else if (challengeId) setChallengeId(null)
-        else onBack()
+        else if (!escOwnedByParent) onBack()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [thread, challengeId, onBack])
+  }, [thread, challengeId, onBack, escOwnedByParent])
 
   const runThread = useCallback(
     async (claim: ResearchClaim) => {

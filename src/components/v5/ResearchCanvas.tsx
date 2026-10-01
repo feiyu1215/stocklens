@@ -2240,7 +2240,7 @@ export default function ResearchCanvas() {
                 <div
                   data-ui
                   data-suggest-pop
-                  className="mt-2 w-[300px] border-l pl-3"
+                  className="absolute bottom-full left-0 mb-2 w-[300px] border-l pl-3"
                   style={{ borderColor: "rgba(17,21,27,0.2)", animation: "v5-in 220ms ease-out" }}
                 >
                   <p className="text-[12px] leading-relaxed" style={{ color: C.secondary }}>

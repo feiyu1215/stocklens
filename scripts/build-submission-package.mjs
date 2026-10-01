@@ -4,7 +4,7 @@
  *
  * Builds the StockLens submission ZIP and generates the package manifest:
  *   dist-submission/StockLens_Submission.zip   (hard max 30 MB, soft target 25 MB)
- *   docs/final/PACKAGE_MANIFEST.md             (values from the real run)
+ *   docs/final/提交包清单.md             (values from the real run)
  *
  * Plain Node ESM, no dependencies. The ZIP container is written directly:
  * entry data is deflated with node:zlib and CRC-32 is implemented locally
@@ -39,7 +39,7 @@ const ROOT = path.resolve(SCRIPT_DIR, "..");
 
 const OUT_DIR = path.join(ROOT, "dist-submission");
 const OUT_ZIP = path.join(OUT_DIR, "StockLens_Submission.zip");
-const MANIFEST_REL = "docs/final/PACKAGE_MANIFEST.md";
+const MANIFEST_REL = "docs/final/提交包清单.md";
 const MANIFEST_ABS = path.join(ROOT, MANIFEST_REL);
 
 const MAX_BYTES = 30 * 1024 * 1024; // hard limit

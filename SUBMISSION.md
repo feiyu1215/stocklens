@@ -24,21 +24,21 @@ https://github.com/feiyu1215/stocklens
 | 内容 | 文件 |
 |---|---|
 | 产品说明 / 启动 / 环境变量 / 已知边界 | [README.md](README.md) |
-| AI 使用与验证记录（必交） | [docs/final/AI_USAGE_AND_VALIDATION.md](docs/final/AI_USAGE_AND_VALIDATION.md) |
-| 测试说明（必交） | [docs/final/TEST_REPORT.md](docs/final/TEST_REPORT.md) |
-| 需求对照（逐条对原始题目） | [docs/final/REQUIREMENT_MATRIX.md](docs/final/REQUIREMENT_MATRIX.md) |
-| 架构 | [docs/final/ARCHITECTURE.md](docs/final/ARCHITECTURE.md) |
-| 产品走查（六张最终截图） | [docs/final/PRODUCT_WALKTHROUGH.md](docs/final/PRODUCT_WALKTHROUGH.md) |
-| 已知边界 | [docs/final/KNOWN_LIMITATIONS.md](docs/final/KNOWN_LIMITATIONS.md) |
-| 演示脚本（录制用） | [docs/final/DEMO_SCRIPT.md](docs/final/DEMO_SCRIPT.md) |
-| 提交包清单 | [docs/final/PACKAGE_MANIFEST.md](docs/final/PACKAGE_MANIFEST.md) |
+| AI 使用与验证记录（必交） | [docs/final/AI使用与验证记录.md](docs/final/AI使用与验证记录.md) |
+| 测试说明（必交） | [docs/final/测试说明.md](docs/final/测试说明.md) |
+| 需求对照（逐条对原始题目） | [docs/final/需求对照.md](docs/final/需求对照.md) |
+| 架构 | [docs/final/架构说明.md](docs/final/架构说明.md) |
+| 产品走查（六张最终截图） | [docs/final/产品走查.md](docs/final/产品走查.md) |
+| 已知边界 | [docs/final/已知边界.md](docs/final/已知边界.md) |
+| 演示脚本（录制用） | [docs/final/演示脚本.md](docs/final/演示脚本.md) |
+| 提交包清单 | [docs/final/提交包清单.md](docs/final/提交包清单.md) |
 
 ## 演示视频
 
 **未随包提供。** 本次提交环境无法产出稳定且合规的 MP4（环境内没有视频编码器，应用内浏览器录制在长流程下不稳定）。按"宁可如实缺失、不交付占位物"的原则，改为提供：
 
-- [docs/final/PRODUCT_WALKTHROUGH.md](docs/final/PRODUCT_WALKTHROUGH.md) — 六张最终截图 + 每步的操作与意义
-- [docs/final/DEMO_SCRIPT.md](docs/final/DEMO_SCRIPT.md) — 80–100 秒的录制脚本（含分镜、字幕与剪辑说明），可在任意具备录屏能力的环境按脚本一次录成
+- [docs/final/产品走查.md](docs/final/产品走查.md) — 六张最终截图 + 每步的操作与意义
+- [docs/final/演示脚本.md](docs/final/演示脚本.md) — 80–100 秒的录制脚本（含分镜、字幕与剪辑说明），可在任意具备录屏能力的环境按脚本一次录成
 
 ## 30 秒了解这个产品
 

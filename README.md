@@ -69,7 +69,7 @@ Company / Question
 
 **确定性代码负责**：全部金融计算（同比、单季还原、区间收益、年化波动率、最大回撤、估值比较、行业相对表现）、证据构造与冲突规则、引用完整性、数据新鲜度判定、合规与结构校验。
 
-**LLM 不得编造金融事实**：不能调用数据源、不能重算数字、不能新增或修改证据、不能给评级或建议。校验失败会修复重试一次，仍失败则该维度 `synthesis = null`——**证据照常返回，AI 失败不污染事实层**。相关说明见 [ARCHITECTURE.md](docs/final/ARCHITECTURE.md)。
+**LLM 不得编造金融事实**：不能调用数据源、不能重算数字、不能新增或修改证据、不能给评级或建议。校验失败会修复重试一次，仍失败则该维度 `synthesis = null`——**证据照常返回，AI 失败不污染事实层**。相关说明见 [架构说明.md](docs/final/架构说明.md)。
 
 ## Data Sources
 
@@ -92,7 +92,7 @@ npm run dev                    # http://localhost:3000/observatory-v5
 npm run build                  # next build
 npm run test                   # Vitest 全量（离线，无需密钥）
 npm run lint                   # ESLint
-npm run package:submission     # 生成提交包（见 docs/final/PACKAGE_MANIFEST.md）
+npm run package:submission     # 生成提交包（见 docs/final/提交包清单.md）
 ```
 
 ## Environment Variables
@@ -112,7 +112,7 @@ npm run package:submission     # 生成提交包（见 docs/final/PACKAGE_MANIFE
 
 自动化测试 **402 个 / 29 个测试文件**全部通过，另有 `tsc --noEmit` / `eslint` / `next build` 三项工程校验。产品侧还做了浏览器真实指针验收（48 行交互清单：PASS 47 / FAIL 0 / NOT TESTED 0 / N-A 1）、网络审计（本地操作 0 业务请求、未缓存切换恰好 1 次 init、缓存恢复 0 次）与 console 审计（0 uncaught / 0 React / 0 hydration）。
 
-完整方法和结果见 [docs/final/TEST_REPORT.md](docs/final/TEST_REPORT.md)；需求对照见 [docs/final/REQUIREMENT_MATRIX.md](docs/final/REQUIREMENT_MATRIX.md)。
+完整方法和结果见 [docs/final/测试说明.md](docs/final/测试说明.md)；需求对照见 [docs/final/需求对照.md](docs/final/需求对照.md)。
 
 ## Known Boundaries
 
@@ -124,7 +124,7 @@ npm run package:submission     # 生成提交包（见 docs/final/PACKAGE_MANIFE
 - **同行比较是行业级**：行业估值中位数与行业指数相对表现；不做逐家成分股的财务报表级对标。
 - **桌面优先**：这是一个 1440×900 设计基准的空间化界面，窄屏（如 390×844）不在预期的空间交互环境内。
 
-更完整的边界清单见 [docs/final/KNOWN_LIMITATIONS.md](docs/final/KNOWN_LIMITATIONS.md)。
+更完整的边界清单见 [docs/final/已知边界.md](docs/final/已知边界.md)。
 
 **未做事项**：没有用户系统与账号；不持久化诊断历史（刷新即重新研究）；不做 K 线图与图表库；不接入新闻/公告；不做语音；不做多公司并列对比视图；不提供投资组合、自选股推荐或任何形式的收益预期。可选交付项中的演示视频也未随包提供（原因与替代物见 [SUBMISSION.md](SUBMISSION.md)）。
 
@@ -156,9 +156,9 @@ docs/final/              提交文档（评审入口）
 ## Documentation
 
 - [SUBMISSION.md](SUBMISSION.md) — 评审入口
-- [docs/final/AI_USAGE_AND_VALIDATION.md](docs/final/AI_USAGE_AND_VALIDATION.md) — AI 使用与验证记录
-- [docs/final/TEST_REPORT.md](docs/final/TEST_REPORT.md) — 测试说明
-- [docs/final/REQUIREMENT_MATRIX.md](docs/final/REQUIREMENT_MATRIX.md) — 需求对照
-- [docs/final/ARCHITECTURE.md](docs/final/ARCHITECTURE.md) — 架构
-- [docs/final/PRODUCT_WALKTHROUGH.md](docs/final/PRODUCT_WALKTHROUGH.md) — 六张图走查
-- [docs/final/KNOWN_LIMITATIONS.md](docs/final/KNOWN_LIMITATIONS.md) — 已知边界
+- [docs/final/AI使用与验证记录.md](docs/final/AI使用与验证记录.md) — AI 使用与验证记录
+- [docs/final/测试说明.md](docs/final/测试说明.md) — 测试说明
+- [docs/final/需求对照.md](docs/final/需求对照.md) — 需求对照
+- [docs/final/架构说明.md](docs/final/架构说明.md) — 架构
+- [docs/final/产品走查.md](docs/final/产品走查.md) — 六张图走查
+- [docs/final/已知边界.md](docs/final/已知边界.md) — 已知边界

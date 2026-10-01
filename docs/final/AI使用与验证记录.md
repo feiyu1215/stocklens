@@ -158,10 +158,10 @@
 方法：校验层 + 单测。代表案例：伪造 Evidence ID 必须失败且不被静默删除；`unknown` 必须 `confidence=low` + `unverified` + 带 `unavailableReason`；inference 的 `basedOn` 必须能解析；证据不足时必须返回 UNKNOWN。产物：`tests/ai/diagnosis-validation.test.ts`、`tests/ai/followup.test.ts`、`tests/evidence/engine.test.ts`。
 
 **Layer 3 — 系统状态与失败行为**
-方法：失败注入（`?testFailure=research-init|dimension|followup`，仅非生产构建存在，已用生产包扫描确认）+ 浏览器验收。代表案例：三类失败各自呈现失败态并可用 Retry / Back 恢复；取消切换后现场逐项还原且 30 秒内的迟到响应不会覆盖；缓存恢复零新增 init；重复请求修复后复验。产物：`docs/final/TEST_REPORT.md` 第 4 节、`docs/design-audit/task16-2/`。
+方法：失败注入（`?testFailure=research-init|dimension|followup`，仅非生产构建存在，已用生产包扫描确认）+ 浏览器验收。代表案例：三类失败各自呈现失败态并可用 Retry / Back 恢复；取消切换后现场逐项还原且 30 秒内的迟到响应不会覆盖；缓存恢复零新增 init；重复请求修复后复验。产物：`docs/final/测试说明.md` 第 4 节、`docs/design-audit/task16-2/`。
 
 **Layer 4 — 真实用户交互**
-方法：真实指针（`isTrusted: true` 的浏览器输入事件，非 `dispatchEvent`）+ 真实键盘 + 命中测试 + 多视口 + console / 网络审计 + 状态恢复比对。代表案例：48 行交互清单（PASS 47 · FAIL 0 · NOT TESTED 0 · N/A 1）；本地空间操作产生 0 业务请求；一次未缓存切换恰好 1 次 init；console 0 uncaught / 0 React / 0 hydration。产物：`docs/design-audit/task16-2/INTERACTION_MANIFEST.md`、`docs/final/TEST_REPORT.md`。
+方法：真实指针（`isTrusted: true` 的浏览器输入事件，非 `dispatchEvent`）+ 真实键盘 + 命中测试 + 多视口 + console / 网络审计 + 状态恢复比对。代表案例：48 行交互清单（PASS 47 · FAIL 0 · NOT TESTED 0 · N/A 1）；本地空间操作产生 0 业务请求；一次未缓存切换恰好 1 次 init；console 0 uncaught / 0 React / 0 hydration。产物：`docs/design-audit/task16-2/INTERACTION_MANIFEST.md`、`docs/final/测试说明.md`。
 
 ## 6. Lessons / Boundaries
 

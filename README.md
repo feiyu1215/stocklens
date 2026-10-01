@@ -4,7 +4,8 @@
 
 ## Live Demo
 
-**https://stocklens-blush.vercel.app/observatory-v5**
+**产品地址（Web URL）**：https://stocklens-blush.vercel.app/observatory-v5
+**源代码仓库**：https://github.com/feiyu1215/stocklens
 
 建议桌面浏览器、宽度 **1280×800 或更大**（1440×900 为设计基准）。默认研究标的为美的集团 000333.SZ；可搜索并切换任意 A 股。
 
@@ -155,12 +156,26 @@ scripts/                 打包、行业注册表构建、生产 smoke
 docs/final/              提交文档（评审入口）
 ```
 
-## Documentation
+## 交付物清单
 
-- [SUBMISSION.md](SUBMISSION.md) — 评审入口
-- [docs/final/AI使用与验证记录.md](docs/final/AI使用与验证记录.md) — AI 使用与验证记录
-- [docs/final/测试说明.md](docs/final/测试说明.md) — 测试说明
-- [docs/final/需求对照.md](docs/final/需求对照.md) — 需求对照
-- [docs/final/架构说明.md](docs/final/架构说明.md) — 架构
-- [docs/final/产品走查.md](docs/final/产品走查.md) — 六张图走查
-- [docs/final/已知边界.md](docs/final/已知边界.md) — 已知边界
+地址见上方 **Live Demo**（产品 URL 两条 + 源代码仓库）。本压缩包内各文件的路径与用途：
+
+| 文件 | 路径 | 说明 |
+|---|---|---|
+| `README.md` | 根目录 | 本文件：产品说明、启动方式、环境变量、产品选择、AI 与确定性边界、数据来源、验证摘要、已知边界与未做事项 |
+| [`SUBMISSION.md`](SUBMISSION.md) | 根目录 | 提交说明（一页式入口）：全部地址、各交付物直达链接、30 秒了解产品 |
+| `PRD.md` | 根目录 | 产品需求文档与数据源侦察附录（含指标口径） |
+| [`AI使用与验证记录.md`](docs/final/AI使用与验证记录.md) | `docs/final/` | 三个 AI 工具各自的分工、8 个候选人修正案例、四层验证方法 |
+| [`测试说明.md`](docs/final/测试说明.md) | `docs/final/` | 9 节：测试策略 / 主链路 / 数据与证据边界 / 接口与系统失败 / AI grounding / 合规 / 真实交互审计 / 工程自动化检查 / 测试局限 |
+| [`需求对照.md`](docs/final/需求对照.md) | `docs/final/` | 对照原始作业逐条（20 行：PASS 19 · PARTIAL 1 · 可选项未交 1） |
+| [`架构说明.md`](docs/final/架构说明.md) | `docs/final/` | 分层架构、API 路由、证据 schema、上下文预算、能力清单 |
+| [`已知边界.md`](docs/final/已知边界.md) | `docs/final/` | 当前真实存在的限制，以及明确不做的事 |
+| [`产品走查.md`](docs/final/产品走查.md) | `docs/final/` | 六张最终截图 + 每步操作与意义（演示视频缺失时的替代材料） |
+| [`演示脚本.md`](docs/final/演示脚本.md) | `docs/final/` | 60–180 秒演示视频的分镜与操作清单（**本包未含视频**） |
+| [`提交包清单.md`](docs/final/提交包清单.md) | `docs/final/` | 本压缩包自身的精确清单：体积、条目数、密钥扫描结果与排除项 |
+| `01-research-canvas.png` … `06-company-switch.png` | `docs/final/screenshots/` | 六张最终截图（1440×900，生产构建实拍） |
+| `src/` · `tests/` · `scripts/` | 根目录 | 源码 / Vitest 测试 / 打包与 smoke 脚本 |
+| `.env.example` | 根目录 | 环境变量名（**不含任何真实密钥**） |
+| `package.json` · `package-lock.json` · `tsconfig.json` · `next.config.ts` · `vitest.config.ts` · `eslint.config.mjs` · `postcss.config.mjs` | 根目录 | 依赖与构建配置 |
+
+**关于"要不要单独做一个地址文件"**：没有单独做。地址只写在两处——本 README 顶部（产品 URL 两条 + 仓库 URL）与 `SUBMISSION.md`，这两份都是评审一定会先打开的文件；再多一份副本只会互相漂移。包体自身的构成另由 `docs/final/提交包清单.md` 记录（由打包脚本自动生成，每次打包刷新）。

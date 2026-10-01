@@ -1,0 +1,97 @@
+StockLens｜个股证据诊断 — 交付说明
+================================================================
+
+【一、在线地址】
+
+产品地址（Web URL）——推荐先看这一条：
+    https://stocklens-blush.vercel.app/observatory-v5
+    说明：首屏立即加载一份录制好的示例研究空间（不用等模型、不受上游波动影响）；
+          切换公司、AI 追问、新增研究角度全部是实时调用。
+
+产品地址（完整实时链路）：
+    https://stocklens-blush.vercel.app/observatory-v5?live=1
+    说明：首屏走真实取数 + 两次模型调用，约 15–30 秒，会出现全屏研究过渡；
+          实时证据带数据新鲜度标记（数据截至日期 · FRESH/STALE）。
+
+源代码仓库：
+    https://github.com/feiyu1215/stocklens
+    生产部署对应的代码提交：ea10e99
+
+建议环境：桌面浏览器，视口宽度 1280×800 或更大（1440×900 为设计基准）。
+产品是 desktop-first 的空间化研究界面，窄屏（如手机宽度）不在预期的空间交互环境内。
+
+
+【二、这个产品是什么】
+
+StockLens 把一个 A 股公司的当前状态组织成一张可探索的研究画布：
+AI 依据公司类型与研究问题动态生成诊断维度，确定性代码负责所有金融数字，
+模型只负责解释已经存在的证据，并且每一条结论都能点回到原始字段、期次、口径与来源。
+
+它不判断股票"好/坏"，不给评分，不给买卖建议，也不做涨跌预测。
+核心原则：Evidence first. Conclusions second.
+
+研究主链：Company Canvas → Focus Aperture → Reading → Evidence Inspection
+AI Research Thread 与 Command Palette 是并行/临时工具层，不是主链的一部分。
+
+
+【三、压缩包内有什么】
+
+根目录：
+    README.md               产品说明：启动方式、环境变量、产品选择、AI 与确定性边界、
+                            数据来源、验证摘要、已知边界与未做事项
+    SUBMISSION.md           提交说明（一页式入口）：全部地址与各项交付物直达链接
+    PRD.md                  产品需求文档与数据源侦察附录（含指标口径）
+    src/                    源码（Next.js App Router + React + TypeScript）
+    tests/                  Vitest 测试
+    scripts/                打包、行业注册表构建、生产 smoke 脚本
+    .env.example            环境变量名（不含任何真实密钥）
+    package.json 等          依赖与构建配置
+
+docs/final/（提交文档）：
+    AI使用与验证记录.md      三个 AI 工具各自的分工、8 个候选人修正案例、四层验证方法
+    测试说明.md              9 节：测试策略 / 主链路 / 数据与证据边界 / 接口与系统失败 /
+                            AI grounding / 合规 / 真实交互审计 / 工程自动化检查 / 测试局限
+    需求对照.md              对照原始作业逐条（20 行：PASS 19 · PARTIAL 1 · 可选项未交 1）
+    架构说明.md              分层架构、API 路由、证据 schema、上下文预算、能力清单
+    已知边界.md              当前真实存在的限制，以及明确不做的事
+    产品走查.md              六张最终截图 + 每步操作与意义
+    演示脚本.md              60–180 秒演示视频的分镜与操作清单（本包未含视频）
+    提交包清单.md            本压缩包自身的清单：体积、条目数、密钥扫描结果、排除项
+    screenshots/             六张最终截图（1440×900，生产构建实拍）
+
+
+【四、怎么在本地跑起来】
+
+    npm install
+    cp .env.example .env.local      # 填入 FUYAO_API_KEY 与 DEEPSEEK_API_KEY
+    npm run dev                     # http://localhost:3000/observatory-v5
+
+其他命令：
+    npm run test        # Vitest 全量（402 个测试 / 29 个文件，离线，不需要密钥）
+    npm run build       # 生产构建
+    npm run package:submission   # 重新生成本压缩包
+
+环境变量（只列变量名，真实值不随包分发）：
+    FUYAO_API_KEY        扶摇金融数据 API 鉴权（服务端）
+    DEEPSEEK_API_KEY     DeepSeek 模型调用（服务端）
+    DEEPSEEK_BASE_URL    DeepSeek 接口地址（默认 https://api.deepseek.com）
+    DEEPSEEK_MODEL       模型名（默认 deepseek-chat）
+
+
+【五、需要说明的边界】
+
+1. 首次进入一家未缓存的公司需要约 15–30 秒：其中 94–97% 是两次真实模型调用
+   （数据层只占 0.17–0.6 秒）。产品用全屏研究过渡如实表达这段等待，不做假进度。
+2. 行情、估值与事件核查类证据带 7 个自然日的新鲜度阈值；超过即标记为过期，
+   并在结论里强制声明"当前状态无法由该数据确认"。财务报告期数据不按自然日判定。
+3. AI 追问是原子 JSON，不是流式；模型看不到对话历史，每轮只携带当前 scope 与相关证据。
+4. 数据不支持的能力一律返回 UNKNOWN（例如银行没有毛利率类指标、未接入新闻与历史估值序列），
+   不会用听起来合理的文字补全。
+5. 同行对比是行业级（行业估值中位数、行业指数相对表现），不做逐家成分股的财务报表级对标。
+6. 可选的演示视频未随包提供：本机没有视频编码器、应用内浏览器长流程录制不稳定。
+   替代材料为 docs/final/产品走查.md（六张截图 + 逐步说明）与 docs/final/演示脚本.md。
+
+提交包内不含任何 API Key、凭据或隐私数据；docs/design-audit/（开发期审计材料）按约定未随包分发。
+
+================================================================
+StockLens｜个股证据诊断　Evidence first. Conclusions second.

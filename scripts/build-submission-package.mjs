@@ -54,6 +54,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".svg"]);
 const TOP_LEVEL_FILES = [
   "README.md",
   "SUBMISSION.md",
+  "说明信息.txt", // 解压即见的交付说明（地址 + 文件清单 + 边界）
   "PRD.md", // if present
   ".env.example", // required
   "package.json",

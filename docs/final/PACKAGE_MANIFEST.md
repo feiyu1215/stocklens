@@ -252,13 +252,13 @@ Top-level entries: root files, `src/`, `tests/`, `scripts/`, `docs/final/`.
 
 Present on disk during this run (with real counts, excluded):
 
-- `.git/`: 168 files (67.43 MB)
+- `.git/`: 179 files (69.65 MB)
 - `node_modules/`: 28954 files (586.76 MB)
-- `.next/`: 1967 files (551.93 MB)
+- `.next/`: 1973 files (551.94 MB)
 - `.vercel/`: 2 files (0.00 MB)
 - `.tmp/`: 3 files (4.23 MB)
 - `.tools/`: 72 files (82.32 MB)
-- `dist-submission/`: 1 files (2.20 MB)
+- `dist-submission/`: 1 files (2.21 MB)
 - `docs/design-audit/`: 123 files (44.66 MB)
 - `.env.local`: present on disk, excluded
 

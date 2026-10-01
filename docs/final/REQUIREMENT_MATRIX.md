@@ -29,7 +29,7 @@
 | 10 | 提交可访问、可实际操作的 Web 产品 URL | https://stocklens-blush.vercel.app/observatory-v5 | 最终 smoke：页面加载、维度打开、Reading、Evidence、AI Lens、公司切换器全部可用（见 `docs/final/TEST_REPORT.md`） | PASS |
 | 11 | 源代码仓库及 README | https://github.com/feiyu1215/stocklens ；README 覆盖启动方式、环境变量、产品选择、AI 的角色、数据来源、已知边界与未做事项 | 仓库 README.md；`docs/final/screenshots/` 为最终构建实拍 | PASS |
 | 12 | **AI 使用与验证记录**：使用了哪些 AI 工具、AI 参与哪些环节、候选人修正了哪些错误或不合理结果 | 见 `docs/final/AI_USAGE_AND_VALIDATION.md`：区分"用于构建的 AI"与"产品内的 AI"，并列出 10 组候选人否决/纠正 AI 输出的真实记录 | `docs/final/AI_USAGE_AND_VALIDATION.md` §3 | PASS |
-| 13 | **测试说明**：至少覆盖主链路、数据缺失/接口失败、极端或合规边界场景 | `docs/final/TEST_REPORT.md`：10 节，含 385 个自动化测试、主链路逐步实测、8 类失败/极端情形、48 行交互审计、网络与 console 审计、性能实测、合规边界 | `docs/final/TEST_REPORT.md` | PASS |
+| 13 | **测试说明**：至少覆盖主链路、数据缺失/接口失败、极端或合规边界场景 | `docs/final/TEST_REPORT.md`：10 节，含 402 个自动化测试、主链路逐步实测、8 类失败/极端情形、48 行交互审计、网络与 console 审计、性能实测、合规边界 | `docs/final/TEST_REPORT.md` | PASS |
 | 14 | 关键数字与结论必须**可追溯** | 指标级：`sourceFields{source,domain,field,period}` + `calculationMethod` + 单位 + 有效样本数；证据级：`period / comparisonPeriod / metricIds / ruleId / basedOn`（推断可回溯到事实）；界面 Evidence Rail 直接展示这些字段 | `docs/final/screenshots/03-claim-evidence.png`（`FUYAO · operating_income` / `2026-Q2` / `VERIFIED` / `CALCULATION`）；`src/lib/metrics/types.ts` | PASS |
 
 ## 统一规则

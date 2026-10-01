@@ -95,7 +95,7 @@ npm run package:submission     # 生成提交包（见 docs/final/PACKAGE_MANIFE
 
 ## Tests
 
-**385 个自动化测试 / 28 个测试文件**，全部通过；另有 `npx tsc --noEmit`、`npx eslint`、`npx next build` 三项工程校验。
+**402 个自动化测试 / 29 个测试文件**，全部通过；另有 `npx tsc --noEmit`、`npx eslint`、`npx next build` 三项工程校验。
 
 测试覆盖：确定性指标引擎、证据引擎与冲突规则、AI 校验与证据绑定、研究空间初始化、语义层级、载荷守卫、打包预算等。详见 [docs/final/TEST_REPORT.md](docs/final/TEST_REPORT.md)。
 
@@ -105,6 +105,7 @@ npm run package:submission     # 生成提交包（见 docs/final/PACKAGE_MANIFE
 - **Follow-up 是原子 JSON，不是流式**：一次追问一次完整返回；界面上的 `Reviewing current evidence…` 是进度态，不是 token 流。
 - **模型看不到对话历史**：每一轮 follow-up 只携带当前 scope 与相关证据；线程历史保留在客户端，用于用户回看，不发送给模型。
 - **不支持的能力明确返回 UNKNOWN**：例如银行没有毛利率类指标、未接入新闻与历史估值序列时，对应维度直接标注证据不完整并列出缺失数据。
+- **过期数据不会静默支撑"当前状态"**：行情、估值快照与事件核查带数据新鲜度（`fresh` / `stale` / `unknown`，阈值 7 个自然日）。一旦判为过期，结论里会强制带上"该数据已过期、当前状态无法由该数据确认"，并且该标记会一起进入 AI 上下文，模型不得据此陈述当前状态。**财务报告期数据不按自然日判定**——2026-Q2 不会因为"不是今天"而过期，只以「最新报告期」的方式描述。
 - **同行比较是行业级**：已实现行业估值中位数比较与行业指数相对表现；**不做**逐家成分股的财务报表级对标。
 - **桌面优先**：这是一个 1440×900 设计基准的空间化研究界面，窄屏（如 390×844 手机宽度）不在预期的空间交互环境内。
 - 更完整的边界清单（含已知的视觉与文案问题）见 [docs/final/KNOWN_LIMITATIONS.md](docs/final/KNOWN_LIMITATIONS.md)。

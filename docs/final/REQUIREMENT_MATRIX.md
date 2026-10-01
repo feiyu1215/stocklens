@@ -40,17 +40,18 @@
 | 16 | 产品不得输出确定性涨跌预测、收益承诺或直接买卖建议 | 合规预检 + Prompt 禁令 + 输出校验；模型被禁止给出评级与建议 | `src/lib/validation/diagnosis.ts`、`docs/final/TEST_REPORT.md` §9 | PASS |
 | 17 | **事实、推断与不确定信息必须区分** | 数据结构层面分离（`type` 字段与强制不变量），UI 分区呈现；未知不是异常而是正式结果 | 同 #3；单测 `tests/evidence/engine.test.ts`「全部指标不可用 → 全部为 UNKNOWN，无 FACT/INFERENCE」 | PASS |
 | 18 | 核心结论必须能回到**原始字段或原文**，并明确来源、时点、单位及统计口径 | 每条证据携带来源（FUYAO · 字段名）、时点（period / comparisonPeriod）、单位（`formatMetricValue` 与 metric 定义）、统计口径（`calculationMethod`，如单季还原公式） | `docs/final/screenshots/03-claim-evidence.png`；`docs/metric-catalog.md` 登记全部指标口径 | PASS |
-| 19 | 数据**缺失、冲突、过期或调用失败**时不得静默生成"正常"结论 | 缺失 → `unavailable` + reason（绝不以 0 冒充）；冲突 → conflict 信号 + 背离规则；AI 调用失败 → 局部降级且界面可见；**过期**：数据日期以 period/date 展示，但**没有**新鲜度/时效守卫（若上游返回跨度过大的旧数据，系统不会主动降级或提示） | 单测 `tests/metrics/financial.test.ts`「字段为 null → unavailable，不是 0」、`tests/research-init.test.ts`「Composer 失败 → 维度仍在、claims 为空、ai=partial_failure」；`grep -r "stale\|freshness" src/lib` 无命中 | **PARTIAL**（过期数据缺少机制性防护） |
+| 19 | 数据**缺失、冲突、过期或调用失败**时不得静默生成"正常"结论 | 缺失 → `unavailable` + reason（绝不以 0 冒充）；冲突 → conflict 信号 + 背离规则；AI 调用失败 → 局部降级且界面可见；**过期**（Task 17.1 §P0 补齐）：时间敏感数据（行情 / 区间收益 / 估值快照 / 行业行情 / 事件核查）按数据日期与 7 天阈值判定 `freshness = fresh \| stale \| unknown`，`stale` 时 statement **强制**追加「该数据截至 X…当前状态无法由该数据确认」，并随紧凑证据传入 AI 上下文（prompt 禁止据 stale/unknown 陈述"当前状态"）；财务报告期数据**不按自然日判定**（2026-Q2 不因"不是今天"而过期） | 单测 `tests/metrics/financial.test.ts`「字段为 null → unavailable，不是 0」、`tests/research-init.test.ts`「Composer 失败 → claims 为空 + ai=partial_failure」、**`tests/evidence/freshness.test.ts`（14 条：fresh / stale / unknown / 报告期不被误判）**；浏览器实测证据栏渲染 `数据截至 2026-09-30 · FRESH`；生产 API 的 29 条证据中 21 条携带 freshness | **PASS**（浏览器侧验证 fresh 路径；stale / unknown 由证据层单测覆盖——生产数据本身是新鲜的） |
 | 20 | 可选：提交 60–180 秒演示视频 | **未随包提供**。本环境无法产出稳定且合规的 MP4（环境内无视频编码器；应用内浏览器长流程录制不稳定）。改为提供录制脚本与六张最终截图；`docs/final/DEMO_SCRIPT.md` 可在任意具备录屏能力的环境一次录成 | `docs/final/DEMO_SCRIPT.md`、`docs/final/PRODUCT_WALKTHROUGH.md` | **NOT DELIVERED**（可选项） |
 
 ## 汇总
 
-**PASS 18 · PARTIAL 1 · NOT DELIVERED 1（可选项）· 合计 20 行**
+**PASS 19 · PARTIAL 1 · NOT DELIVERED 1（可选项）· 合计 20 行**
 
-两个未满分项都不是隐藏问题，而是明确写出的边界：
+唯一未满分项是明确写出的边界，不是隐藏问题：
 
-1. **同行对比 = 行业级**（#9）：已实现行业估值中位数比较与行业指数相对表现；**不做**逐家成分股的财务报表级对标。README 与 KNOWN_LIMITATIONS 使用同一措辞。
-2. **过期数据无机制性防护**（#19）：缺失/冲突/调用失败三种情形都有确定行为并有单测；"数据过期"目前只靠展示期次让用户自行判断，没有新鲜度守卫。
+1. **同行对比 = 行业级**（#9）：已实现行业估值中位数比较与行业指数相对表现；**不做**逐家成分股的财务报表级对标。README、KNOWN_LIMITATIONS 与本草使用同一措辞。
+
+（#19「过期数据」已在 Task 17.1 §P0 补齐新鲜度守卫后由 PARTIAL 转为 PASS；浏览器侧验证的是 fresh 路径，stale / unknown 由证据层单测覆盖。）
 
 ## 不在作业要求内、但本项目额外要求的（不参与上面的计数）
 

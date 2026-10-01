@@ -1,11 +1,11 @@
 # StockLens — 交接文档（给下一个会话）
 
 > 生成时间：2026-10-01 · 上一会话（ZCode）· 用途：无缝接手，不要重新发现已知事实
-> 上一版停在 16.2A（六 Gate 全过、manifest 还有 11 项 NOT TESTED）。本版在 **16.2B 完成** 之后。
+> 上一版停在 16.2B；本版在 **Task 17（最终交付打包）+ Task 17.1（提交前合规补丁）** 之后。
 
 ## 0. 一句话现状
 
-**Task 16.2A + 16.2B 全部完成**：交互清单 **PASS 47 · FAIL 0 · NOT TESTED 0 · PARTIAL 0**（仅 1 行 `NOT APPLICABLE`，附明确理由：390×844 手机宽度不在支持范围）。六 Gate 仍 PASS，重复 init 仍为 0。**产品可以进入 Task 17。** 就此停住——不要自动开始 Task 17。
+**Task 16.2A / 16.2B / 17 / 17.1 全部完成，交付物已生成并冻结。** 交互清单 **PASS 47 · FAIL 0 · NOT TESTED 0 · PARTIAL 0**（1 行 N/A 附理由）；六 Gate 仍 PASS；需求矩阵 **PASS 19 · PARTIAL 1 · NOT DELIVERED 1（可选项）**；最终 ZIP **2.20 MB / 216 条目**、密钥扫描 PASS；生产 smoke 六项 PASS。**无须再做任何事——除非用户下发新的 Task；不要自行继续开发或重新打包。**
 
 ## 1. 工程与部署
 

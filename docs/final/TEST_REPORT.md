@@ -25,7 +25,7 @@
 ```
 npx tsc --noEmit                        → 0 errors
 npx eslint src/components/v5 src/lib/v5 → 0 errors（1 条已知的未使用变量 warning）
-npx vitest run                          → 28 test files / 385 tests, all passed
+npx vitest run                          → 29 test files / 402 tests, all passed
 npx next build                          → success
 ```
 
@@ -57,6 +57,7 @@ npx next build                          → success
 | 迟到响应保护 | 取消后等待 30 秒 | 迟到的公司响应**没有**覆盖当前现场；序号守卫丢弃过期响应 |
 | 刷新研究 | 研究架内 `Refresh research` | 全屏过渡使用刷新语义（「正在刷新…」/ `REFRESHING RESEARCH SPACE`），**每次刷新恰好 1 次 init**；取消后原现场逐项还原 |
 | AI 层整体失败 | 上游模型不可用（真实偶发） | claims 为空但证据仍在，维度标注 `AI interpretation is temporarily unavailable`——**失败是可见的，不会被伪装成正常结论** |
+| 数据过期 | `tests/evidence/freshness.test.ts` | 时间敏感证据（行情/估值/事件核查）超过 7 天阈值 → `freshness.status = "stale"`，statement 末尾强制追加「（该数据截至 X，距当前 N 天，当前状态无法由该数据确认）」；AI 上下文同样携带 `freshness/dataAsOf/freshnessReason`，并在 prompt 中禁止据此陈述"当前状态"。见第 10 节 |
 
 ## 5. Interaction Audit
 
@@ -119,7 +120,49 @@ npx next build                          → success
 - 数据缺失/冲突/调用失败时**不静默生成"正常"结论**：缺失 → `unavailable` + reason（绝不以 0 冒充），冲突 → `conflict` 信号 + 背离规则，AI 失败 → 局部降级且可见；
 - 相关单测：`tests/ai/diagnosis-validation.test.ts`（伪造 Evidence ID 必须失败且不被静默删除）、`tests/evidence/rules.test.ts`（背离规则触发与不触发）、`tests/metrics/financial.test.ts`（字段为 null → unavailable，不是 0）。
 
-## 10. How to Reproduce
+## 10. Data Freshness Guard（Task 17.1 §P0）
+
+**要求**：过期数据不得静默支撑一个"当前状态"结论。实现为确定性机制，不引入新的数据平台。
+
+**判定口径**（`src/lib/metrics/freshness.ts`，纯函数）：
+
+| 类别 | 判定方式 |
+|---|---|
+| 时间敏感：行情 / 区间收益 / 估值快照 / 行业指数行情 / 事件核查 | 取数据日期（`sourceFields[].date`）与自然日阈值（7 天）比较 → `fresh` / `stale` / 无法取到可解析日期 → `unknown`（**绝不静默 fresh**） |
+| 财务报表（报告期数据） | **不按自然日判定**：2026-Q2 不会因为"不是今天"而过期；`timeSensitive=false`，`dataAsOf` = 报告期，理由写明"以报告期为准" |
+
+**过期数据的行为**：
+1. 证据携带 `freshness{status, dataAsOf, retrievedAt, ageDays, reason, timeSensitive}`；
+2. `status = stale` 时，statement 末尾**强制**追加「（该数据截至 X，距当前 N 天，当前状态无法由该数据确认）」——在界面与 AI 上下文中都无法被忽略；
+3. 传给模型的紧凑证据带上 `freshness / dataAsOf / freshnessReason`，并在 synthesis 与 follow-up 的 prompt 中写明：`stale` 与 `unknown` 不得用于陈述"当前 / 目前 / 最新"状态；
+4. 证据栏（Reading 的 Evidence Rail）对时间敏感数据显示「数据截至 YYYY-MM-DD · FRESH/STALE」，过期时以 coral 明示。
+
+**聚焦测试**（`tests/evidence/freshness.test.ts`，14 条）：新鲜行情、过期行情（含阈值边界 7 vs 8 天）、无法判定时效 → unknown、行情类指标 sourceFields 为空也按时间敏感处理、财务报告期不被判为过期、估值快照、日期解析不把 "2026-Q2" 当日历日期、过期事实的 statement 带显式声明、新鲜事实不带、事件核查证据带新鲜度、新鲜度进入 AI 上下文（时间敏感必带 / 财务不额外增加字段）。
+
+**浏览器实测**：证据栏渲染 `数据截至 2026-09-30 · FRESH`（`[data-evidence-freshness="fresh"]`）；生产 API 返回的 29 条证据中 21 条携带 freshness（金融类 `timeSensitive=false`，行情类 `timeSensitive=true`）。
+> 说明：生产数据在验收时是新鲜的，因此浏览器侧验证的是 fresh 路径；stale / unknown 两条路径由上述单测在证据层（即拼装 statement 的那一层）覆盖。
+
+## 11. Guided Demo（Task 17.1 §P2）
+
+**入口文案**：`▶ 快速演示`（不再承诺精确秒数）与提示卡 `▶ 观看快速演示`；研究空间未就绪时入口显示 `研究空间准备中…` 并禁用。
+
+**控件**：`暂停` ⇄ `继续`、`下一步 →`（每次**只推进一个 Scene**，不会跳到结束帧或退出）、`退出`。
+
+**实测计时**（生产环境，自动播放到结束帧）：
+
+| Scene | 目标 | 实测 |
+|---|---|---|
+| 1 Explore | 3.5s | 3.4s |
+| 2 Dynamic Dimension | 4.0s | 4.0s |
+| 3 Focus Aperture | 4.5s | 4.6s |
+| 4 Reading + Evidence（最长，Reading 稳定后才进 Evidence） | 7.0s | 7.0s |
+| 5 AI Research Lens（打字演示，不提交） | 5.0s | 5.0s |
+| 6 Add Dimension + Research Shelf | 6.0s | 6.2s |
+| **总计（到结束帧）** | **约 30s** | **30.4s** |
+
+**演示期间业务请求 = 0**（`init` 0 / `dimension` 0 / `followup` 0，实测差值）。结束帧不自动关闭，停留至用户点击 `开始研究 →`；退出后现场（维度数、缩放、当前公司）完整恢复。Scene 6 的研究架实测确实打开可见。
+
+## 12. How to Reproduce
 
 ```bash
 npm install

@@ -21,7 +21,7 @@
  *    package (exit 1, no ZIP written)
  *  - large-file audit is printed before zipping
  *  - docs/final/StockLens_Demo.mp4 is included only when <= 15 MB
- *  - at most 5 images from docs/final/screenshots/ are included
+ *  - at most 6 images from docs/final/screenshots/ are included
  *  - idempotent: re-running overwrites the ZIP and the manifest
  *
  * Run:  npm run package:submission
@@ -45,7 +45,7 @@ const MANIFEST_ABS = path.join(ROOT, MANIFEST_REL);
 const MAX_BYTES = 30 * 1024 * 1024; // hard limit
 const TARGET_BYTES = 25 * 1024 * 1024; // soft target
 const VIDEO_MAX_BYTES = 15 * 1024 * 1024;
-const MAX_SCREENSHOTS = 5;
+const MAX_SCREENSHOTS = 6;
 
 const VIDEO_REL = "docs/final/StockLens_Demo.mp4";
 const SCREENSHOTS_REL_DIR = "docs/final/screenshots";
@@ -53,6 +53,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".svg"]);
 
 const TOP_LEVEL_FILES = [
   "README.md",
+  "SUBMISSION.md",
   "PRD.md", // if present
   ".env.example", // required
   "package.json",

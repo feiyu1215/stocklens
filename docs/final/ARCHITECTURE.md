@@ -1,14 +1,136 @@
 # Architecture
 
-> **Scaffold — Task 17 will finalize this document.**
-> Created during submission packaging (Task 16). No architectural claims are made here.
+一句话：**确定性代码负责事实，模型只负责解释。**
 
-## Purpose
+```text
+                         ┌──────────────────────────────────────────┐
+   用户问题 / 公司身份 →  │  Research Framer（LLM，看不到任何数字）    │ → 4–6 个研究维度
+                         └──────────────────────────────────────────┘
+                                        │
+                         ┌──────────────▼───────────────────────────┐
+   扶摇 REST API  ──────→ │  Truth Layer（LLM 禁入）                  │
+   （行情/财务/估值/      │    Data Adapter → Normalized Data         │
+     行业/事件）          │    → Metric Engine（确定性计算）           │
+                         │    → Evidence Engine（fact/inference/     │
+                         │      unknown + 冲突规则 + 引用完整性）     │
+                         └──────────────┬───────────────────────────┘
+                                        │  Evidence[]
+                         ┌──────────────▼───────────────────────────┐
+                         │  Evidence Selection（确定性打包）          │
+                         │    优先级 + 主维度加权 + 单维度上限        │
+                         └──────────────┬───────────────────────────┘
+                                        │  紧凑证据（白名单字段）
+                         ┌──────────────▼───────────────────────────┐
+                         │  Composer（LLM，只组织已存在的证据）        │
+                         └──────────────┬───────────────────────────┘
+                                        │  claims + 校验
+                         ┌──────────────▼───────────────────────────┐
+                         │  Validation（证据绑定 / 分区类型 / 合规）   │
+                         │    失败 → 修复一次 → 仍失败则 synthesis=null │
+                         └──────────────┬───────────────────────────┘
+                                        │
+                         ┌──────────────▼───────────────────────────┐
+                         │  Research Canvas（Experience Layer）      │
+                         │    Canvas → Focus Aperture → Reading →    │
+                         │    Evidence Inspection                    │
+                         └──────────────┬───────────────────────────┘
+                                        │  当前 scope + evidenceIds
+                         ┌──────────────▼───────────────────────────┐
+                         │  Grounded Follow-up（LLM，单轮 grounded）  │
+                         └──────────────────────────────────────────┘
+```
 
-This document will describe the architecture of StockLens at a level a reviewer can follow.
+## API Routes
 
-## To be finalized (Task 17)
+| 路由 | 作用 | 谁在算 |
+|---|---|---|
+| `GET /api/stocks/search?q=` | 标的检索（代码/简称） | 扶摇检索，直接透传 |
+| `POST /api/research/init` | 构建某公司的研究空间：Framer 选维度 → Truth Layer 取数与算指标 → 造证据 → Composer 生成 claims → 校验 | 数据与指标：确定性；维度与 claims：LLM（受校验约束） |
+| `POST /api/research/dimension` | 为当前维度集合新增一个研究角度；无数据支撑时返回 `unknown` 维度 | 同上，`dataSupport` 判定在确定性侧 |
+| `POST /api/followup` | 围绕当前 scope（公司 / 维度 / claim / 证据）做一次有依据的追问 | LLM 只读传入的 evidenceIds |
 
-- Layered overview
-- Data flow
-- Key directories and where to look
+四个路由都在服务端使用密钥；前端不直接请求任何外部数据源。
+
+## Evidence Schema
+
+每条证据是一等对象，字段即"可追溯性"的载体：
+
+```text
+evidenceId      稳定标识（可被 claim 引用、可被 follow-up 指定）
+type            fact | inference | unknown
+signal          positive | negative | conflict | neutral | unknown   ← 证据自身方向，不是股票评级
+confidence      high | medium | low
+verifyStatus    verified | unverified
+period          本期（如 2026-Q2）
+comparisonPeriod 比较期（如 2025-Q2）
+metricIds       该证据由哪些指标计算而来
+ruleId          触发它的确定性规则（如有）
+basedOn         inference 指向的底层 fact 证据 ID（引用完整性由校验强制）
+sourceFields    { source, domain, field, period } ← 回到原始字段
+```
+
+**强制不变量**（由 `validate.ts` 断言，违反即抛错、绝不静默降级）：
+
+- `inference` 必须带 `basedOn`，且所有引用必须能解析到真实存在的证据；
+- `unknown` 必须 `confidence=low` + `verifyStatus=unverified` + `signal=unknown`，且必须带 `unavailableReason`；
+- 事实类风险证据必须能经 `sourceFields` 溯源。
+
+## FACT / INFERENCE / UNKNOWN
+
+- **FACT**：由确定性规则直接从指标组合得出，带 `sourceFields` 溯源（例如「2026-Q2 营业收入累计同比增长 3.55%」）。
+- **INFERENCE**：两个及以上 FACT 之间的关系判断，`basedOn` 指向它们（例如「利润增速低于收入增速 1.89 个百分点」）。它可以被点开、回溯到事实。
+- **UNKNOWN**：明确"当前无法验证"，并说明缺什么（未接入的数据源、样本不足、口径不可比）。它**不是**错误态，而是正式结果。
+
+## Context Budget
+
+不是把全部证据丢给模型，而是**确定性打包**：
+
+- 优先级：`conflict > inference > unknown > negative > positive > neutral`；
+- Planner 选中的主维度加权，且每个主维度至少 1 条；
+- 单维度上限（默认 4）；inference 的 `basedOn` 依赖闭包必须一并带上；
+- 按 intent 设置总量上限（如估值类问题收紧到 10 条）。
+
+模型只收到白名单字段（不含 `sourceFields` 等内部字段）。实测同一问题的输入从 8391 字符降到 3537 字符（−57.8%），结论质量更稳定。
+
+## Capability Manifest
+
+研究维度不能凭空要求数据。`computeCapabilityManifest` 依据**该公司真实可得的指标与事件**推导一份能力清单，Framer 只能在这份清单范围内命名维度：
+
+- 能力可用 → 正常生成维度；
+- 能力不可用（如银行没有毛利率类指标、未接入新闻与历史估值序列）→ 该维度以 `unknown` 呈现，并列出缺失数据项。
+
+这样"公司类型影响维度"不是靠模型自觉，而是被能力清单约束出来。
+
+## Deterministic vs LLM
+
+| 环节 | 归属 |
+|---|---|
+| 同比 / 单季还原 / 区间收益 / 年化波动 / 最大回撤 / 估值比较 / 行业相对表现 | 确定性代码 |
+| 证据构造、冲突规则触发、引用完整性、未知构造 | 确定性代码 |
+| 维度命名与理由、claims 组织、follow-up 回答 | LLM（受校验约束，只引用已有证据） |
+| 合规判定、输出结构校验 | 确定性代码 |
+
+模型不接触原始数字，只能引用已经构造好的证据。
+
+## Key Directories
+
+```text
+src/app/api/research/{init,dimension}/   研究空间与维度
+src/app/api/followup/                    追问
+src/app/api/stocks/search/               标的检索
+src/app/observatory-v5/                  研究画布页面
+src/components/v5/                       画布、过渡层、演示、研究架交互
+src/components/v3/ReadingV3.tsx          Reading（claim spine + evidence rail）
+src/lib/data/                            扶摇适配、行业注册表
+src/lib/metrics/                         确定性指标引擎
+src/lib/evidence/                        证据引擎、规则、未知构造
+src/lib/research/                        Framer、能力清单、公司上下文
+src/lib/ai/                              证据打包、模型调用、编排
+src/lib/validation/                      结构与合规校验
+src/lib/v5/                              画布层（研究架、切换守卫、交互计时、测试注入）
+tests/                                   Vitest
+```
+
+## 安全
+
+所有密钥只在服务端环境变量中读取，前端 bundle 不含任何密钥；提交包在打包阶段执行密钥扫描（变量名允许出现在 `.env.example`，真实值一经发现即判定打包失败）。

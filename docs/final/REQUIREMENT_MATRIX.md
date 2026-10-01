@@ -1,49 +1,61 @@
-# StockLens — REQUIREMENT MATRIX（对照审计）
+# Requirement Matrix
 
-- 审计对象：`D:\zcode存储\stocklens`，HEAD = `e4c3c88`（与 `git ls-remote origin refs/heads/main` 一致），39 commits。
-- 审计方式：逐文件阅读 `src/`、`tests/`、`README.md`、`PRD.md`、`docs/`、`scripts/*-results.json`；本次审计亲自重跑 `npx vitest run`。
-- 状态口径：**PASS** = 本人已在仓库内找到所引证据；**PARTIAL** = 已实现但存在明确缺口；**NOT VERIFIED** = 未找到证据。
-- 审计期间未修改 `src/`、`tests/`、`package.json`；未访问生产站点（原因见下）。
+对照原始作业 `03_个股多维诊断与证据验证.md` 逐条给出实现、证据与状态。
 
-| Requirement | Implementation | Route / file | Verification | Status |
+状态口径：**PASS** = 有可复现的实现与证据；**PARTIAL** = 已实现但存在明确缺口（缺口写在行内）；**NOT DELIVERED** = 未交付（仅用于可选项）。不夸大：没有做的能力一律写明"未接入"。
+
+产品版本：生产部署 `db618d4`。
+
+---
+
+## 题目内容
+
+| # | Original Requirement | StockLens Implementation | Evidence | Status |
 |---|---|---|---|---|
-| Company type determines research dimensions | Research Framer 输入 = 公司身份 + 行业（离线注册表 5572 只）+ 数据推导的 Capability Manifest；维度 label 由 AI 自由命名，prompt 明令「严禁对每家公司套用同一组标签」；能力可用性由真实指标/事件推导，「绝无公司类型模板」 | `src/lib/research/framer.ts`（`buildFramerSystemPrompt`）、`src/lib/research/capability.ts`（`computeCapabilityManifest`）、`src/lib/research/company-context.ts`、`POST /api/research/init` | `docs/design-audit/v5-parity/STATUS.md`：Company switch **PASS**「美的 → 招商银行 → 美的；维度真实变化：盈利质量与资本回报 / 估值相对水平 / 风险与事件边界」；同文件 Known gap 5「银行无毛利率指标 → 「无法计算」」。注：差异化为 prompt 纪律 + 人工验收，无单测断言跨公司维度不同 | PASS |
-| User question determines research dimensions | Framer user prompt 区分 `question_driven` / `open_exploration`，question 1–500 字符；V1 Planner 同样按问题选维度 | `src/lib/research/framer.ts:41-46`（`buildFramerUserPrompt`）、`src/app/api/research/init/route.ts`、`src/lib/ai/planner.ts` | `tests/research-init.test.ts`「空问题走 open_exploration（question=undefined 允许）」；`tests/presentation/research-view.test.ts`「问题相关性：估值问题的 primary 维度体现为 valuation」；`tests/ai/planner.test.ts`「reason 含数字 → 失败（Planner 没有数据依据）」 | PASS |
-| Deterministic metrics (computed, not generated) | Metric Engine 纯代码计算，入口注释「只组合，不解释」，契约明令禁止 signal/score/rating 字段；每个指标带 `calculationMethod` + `sourceFields`；缺数据 = null + reason | `src/lib/metrics/engine.ts`、`src/lib/metrics/types.ts`、`financial.ts` / `valuation.ts` / `market.ts` / `market-context.ts` | `tests/metrics/financial.test.ts`（22 通过）「§37 YTD YoY：120 vs 100 → 20%」；`tests/metrics/market.test.ts`（11 通过）「数据不足（≤N 个 close）→ null，不降口径」；`tests/evidence/engine.test.ts`「§51 Determinism：同一输入两次运行完全一致」 | PASS |
-| Real evidence objects | Evidence 一等对象：`evidenceId / type(fact\|inference\|unknown) / signal / confidence / metricIds / basedOn / sourceFields / verifyStatus / period`；Validator 强制不变量，断链抛 `EvidenceValidationError` | `src/lib/evidence/types.ts`、`src/lib/evidence/engine.ts`、`src/lib/evidence/validate.ts` | `tests/evidence/engine.test.ts`「21 个 FACT + 触发的 INFERENCE + 确定性 UNKNOWN…总数一致」「§50 Reference Integrity：所有 inference 的 basedOn 都能解析」「broken reference → 校验失败（绝不悄悄删引用）」 | PASS |
-| LLM interpretation as a separate layer | Synthesizer/Followup 只收白名单紧凑证据（不含 sourceFields 等内部字段）；Evidence Binding 校验，伪造 ID 整体拒绝，repair 一次后仍失败则 `synthesis=null`、证据照常返回 | `src/lib/ai/synthesizer.ts`、`src/lib/ai/evidence-pack.ts`、`src/lib/ai/followup.ts`、`src/lib/validation/diagnosis.ts`、`src/app/api/followup/route.ts` | `tests/ai/diagnosis-validation.test.ts`「伪造 Evidence ID（EV_FAKE_001）→ FAIL，且不静默删除」；`tests/ai/followup.test.ts`「Case 3｜模型伪造 Evidence ID：repair 后仍失败 → synthesis=null、证据保留」；`scripts/production-smoke-results.json` P1 `"ai":"success"` 且 evidence 25 条 | PASS |
-| positive / negative / conflict / unknown classification | `EvidenceSignal = positive\|negative\|conflict\|neutral\|unknown`（注释：signal 只表示证据自身方向，非股票评级）；RULES 定义背离类 conflict 规则（单季/YTD 异号、利润-现金流、收入-利润、20D-120D 等） | `src/lib/evidence/types.ts`、`src/lib/evidence/rules.ts`、`src/lib/evidence/engine.ts`（`computeStats`） | `tests/evidence/rules.test.ts`「Net Profit +10% 且 OCF -5% → 触发 conflict，basedOn 指向两个 FACT」「20D -8% 且 120D +10% → 触发 conflict」；`tests/evidence/engine.test.ts`「stats 与 evidence 逐条对账」 | PASS |
-| Financial periods (quarter / YTD semantics) | 口径铁律写死在代码：扶摇 quarterly = 年初至今累计；YTD 同比 = 本年累计/上年同期累计−1；单季 = 本期累计−上季累计（Q1 = 自身）；每个指标带 period / comparisonPeriod | `src/lib/metrics/financial.ts:7-9,38-39`；FACT statement 内含报告期（如「最新报告期 …累计同比」） | `tests/metrics/financial.test.ts`「§38 Q2 standalone = 累计 − Q1 累计」「§40 单季 YoY：70/60 − 1 = 16.667%（不用累计直接比）」；`tests/evidence/rules.test.ts`「收入：YTD +3 / 单季 -1 → 触发；同号 → 不触发」 | PASS |
-| Market intervals | 区间收益 20/60/120 交易日（需 N+1 收盘价）、20/60 日年化波动率、120 日最大回撤；CSI300 与行业指数同口径；相对表现 = 简单差（pct 点），方向用语不带好坏判断 | `src/lib/metrics/market.ts:14,137-142`、`src/lib/metrics/market-context.ts` | `tests/metrics/market.test.ts`「20D：latest vs 恰好 20 个交易日前（21 个收盘价）」「119 个收盘价：120D 回撤与 120D 收益 unavailable，20D/60D 可用」；`tests/deepening.test.ts`「指数 20D 收益与个股同口径：均使用 N+1 收盘价窗口」 | PASS |
-| Peer comparison (honest failure when peer data unavailable) | 已接入：个股 PE/PB 与行业成分股中位数之差（含有效样本数 `sampleSize`，过滤 PE≤0）。未接入：同行财务报表级比较 —— 以 UNKNOWN 显式声明「同行财务位置暂无法验证」（`unavailableReason: "peer financial data not connected"`），且该 UNKNOWN 会被塞进 AI 输入（禁 AI 自行找同行数据） | `src/lib/metrics/market-context.ts:155-242`、`src/lib/evidence/unknown-builder.ts:132,166,182`、`src/lib/ai/select-evidence.ts` | `tests/deepening.test.ts`「过滤 null/NaN/负 PE，并保留有效样本数」「行业样本全无效 → unavailable（不编造中位数）」；`tests/ai/select-evidence.test.ts`「§18 industry 维度 → 选中行业 UNKNOWN（AI 不得自行找同行数据）」。README「未做」亦声明「行业对比」未做（措辞与已实现的估值中位数比较略有出入） | PARTIAL |
-| Pending verification (evidence not yet verified) | UNKNOWN 是正式结果而非异常：`confidence=low`、`verifyStatus="unverified"`、必带 `unavailableReason`；UI 徽标「待验证」，首屏「尚待验证」区 ≤3 条 | `src/lib/evidence/unknown-builder.ts`（标题注释）、`src/lib/evidence/validate.ts`（unknown 不变量）、`src/components/stocklens/badges.tsx:10`（`label: "待验证"`）、`src/lib/presentation/research-view.ts:18` | `tests/presentation/research-view.test.ts`「C：UNKNOWN 独立成区且 ≤ MAX_UNKNOWN_SPOTLIGHT，边界类优先」；`tests/evidence/engine.test.ts`「全部指标 unavailable → 7 条 UNKNOWN（2 确定性 + 5 能力组），无 FACT/INFERENCE」；validate.ts 强制 `unknown must be confidence=low, unverified, signal=unknown` | PASS |
-| Traceability (conclusion → source field / period / unit / caliber) | 指标级：`sourceFields{source,domain,field,period\|date}` + `calculationMethod` + `unit` + `sampleSize`；证据级：`period / comparisonPeriod / metricIds / ruleId / basedOn`（inference 可点击下钻）；Drawer 展示「当前期 / 比较期 / 单位 / 有效样本 / 计算口径 / 查看技术口径」 | `src/lib/metrics/types.ts`（`MetricSourceField` / `MetricResult`）、`src/lib/evidence/types.ts`、`src/components/stocklens/EvidenceDrawer.tsx:27-52` | EvidenceDrawer.tsx 上述字段为实际渲染代码；`tests/evidence/engine.test.ts`「§50 Reference Integrity」；`docs/metric-catalog.md` 登记口径 | PASS |
-| Failure behaviour (missing / conflicting / stale must not silently look "normal") | 缺失 → UNKNOWN/unavailable + reason（绝不以 0 冒充）；冲突 → conflict 信号 + 背离规则；AI 失败局部降级（`ai=partial_failure`，claims 为空，证据仍在），不页面级报错。陈旧数据：未找到任何新鲜度/时效守卫（仅靠 period/date 展示），无「数据过期」检测 | `src/lib/evidence/unknown-builder.ts`、`src/lib/research/init-space.ts`、README「已知边界」第 4 条（刷新即重算） | `tests/metrics/financial.test.ts`「上季缺失 → null（不假设）」「字段为 null（接口返回空值）→ unavailable，不是 0」；`tests/deepening.test.ts`「行业指数行情缺失 → 指标 unavailable + 拆分后的行业 UNKNOWN」；`tests/research-init.test.ts`「Composer 失败：维度仍在（partial），claims 为空，ai=partial_failure」；`grep -r "stale\|freshness" src/lib` 无命中 | PARTIAL |
-| Web URL (deployed) | README 声明正式部署 `https://stocklens-blush.vercel.app`；`.vercel/project.json` 记录 projectName=stocklens；生产 smoke 脚本与结果文件均以该 URL 为 base | `README.md`（公开访问一节）、`.vercel/project.json`、`scripts/production-smoke-results.json` | `scripts/production-smoke-results.json`：`"base": "https://stocklens-blush.vercel.app"`，6 条路径（含合规/追问）`"allPass": true`。**未亲自访问**：审计环境 curl/WebFetch 该域名均超时，本行仅凭仓库内产物 | PASS |
-| Repository | Git 仓库，origin = `https://github.com/feiyu1215/stocklens.git`，README 首屏给出源码链接；39 commits | `git remote -v`、`README.md` | 审计时执行 `git ls-remote --heads origin` → `refs/heads/main = e4c3c8802f9b…`（与本地 HEAD 一致）。注：审计时工作区有未提交改动（`src/components/v5/ResearchCanvas.tsx` 及若干 untracked v5 文件） | PASS |
-| README | 根目录 README：一句话定位、三层架构图、AI 角色与禁令、数据来源、本地运行/部署命令、调试 API、测试与质量记录、已知边界与未做事项 | `README.md` | 文件存在（6491 bytes）且内容已逐节核对；命令与 `package.json` scripts 一致 | PASS |
-| AI usage record | 记录使用的 AI 工具（ZCode/DeepSeek/外部 Spec AI）、AI 参与/不参与环节与防幻觉机制、候选人修正过的 AI 错误（含 OCF 正数却预设「背离」的纠正） | `docs/ai-usage-record.md` | 文件存在（10157 bytes），§1–§3 已阅读；其声称的关键数字指向 `scripts/production-smoke-results.json` 与 git 历史 | PASS |
-| Tests | Vitest 离线测试（`server-only` 以 stub 替代），覆盖 metrics/evidence/ai/presentation/research/worlds/terrain 等 | `package.json`（`"test": "vitest run"`）、`vitest.config.ts`、`tests/**/*.test.ts` | 本次审计亲自运行 `npx vitest run`：**27 test files / 372 tests 全部通过（exit 0）**；README 与 `docs/test-notes.md` 中的 309/356 为旧数字 | PASS |
+| 1 | 选择一只 A 股，设计并实现一个 AI Native 个股诊断产品 | 默认研究标的美的集团 000333.SZ；可搜索并切换任意 A 股（`GET /api/stocks/search`）。产品是研究画布而非问答页：空间探索 + 自然语言两条平行通道 | 生产 URL `/observatory-v5`；`docs/final/screenshots/01-research-canvas.png` | PASS |
+| 2 | 帮助用户从经营质量、财务趋势、估值、行情特征、行业位置、重要事件与风险等维度理解公司当前状态 | 研究维度由 Research Framer 动态命名，覆盖这些域：实测美的得到「盈利质量 / 增长韧性 / 现金转化能力 / 估值相对位置 / 市场与行业相对表现 / 股东回报与公司行为」；招商银行得到「盈利质量与资本回报 / 资产质量与风险抵补 / 估值安全边际与行业相对 / 市场相对表现与波动 / 股东回报与分红可持续性」 | `docs/final/screenshots/01-research-canvas.png`、`06-company-switch.png`；Framer 实现在 `src/lib/research/framer.ts` | PASS |
+| 3 | 区分客观事实、分析推断与暂时无法验证的信息 | 证据对象自带 `type: fact \| inference \| unknown` 与强制不变量（unknown 必须 `confidence=low` + `verifyStatus=unverified` + 带 `unavailableReason`）；UI 分区呈现，Reading 的 claim 明确标注 FACT / INFERENCE | `src/lib/evidence/types.ts`、`src/lib/evidence/validate.ts`；`docs/final/screenshots/03-claim-evidence.png`（可见 `FACT POSITIVE` / `INFERENCE` 标签） | PASS |
+| 4 | 支持用户沿证据继续研究 | 每条 claim 带 ①②③ 证据锚点 → 点击把该证据钉到右侧 Evidence Rail（含指标、数值、期次、来源、计算口径）；底部 AI Research Lens 可在当前 scope 追问；画布上对应证据节点同步高亮 | `docs/final/screenshots/03-claim-evidence.png`、`04-ai-research-lens.png`；实测：点 ① 与 ② 分别钉住不同证据并把对应节点置为高亮 | PASS |
+| 5 | 不给出简单"好/坏"标签或买卖建议 | 无评分、无评级、无好坏标签；证据引擎契约禁止 signal 之外的 score/rating 字段；合规预检 + 输出扫描 + 校验三层拦截 | `src/lib/metrics/types.ts`（禁止 score 字段）、`src/lib/validation/diagnosis.ts`；`docs/final/TEST_REPORT.md` §9 | PASS |
 
-## Gaps found while auditing
+## 提交要求
 
-- **同行比较只做了估值倍数一层**：行业 PE/PB 中位数已接入且诚实暴露样本数；同行财务/经营的全维度对比未接入（代码注释 `peer financial data not connected`），仅以 UNKNOWN 呈现。README「未做」写「行业对比」，与已存在的行业估值中位数比较措辞不一致。
-- **公司类型 → 维度差异化无自动化测试**：Framer 单测只校验 schema（引用不存在的能力、label 重复、rationale 含数字等），没有任何测试断言「银行 vs 制造业得到不同维度」；该保证目前全部依赖 prompt 纪律 + 人工 E2E 记录（`docs/design-audit/v5-parity/STATUS.md`）。
-- **「陈旧数据」无机制性防护**：未发现任何新鲜度/时效守卫（grep `stale|freshness|asOf` 在 `src/lib` 无命中）。数据日期只以 period/date 字段展示，若接口返回跨度过大的旧数据，系统不会主动降级或提示。
-- **文档中的测试数字过期**：README 同时写着「309 个」与「356 个」，`docs/test-notes.md` 写 309+/356；实测 372（27 文件）。审计性文档之间应一致。
-- **部署可访问性未能在本环境复核**：`https://stocklens-blush.vercel.app` 的 curl/WebFetch 均超时（沙箱网络问题），只能引用 `scripts/production-smoke-results.json`（mtime 2026-09-30 18:26）作为历史证据；该 smoke 需要真实密钥才能复现。
-- **仓库态与部署态无法绑定到同一 commit**：审计时 `src/components/v5/ResearchCanvas.tsx` 有未提交修改、`docs/final/` 整体 untracked；无法证明线上版本 == `e4c3c88`。
-- **验证范围的诚实声明**：全部 PASS 均基于代码/测试/产物的人工阅读与本地测试重跑；未对线上行为、真实扶摇接口响应或 DeepSeek 输出做过独立端到端抽查。
+| # | Original Requirement | StockLens Implementation | Evidence | Status |
+|---|---|---|---|---|
+| 6 | 可运行主链路：**根据公司类型和用户问题选择诊断维度** | Research Framer 的输入 = 公司身份 + 行业（本地行业注册表，5572 只标的）+ 由真实指标推导的 Capability Manifest + 用户问题；维度 label 由模型自由命名，prompt 明令禁止套用同一组标签 | 跨公司差异实测（制造业 vs 银行，见 #2）；`src/lib/research/framer.ts`、`src/lib/research/capability.ts` | PASS |
+| 7 | 体现**确定性指标计算、数据证据与 LLM 解读**的合理分工 | 三层分离：Truth Layer（扶摇取数 + 指标引擎 + 证据引擎，LLM 禁入）→ Intelligence Layer（Framer / Composer / Follow-up，只能引用已有 Evidence ID）→ Experience Layer（只呈现与钻取） | `src/lib/metrics/`（全部计算）、`src/lib/evidence/`、`src/lib/ai/`；`docs/final/ARCHITECTURE.md` | PASS |
+| 8 | 正面、负面、矛盾和未知证据的**结构化表达** | `signal: positive \| negative \| conflict \| neutral \| unknown` 是证据对象的一等字段；背离类冲突由确定性规则触发（单季/YTD 异号、利润-现金流背离、收入-利润背离、20D/120D 方向背离等） | `src/lib/evidence/rules.ts`；实测可见 `6 evidence · 1 conflict` 徽标；单测 `tests/evidence/rules.test.ts` | PASS |
+| 9 | 支持从诊断结论钻取到**财务期次、行情区间、同行对比或待验证问题** | 财务期次：每条指标的 period / comparisonPeriod（如 `2026-Q2 vs 2025-Q2`），单季与累计口径严格分离；行情区间：20/60/120 交易日收益、20/60 日年化波动、120 日最大回撤；**同行对比：行业级**（个股 PE/PB 与行业成分股中位数之差，含有效样本数）与行业指数相对表现；待验证问题：UNKNOWN 是正式结果，直接列出缺失数据项 | `docs/final/screenshots/03-claim-evidence.png`（期次与口径可见）；`src/lib/metrics/market.ts`、`market-context.ts`；**未做**：逐家成分股的财务报表级对标 | **PARTIAL**（同行比较只做到行业级，不是成分股级财务对标） |
+| 10 | 提交可访问、可实际操作的 Web 产品 URL | https://stocklens-blush.vercel.app/observatory-v5 | 最终 smoke：页面加载、维度打开、Reading、Evidence、AI Lens、公司切换器全部可用（见 `docs/final/TEST_REPORT.md`） | PASS |
+| 11 | 源代码仓库及 README | https://github.com/feiyu1215/stocklens ；README 覆盖启动方式、环境变量、产品选择、AI 的角色、数据来源、已知边界与未做事项 | 仓库 README.md；`docs/final/screenshots/` 为最终构建实拍 | PASS |
+| 12 | **AI 使用与验证记录**：使用了哪些 AI 工具、AI 参与哪些环节、候选人修正了哪些错误或不合理结果 | 见 `docs/final/AI_USAGE_AND_VALIDATION.md`：区分"用于构建的 AI"与"产品内的 AI"，并列出 10 组候选人否决/纠正 AI 输出的真实记录 | `docs/final/AI_USAGE_AND_VALIDATION.md` §3 | PASS |
+| 13 | **测试说明**：至少覆盖主链路、数据缺失/接口失败、极端或合规边界场景 | `docs/final/TEST_REPORT.md`：10 节，含 385 个自动化测试、主链路逐步实测、8 类失败/极端情形、48 行交互审计、网络与 console 审计、性能实测、合规边界 | `docs/final/TEST_REPORT.md` | PASS |
+| 14 | 关键数字与结论必须**可追溯** | 指标级：`sourceFields{source,domain,field,period}` + `calculationMethod` + 单位 + 有效样本数；证据级：`period / comparisonPeriod / metricIds / ruleId / basedOn`（推断可回溯到事实）；界面 Evidence Rail 直接展示这些字段 | `docs/final/screenshots/03-claim-evidence.png`（`FUYAO · operating_income` / `2026-Q2` / `VERIFIED` / `CALCULATION`）；`src/lib/metrics/types.ts` | PASS |
 
-## How to reproduce
+## 统一规则
 
-命令取自 `package.json` scripts 与 `README.md`「本地运行」（Windows Git Bash）：
+| # | Original Requirement | StockLens Implementation | Evidence | Status |
+|---|---|---|---|---|
+| 15 | 不得在公开仓库提交 API Key、用户隐私或受限数据 | 密钥只存本地 `.env.local` 与部署平台环境变量；仓库仅含 `.env.example`（只有变量名）；提交包在打包时执行密钥扫描（密钥、Bearer token、.env 内容、Vercel/Fuyao/LLM 凭据、个人信息） | 打包脚本的扫描结果写入 `docs/final/PACKAGE_MANIFEST.md` | PASS |
+| 16 | 产品不得输出确定性涨跌预测、收益承诺或直接买卖建议 | 合规预检 + Prompt 禁令 + 输出校验；模型被禁止给出评级与建议 | `src/lib/validation/diagnosis.ts`、`docs/final/TEST_REPORT.md` §9 | PASS |
+| 17 | **事实、推断与不确定信息必须区分** | 数据结构层面分离（`type` 字段与强制不变量），UI 分区呈现；未知不是异常而是正式结果 | 同 #3；单测 `tests/evidence/engine.test.ts`「全部指标不可用 → 全部为 UNKNOWN，无 FACT/INFERENCE」 | PASS |
+| 18 | 核心结论必须能回到**原始字段或原文**，并明确来源、时点、单位及统计口径 | 每条证据携带来源（FUYAO · 字段名）、时点（period / comparisonPeriod）、单位（`formatMetricValue` 与 metric 定义）、统计口径（`calculationMethod`，如单季还原公式） | `docs/final/screenshots/03-claim-evidence.png`；`docs/metric-catalog.md` 登记全部指标口径 | PASS |
+| 19 | 数据**缺失、冲突、过期或调用失败**时不得静默生成"正常"结论 | 缺失 → `unavailable` + reason（绝不以 0 冒充）；冲突 → conflict 信号 + 背离规则；AI 调用失败 → 局部降级且界面可见；**过期**：数据日期以 period/date 展示，但**没有**新鲜度/时效守卫（若上游返回跨度过大的旧数据，系统不会主动降级或提示） | 单测 `tests/metrics/financial.test.ts`「字段为 null → unavailable，不是 0」、`tests/research-init.test.ts`「Composer 失败 → 维度仍在、claims 为空、ai=partial_failure」；`grep -r "stale\|freshness" src/lib` 无命中 | **PARTIAL**（过期数据缺少机制性防护） |
+| 20 | 可选：提交 60–180 秒演示视频 | **未随包提供**。本环境无法产出稳定且合规的 MP4（环境内无视频编码器；应用内浏览器长流程录制不稳定）。改为提供录制脚本与六张最终截图；`docs/final/DEMO_SCRIPT.md` 可在任意具备录屏能力的环境一次录成 | `docs/final/DEMO_SCRIPT.md`、`docs/final/PRODUCT_WALKTHROUGH.md` | **NOT DELIVERED**（可选项） |
 
-```bash
-npm install                              # 安装依赖
-cp .env.example .env.local               # 填入 FUYAO_API_KEY 与 DEEPSEEK_API_KEY（扶摇/DeepSeek）
-npm run test                             # Vitest 离线全量：27 files / 372 tests（无需密钥）
-npm run dev                              # http://localhost:3000 （V1 诊断 /observatory 为 V2 研究空间）
-npm run build                            # 生产构建（next build）
-python scripts/production_smoke.py       # 可选：对生产 URL 跑 5 路径 smoke，写生产 smoke 结果文件（需密钥）
-```
+## 汇总
+
+**PASS 18 · PARTIAL 1 · NOT DELIVERED 1（可选项）· 合计 20 行**
+
+两个未满分项都不是隐藏问题，而是明确写出的边界：
+
+1. **同行对比 = 行业级**（#9）：已实现行业估值中位数比较与行业指数相对表现；**不做**逐家成分股的财务报表级对标。README 与 KNOWN_LIMITATIONS 使用同一措辞。
+2. **过期数据无机制性防护**（#19）：缺失/冲突/调用失败三种情形都有确定行为并有单测；"数据过期"目前只靠展示期次让用户自行判断，没有新鲜度守卫。
+
+## 不在作业要求内、但本项目额外要求的（不参与上面的计数）
+
+以下为候选人自设的工程/交付约束，不是作业原文要求，列出以免被误读为"要求已完成"：
+
+- 提交包 ZIP < 30 MB（**平台约束**，由候选人提供）；
+- 生产环境不得让普通用户触发失败态（因此 `?testFailure=` 注入只在非生产构建存在）；
+- 浏览器验收必须以真实指针/键盘事件为准（禁用合成 `dispatchEvent` 作为通过证据）。

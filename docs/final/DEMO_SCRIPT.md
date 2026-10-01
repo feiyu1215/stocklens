@@ -1,13 +1,97 @@
 # Demo Script
 
-> **Scaffold — Task 17 will finalize this document.**
-> Created during submission packaging (Task 16). Working notes live in `docs/demo-script.md`.
+**目标时长 80–100 秒**（作业允许 60–180 秒）。录制方式：**对一个真实用户完成核心任务的过程录屏**，不使用 Guided Demo 代替——Guided Demo 是产品内的新手引导，不是本视频。
 
-## Purpose
+- 分辨率：1440×900（或 1080p），MP4 / H.264，目标 ≤ 12 MB
+- 允许：剪掉等待时间、简单转场、字幕条、淡入淡出
+- 禁止：用 PPT 讲稿代替产品体验；伪造中间财务结果
 
-This document will be the step-by-step demo script for the final submission.
+---
 
-## To be finalized (Task 17)
+## 分镜表
 
-- Demo flow and talking points
-- Screenshots / demo video references
+### 0–6s ｜ 开场
+
+**画面**：直接是美的集团的研究画布（`01-research-canvas.png` 的画面），轻微平移。
+
+**字幕**：`StockLens｜AI Native 个股证据诊断`
+
+### 6–18s ｜ 研究画布：维度是生成的，不是模板
+
+**画面**：缓慢划过六个维度（盈利质量 / 增长韧性 / 现金转化能力 / 估值相对位置 / 市场与行业相对表现 / 股东回报与公司行为），在带 `1 conflict` 的维度上停留一下。
+
+**字幕**：`根据公司类型与研究问题动态生成诊断维度`
+
+### 18–30s ｜ 进入一个研究问题
+
+**画面**：点击「增长韧性」→ 其余维度让位 → Focus Aperture 出现（摘要 + 3 条数值 + Explore research）。停顿 1 秒再点 `Explore research`。
+
+**字幕**：`从结论进入研究，而不是停在标签`
+
+### 30–45s ｜ 结论 → 证据
+
+**画面**：Reading 展开 → 停在带 `FACT POSITIVE` / `INFERENCE` 标签的 claim 上 → 点击 ①②③ 中的一个证据锚点 → 右侧 Evidence Rail 切到该证据，依次扫过：指标与数值、`2026-Q2 vs 2025-Q2`、`FUYAO · operating_income`、`VERIFIED`，展开 `CALCULATION`。
+
+**字幕**：`关键结论可回到数据证据与统计口径`
+
+### 45–60s ｜ AI 解释证据，不替代事实
+
+**画面**：确认当前 scope 是某条 claim → 在底部 AI Research Lens 追问一句（例如「这条结论的证据边界在哪里？」）→ 答案出现：先给边界，再分「可以确认 / 暂时不能确认」。
+
+**字幕**：`AI 解释证据，但不替代事实层`
+
+### 60–72s ｜ 用户自己的研究角度
+
+**画面**：命令面板 → `Add research angle` → 输入「库存与周转压力」→ 提交 → 结果如实呈现（能支撑则新维度生成；不能支撑则明确显示证据不完整）。
+
+**字幕**：`证据不足时明确返回 UNKNOWN`
+
+### 72–88s ｜ 收藏与切换公司
+
+**画面**：点 `★ 保存到研究架` → 打开研究架（SAVED / RECENT 可见）→ 搜索并切到招商银行 → 短暂展示全屏研究过渡（真实已等待秒数、可返回）→ 切入招商银行的画布，掠过银行特有的维度（资本回报 / 资产质量与风险抵补 / 估值安全边际与行业相对）。
+
+**字幕**：`不同公司类型对应不同研究结构`
+
+### 88–96s ｜ 收尾
+
+**画面**：淡出到浅色底，两行字居中。
+
+**字幕**：
+```
+Evidence first.
+Conclusions second.
+        StockLens
+```
+
+---
+
+## 操作清单（按顺序照做即可）
+
+| 时间 | 操作 | 备注 |
+|---|---|---|
+| 0s | 打开 https://stocklens-blush.vercel.app/observatory-v5 | 首次访问会弹「第一次使用 STOCKLENS？」提示，可点「自行探索 →」关掉再开始录 |
+| 6s | 鼠标缓慢划过维度 | 只移动，不点 |
+| 18s | 点击「增长韧性」 | 停顿看光圈 |
+| 22s | 点击 `Explore research` | |
+| 30s | 在 Reading 里点一条 claim 的证据锚点 | 右侧 rail 会切到该证据 |
+| 45s | 底部输入框问「这条结论的证据边界在哪里？」并回车 | 约 8 秒返回 |
+| 60s | `Ctrl+K` → `Add research angle` → 输入「库存与周转压力」→ 提交 | 约 2 秒返回 |
+| 72s | 点 `★ 保存到研究架` → 点顶部公司名打开研究架 | |
+| 76s | 搜索「招商银行」并选择 | **真实耗时约 15–30 秒**，剪辑时剪掉中间等待，但保留：点击 → 全屏过渡 → 真实落在招商银行画布 |
+| 88s | 定格收尾字幕 | |
+
+## 剪辑要求
+
+- 剪掉等待（研究初始化 15–30 秒）时，**保留"点击 → 全屏研究过渡 → 最终真实公司画布"这三段**，不要直接跳到结果；
+- 不做任何数值或结论的伪造或加速；
+- 若产品当下出现 `AI interpretation temporarily unavailable`（上游模型的偶发失败），**不要重录掩盖**——如实保留或重录一次即可，但不得用其它公司的数据冒充。
+
+## 如果录制失败
+
+按 §20 的原则：不要为了录制反复消耗时间，也不要生成占位视频。此时交付：
+
+1. 本脚本（`DEMO_SCRIPT.md`）；
+2. `PRODUCT_WALKTHROUGH.md` 的六张最终截图与逐步说明；
+3. 明确说明"演示视频需在具备录屏能力的环境手动录制"。
+
+本次提交即采用这一方式（见 `SUBMISSION.md`）。

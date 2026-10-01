@@ -101,7 +101,7 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
           className="font-mono text-[10.5px]"
           style={{ color: C.ink, minHeight: 28, minWidth: 62, cursor: "pointer" }}
         >
-          {paused ? "Resume" : "Pause"}
+          {paused ? "继续" : "暂停"}
         </button>
         <button
           type="button"
@@ -119,7 +119,7 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
           className="font-mono text-[10.5px]"
           style={{ color: C.secondary, minHeight: 28, minWidth: 36, cursor: "pointer" }}
         >
-          Exit
+          退出
         </button>
         {paused && (
           <span data-demo-paused className="font-mono text-[10.5px]" style={{ color: C.secondary }}>

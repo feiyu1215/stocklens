@@ -116,8 +116,11 @@ describe("Guided Demo V2 场景（§26/§27/§30）", () => {
     expect(canvas).toContain("▶ 快速演示")
     expect(canvas).toContain("▶ 观看快速演示")
     expect(overlay).toContain("下一步 →")
-    // 控件里不再出现 Skip（onSkip / data-demo-skip 属于属性名，不受影响）
+    // 其余控制统一为中文：暂停 / 继续 / 退出
+    expect(overlay).toContain('"继续"')
+    expect(overlay).toContain('"暂停"')
     expect(overlay).not.toMatch(/\bSkip\b/)
+    expect(overlay).not.toMatch(/\bPause\b|\bResume\b|\bExit\b/)
   })
 
   it("每条字幕最多 1 标题 + 1 句话，指针在视口内", () => {

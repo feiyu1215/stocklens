@@ -7,7 +7,7 @@
 
 **Task 16.2A / 16.2B / 17 / 17.1 / 17.2 全部完成，交付物已生成。** 交互清单 **PASS 47 · FAIL 0 · NOT TESTED 0 · PARTIAL 0**（1 行 N/A 附理由）；六 Gate 仍 PASS；需求矩阵 **PASS 19 · PARTIAL 1 · NOT DELIVERED 1（可选项）**；ZIP 2.21MB、密钥扫描 PASS；生产 smoke 六项 PASS。
 
-> **⚠️ 当前唯一待办（用户明确要求，勿丢弃）**：在 Vercel 之外**再部署一个国内可直连的镜像**。完整方案在 [`DOMESTIC_DEPLOY_PLAN.md`](DOMESTIC_DEPLOY_PLAN.md)。卡点：需要用户先注册腾讯云并实名认证（然后 `tcb login`，会话即可接管部署）。完成后回填 README「国内备用地址」行并 push。背景：本机网络对 `*.vercel.app` DNS 污染 + TLS 重置（用户实测打不开），产品本身健康（部署 Ready、AI 链路实测成功）；GitHub README 顶部已有醒目访问提示（commit `a1f8ae2`）。
+> **⚠️ 当前唯一待办（用户明确要求，勿丢弃）**：在 Vercel 之外**再部署一个国内可直连的镜像**。完整方案在 [`DOMESTIC_DEPLOY_PLAN.md`](DOMESTIC_DEPLOY_PLAN.md)。**2026-10-03 起准备全部就绪**（CLI 已装、standalone 已配并构建验证通过、多阶段 Dockerfile 已提交），用户只剩三步：① 注册腾讯云+实名认证 ② 开通 CloudBase 并创建环境 ③ 在 `D:\zcode存储\stocklens` 跑 `tcb login`——之后会话用 `tcb env:list` 自查环境 ID 即可接管部署。完成后回填 README「国内备用地址」行并 push。背景：本机网络对 `*.vercel.app` DNS 污染 + TLS 重置（用户实测打不开），产品本身健康（部署 Ready、AI 链路实测成功）；GitHub README 顶部已有醒目访问提示（commit `a1f8ae2`）。
 
 ## 1. 工程与部署
 

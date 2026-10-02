@@ -2,6 +2,8 @@
 
 > 2026-10-01 由上一会话写下。用户已明确要求：**在 Vercel 之外再部署一个国内可直连的镜像**。
 > 唯一卡点：国内云平台需要**实名注册**，只能由用户本人完成。注册完成后，本文件给出全部执行细节。
+>
+> **2026-10-03 更新：全部不依赖账号的准备工作已完成并提交** —— CloudBase CLI 3.8.5 已装好（用户无需再 `npm i -g`）；`next.config.ts` 已加 `output: "standalone"` 且本地 `next build` 验证 `.next/standalone/server.js` 正常生成；`Dockerfile`（node:22-alpine 多阶段，云上构建、平台无关、密钥零进镜像）与 `.dockerignore` 已写好。已核实：所有 `process.env` 均为请求时读取、9 个 API 路由全部 `force-dynamic`、无 middleware → **云端构建不需要任何环境变量**。用户剩余步骤只有：① 注册腾讯云+实名 ② 开通 CloudBase 建环境 ③ 在 `D:\zcode存储\stocklens` 跑 `tcb login`。
 
 ## 目标
 
@@ -22,18 +24,13 @@ API 路由（`/api/research/init` 等）在服务端执行，且 `FUYAO_API_KEY`
 
 1. 注册腾讯云账号并完成**个人实名认证**；
 2. 开通 CloudBase 并**创建环境**（按量付费即可），记下**环境 ID**；
-3. 在本机（`D:\zcode存储\stocklens`）执行：
-   ```bash
-   npm i -g @cloudbase/cli
-   tcb login
-   ```
-   （会弹浏览器到腾讯云授权——国内站点，**不需要代理**。）
+3. 在本机（`D:\zcode存储\stocklens`）执行 `tcb login`（**CLI 已由会话装好，无需再安装**；会弹浏览器到腾讯云授权——国内站点，**不需要代理**）。
 4. 告诉会话："腾讯云开好了，环境 ID 是 `<envId>`"。
 
 ## 会话接手后的执行步骤
 
-1. `npx next build`（确认 standalone 输出配置；如无则在 `next.config.ts` 加 `output: "standalone"`——**这是唯一的代码改动**，属部署配置，不是产品改动）；
-2. 写 `Dockerfile`（node:20-alpine，复制 `.next/standalone` + `.next/static` + `public`，`PORT=3000`）；
+1. ✅ **已完成（2026-10-03）**：`next.config.ts` 加了 `output: "standalone"`（唯一代码改动，属部署配置非产品改动）；本地 `next build` 通过，`.next/standalone/server.js` 生成正常；
+2. ✅ **已完成（2026-10-03）**：`Dockerfile` 为 node:22-alpine **多阶段**（deps → builder 云上构建 → runner），平台无关，`PORT=3000`、非 root 运行；`.dockerignore` 排除 `.git`/`docs`(62MB)/`tests`/`.env*`——密钥绝不进镜像。部署命令以 `tcb cloudrun -h` 实测为准（CLI 子命令可能有版本差异；必要时引导用户在控制台用"本地上传代码包"方式构建）；
 3. `tcb` 部署容器到用户环境（或引导用户在控制台用"镜像托管"上传）；
 4. 在云托管服务设置里配置环境变量（值取自本地 `.env.local`，**绝不写进仓库**）：
    - `FUYAO_API_KEY`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL=https://api.deepseek.com`、`DEEPSEEK_MODEL=deepseek-chat`

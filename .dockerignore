@@ -1,0 +1,14 @@
+# 控制构建上下文体积与安全边界：密钥绝不进入镜像
+node_modules
+.next
+.git
+docs
+tests
+*.zip
+*.log
+.env*
+!.env.example
+README.md
+SUBMISSION.md
+HANDOFF.md
+说明信息.txt

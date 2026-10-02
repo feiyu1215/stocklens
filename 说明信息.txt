@@ -13,6 +13,13 @@ StockLens｜个股证据诊断 — 交付说明
     说明：首屏走真实取数 + 两次模型调用，约 15–30 秒，会出现全屏研究过渡；
           实时证据带数据新鲜度标记（数据截至日期 · FRESH/STALE）。
 
+国内直连备用地址（中国大陆普通网络无需代理可直接打开；产品与 Vercel 版完全同一代码，
+两个入口任选其一，若 Vercel 打不开请用这条）：
+    https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5
+    https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5?live=1
+    说明：部署于腾讯云 CloudBase 云托管（上海），已实测大陆直连
+          （页面 / 搜索 / 完整 init 全链路 200，init 实测 17.9 秒）。
+
 源代码仓库：
     https://github.com/feiyu1215/stocklens
     生产部署对应的代码提交：ea10e99

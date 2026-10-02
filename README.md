@@ -7,12 +7,13 @@
 > 如果打不开，请用以下任一方式：
 >
 > 1. **本地运行（约 2 分钟，无需代理）**：`npm install` → 复制 `.env.example` 为 `.env.local` 并填入两个密钥 → `npm run dev` → 打开 `http://localhost:3000/observatory-v5`。详细步骤见下方 [Run Locally](#run-locally)。
-> 2. **国内备用地址**：正在部署一个国内可直连的镜像，上线后此处会更新为可直接点击的地址。
+> 2. **国内备用地址（大陆直连，无需代理）**：<https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5>——与 Vercel 同一产品同一代码，密钥只存服务端，日常闲置不产生费用。
 > 3. **先看产品截图与逐步走查**：[docs/final/产品走查.md](docs/final/产品走查.md)（六张最终截图 + 每步操作说明），在 GitHub 上可直接查看，不需要代理。
 
 ## Live Demo
 
 **产品地址（Web URL）**：<https://stocklens-blush.vercel.app/observatory-v5>  
+**国内直连备用地址（大陆网络无需代理）**：<https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5>  
 **源代码仓库**：<https://github.com/feiyu1215/stocklens>
 
 建议桌面浏览器、宽度 **1280×800 或更大**（1440×900 为设计基准）。默认研究标的为美的集团 000333.SZ；可搜索并切换任意 A 股。

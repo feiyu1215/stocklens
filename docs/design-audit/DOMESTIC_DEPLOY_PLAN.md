@@ -41,6 +41,7 @@ API 路由（`/api/research/init` 等）在服务端执行，且 `FUYAO_API_KEY`
 
 ## 备忘
 
+- 2026-10-03 计费口径复核（回应"轻量 vs CVM"的对比）：**云托管官方口径为"按实际使用付费，流量低谷时自动缩容到 0"**，按实例启动后的 CPU/内存用量计量（换算"计算资源使用量"，精确到 100ms），扣量顺序＝环境套餐 → 资源包 → 按量付费（docs.cloudbase.net/run/introduction、/run/faq/fee）。CVM 按量计费仅作 plan B：关机免 CPU/内存费、能跑 Docker，但裸 IP 无 HTTPS、国内域名需备案（2–4 周），评审打开体验差——仅当云托管开通受阻时使用。轻量应用服务器基础套餐仅包年包月（其"按量"只是超额流量），不适用于本需求；其常驻套餐建议适用于装修同步小程序项目，与本仓库无关。
 - 本机 DNS 对 `*.vercel.app` 被污染 + TLS 重置（实测，含阿里/腾讯公共 DNS），Vercel 侧产品本身健康（部署 Ready，AI 链路实测成功）。
 - GitHub README 顶部已有醒目的「⚠️ 访问提示」块（commit `a1f8ae2`），含本地运行兜底与产品走查链接；备用地址行已预留占位。
 - git push 需代理：`git -c http.proxy=http://127.0.0.1:7890 push origin HEAD`。

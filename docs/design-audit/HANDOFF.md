@@ -7,7 +7,7 @@
 
 **Task 16.2A / 16.2B / 17 / 17.1 / 17.2 全部完成，交付物已生成。** 交互清单 **PASS 47 · FAIL 0 · NOT TESTED 0 · PARTIAL 0**（1 行 N/A 附理由）；六 Gate 仍 PASS；需求矩阵 **PASS 19 · PARTIAL 1 · NOT DELIVERED 1（可选项）**；ZIP 2.21MB、密钥扫描 PASS；生产 smoke 六项 PASS。
 
-> **⚠️ 当前唯一待办（用户明确要求，勿丢弃）**：在 Vercel 之外**再部署一个国内可直连的镜像**。完整方案在 [`DOMESTIC_DEPLOY_PLAN.md`](DOMESTIC_DEPLOY_PLAN.md)。**2026-10-03 起准备全部就绪**（CLI 已装、standalone 已配并构建验证通过、多阶段 Dockerfile 已提交），用户只剩三步：① 注册腾讯云+实名认证 ② 开通 CloudBase 并创建环境 ③ 在 `D:\zcode存储\stocklens` 跑 `tcb login`——之后会话用 `tcb env:list` 自查环境 ID 即可接管部署。完成后回填 README「国内备用地址」行并 push。背景：本机网络对 `*.vercel.app` DNS 污染 + TLS 重置（用户实测打不开），产品本身健康（部署 Ready、AI 链路实测成功）；GitHub README 顶部已有醒目访问提示（commit `a1f8ae2`）。
+> **✅ 已完成（2026-10-03）：国内可直连镜像已上线，当前无未完成待办**——`https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5`（腾讯云 CloudBase 个人版，经微信 AI 小程序成长计划免费领取，有效期至 2027-04-03；默认域名长期公开、无签名）。**无代理验收全过**：首页/产品页/fixture API 200（0.24–0.88s）、搜索接口返回真实数据、完整 init HTTP 200 / 17.9s（扶摇 + 双 LLM 全链）。README / SUBMISSION.md / 说明信息.txt 已回填真实地址，**Vercel 地址原样保留**。部署全过程、EdgeOne 免费版出局原因（默认域名 3h 签名 / 大陆 401，平台合规设计）与全部教训见 [`DOMESTIC_DEPLOY_PLAN.md`](DOMESTIC_DEPLOY_PLAN.md)。可选收尾：控制台开"启用自动部署"（push 自动重建）；EdgeOne 项目 `stocklens-gtz6k1nz.edgeone.cool` 可删可留。
 
 ## 1. 工程与部署
 

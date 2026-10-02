@@ -3,7 +3,6 @@ node_modules
 .next
 .git
 docs
-tests
 *.zip
 *.log
 .env*

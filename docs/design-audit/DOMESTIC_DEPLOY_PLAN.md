@@ -17,8 +17,9 @@ API 路由（`/api/research/init` 等）在服务端执行，且 `FUYAO_API_KEY`
 
 ## 推荐平台（按优先级）
 
-1. **腾讯云 CloudBase 云托管（推荐）**：容器跑 Next.js standalone；默认域名（`*.tcloudbaseapp.com`）国内直连、测试用途无需备案；有 CLI（`tcb`），授权后可全程命令行部署。费用按量，演示量级通常每月几元～几十元。
-2. 阿里云 函数计算 FC 3.0（custom runtime）或 SAE：同样可行，默认域名国内直连。
+1. **腾讯云 CloudBase 云托管（主选）**：容器跑 Next.js standalone；默认域名（`*.tcloudbaseapp.com`）国内直连、测试用途无需备案；有 CLI（`tcb`），授权后可全程命令行部署。费用按量、支持缩容到 0（无访问时 ¥0），演示量级预计每月几元内；按量付费账户需实名并有小额余额。
+2. **腾讯云 EdgeOne Pages（免费备选，可作第三镜像）**：2026-08 起支持 Next.js 全栈（SSR + 动态 API，Node Functions）；免费版官方声明 "permanently available / $0 per month"、超限不断服；支持 GitHub 仓库直连构建部署，也可 CLI。注意：默认域名在大陆的访问走节点调度（可达性以部署后实测为准，可能走海外节点）。与云托管**同一个腾讯账号**即可开通。
+3. 阿里云 函数计算 FC 3.0（custom runtime）或 SAE：可行，默认域名国内直连；但免费额度目前是试用性质（首开用户约 15 万 CU/月 × 3 个月），**非长期免费**，仅作备选。
 
 ## 用户要做的（一次性，约 10 分钟）
 
@@ -30,7 +31,7 @@ API 路由（`/api/research/init` 等）在服务端执行，且 `FUYAO_API_KEY`
 ## 会话接手后的执行步骤
 
 1. ✅ **已完成（2026-10-03）**：`next.config.ts` 加了 `output: "standalone"`（唯一代码改动，属部署配置非产品改动）；本地 `next build` 通过，`.next/standalone/server.js` 生成正常；
-2. ✅ **已完成（2026-10-03）**：`Dockerfile` 为 node:22-alpine **多阶段**（deps → builder 云上构建 → runner），平台无关，`PORT=3000`、非 root 运行；`.dockerignore` 排除 `.git`/`docs`(62MB)/`tests`/`.env*`——密钥绝不进镜像。部署命令以 `tcb cloudrun -h` 实测为准（CLI 子命令可能有版本差异；必要时引导用户在控制台用"本地上传代码包"方式构建）；
+2. ✅ **已完成（2026-10-03）**：`Dockerfile` 为 node:22-alpine **多阶段**（deps → builder 云上构建 → runner），平台无关，`PORT=3000`、非 root 运行；`.dockerignore` 排除 `.git`/`docs`(62MB)/`.env*`——密钥绝不进镜像；**`tests` 目录不能排除**（2026-10-03 修正）：fixture 路由运行时读 `tests/fixtures/*.json`（已核实 nft 把它追踪进 standalone，`.next/standalone/tests/fixtures/` 实测存在），云端构建上下文丢掉它，默认首屏（非 `?live=1`）会 500。部署命令以 `tcb cloudrun -h` 实测为准（CLI 子命令可能有版本差异；必要时引导用户在控制台用"本地上传代码包"方式构建）；
 3. `tcb` 部署容器到用户环境（或引导用户在控制台用"镜像托管"上传）；
 4. 在云托管服务设置里配置环境变量（值取自本地 `.env.local`，**绝不写进仓库**）：
    - `FUYAO_API_KEY`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL=https://api.deepseek.com`、`DEEPSEEK_MODEL=deepseek-chat`

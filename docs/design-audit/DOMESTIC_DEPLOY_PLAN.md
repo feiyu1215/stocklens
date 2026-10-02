@@ -21,6 +21,19 @@ API 路由（`/api/research/init` 等）在服务端执行，且 `FUYAO_API_KEY`
 2. **腾讯云 EdgeOne Pages（免费备选，可作第三镜像）**：2026-08 起支持 Next.js 全栈（SSR + 动态 API，Node Functions）；免费版官方声明 "permanently available / $0 per month"、超限不断服；支持 GitHub 仓库直连构建部署，也可 CLI。注意：默认域名在大陆的访问走节点调度（可达性以部署后实测为准，可能走海外节点）。与云托管**同一个腾讯账号**即可开通。
 3. 阿里云 函数计算 FC 3.0（custom runtime）或 SAE：可行，默认域名国内直连；但免费额度目前是试用性质（首开用户约 15 万 CU/月 × 3 个月），**非长期免费**，仅作备选。
 
+## 当前执行路径（2026-10-03 用户拍板）
+
+微信成长计划搁置（用户只有测试 AppID，转正式需时且资格不确定）；**先走 EdgeOne Pages 免费版**，不满意再买 CloudBase 个人版 1 个月（¥19.9）兜底。
+
+1. 用户：注册腾讯云账号 + 实名认证（哪条路都必需，不浪费）；
+2. 用户：EdgeOne Pages 控制台（console.cloud.tencent.com 搜 "EdgeOne Pages"，或 pages.edgeone.ai 登录）→ 创建项目 → **导入 Git 仓库** → GitHub 授权 → 选 `feiyu1215/stocklens`（公开仓库）→ 框架自动检测 Next.js → 部署；
+3. 用户：项目设置里配 4 个环境变量（`FUYAO_API_KEY`/`DEEPSEEK_API_KEY` 的值从本地 `.env.local` 复制，不外发；`DEEPSEEK_BASE_URL=https://api.deepseek.com`；`DEEPSEEK_MODEL=deepseek-chat`）；
+4. 部署完成后把 `*.edgeone.app` 预览域名发会话；
+5. 会话：**直连语义验收**——本机即大陆网络，curl 不带代理实测（HTTP 200、`?live=1` init 冒烟、AI 追问链路）；实测不通则此路径出局，转 ¥19.9 兜底；
+6. 通过 → README「国内备用地址」回填 + push（主分支 push 会自动触发 EdgeOne 重新构建，属预期行为）。
+
+已知旋钮：若 EdgeOne 构建报错与 `output: "standalone"` 相关 → 把 next.config.ts 改为按环境变量条件启用（Dockerfile 加 ENV 保持容器路径不变），两分钟修复；若构建 Node 版本不匹配 → repo 已加 `.nvmrc`（22）。
+
 ## 用户要做的（一次性，约 10 分钟）
 
 1. 注册腾讯云账号并完成**个人实名认证**；

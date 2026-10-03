@@ -106,7 +106,7 @@ interface AiEntry {
   inferred?: string[]
   unknowns?: string[]
   message?: string
-  /** §37：本地保存问题以便 Edit question（Retry 用冻结上下文） */
+  /** §37：本地保存问题以便 修改问题（Retry 用冻结上下文） */
   frozenQuestion: string
 }
 
@@ -852,6 +852,10 @@ export default function ResearchCanvas() {
           return
         }
         const s = body.synthesis
+        if (!s) {
+          setAsk({ ...ask, status: "failed", message: "本次回答未能通过证据校验，请重试。" })
+          return
+        }
         setAsk({
           ...ask,
           status: "done",
@@ -1002,6 +1006,11 @@ export default function ResearchCanvas() {
           return
         }
         const syn = body.synthesis
+        if (!syn) {
+          // 两轮修复都被证据校验拒绝：以 failed 呈现（保留 Retry/Edit），绝不做空的 completed
+          patch({ status: "failed" })
+          return
+        }
         patch({
           status: "completed",
           generatedAt: new Date().toISOString(),
@@ -1017,7 +1026,7 @@ export default function ResearchCanvas() {
           [stockCode]: (t[stockCode] ?? []).map((x) =>
             x.id === entry.id
               ? aborted
-                ? { ...x, status: "stopped", message: "Stopped by you" }
+                ? { ...x, status: "stopped", message: "已停止" }
                 : { ...x, status: "failed", message: "AI interpretation is temporarily unavailable." }
               : x,
           ),
@@ -1074,7 +1083,7 @@ export default function ResearchCanvas() {
     [],
   )
 
-  /** §15：Edit question = 把原问题放回输入框，并恢复其 scope */
+  /** §15：修改问题 = 把原问题放回输入框，并恢复其 scope */
   const editTurn = useCallback(
     (entry: AiEntry) => {
       const scope: AiScope =
@@ -2822,7 +2831,7 @@ export default function ResearchCanvas() {
                 type="button"
                 data-ai-close-thread
                 onClick={collapseThread}
-                title="Close (history kept)"
+                title="收起（保留历史）"
                 className="font-mono text-[12px]"
                 style={{ color: C.secondary, minHeight: 26, minWidth: 26, cursor: "pointer" }}
               >
@@ -2832,7 +2841,7 @@ export default function ResearchCanvas() {
                 type="button"
                 data-ai-thread-menu
                 onClick={() => setThreadMenuOpen((v) => !v)}
-                title="Thread options"
+                title="线程选项"
                 className="font-mono text-[11px]"
                 style={{ color: C.secondary, minHeight: 26, minWidth: 26, cursor: "pointer" }}
               >
@@ -2875,7 +2884,7 @@ export default function ResearchCanvas() {
               {entry.status === "running" && (
                 <div className="mt-2 flex items-center gap-3" data-ai-thinking>
                   <p className="font-mono text-[11px]" style={{ color: C.secondary }}>
-                    Reviewing {entry.evidenceIds.length > 0 ? entry.evidenceIds.length + " evidence objects" : "current evidence"}…
+                    正在结合 {entry.evidenceIds.length > 0 ? entry.evidenceIds.length + " 条证据" : "当前证据"}组织回答…
                   </p>
                   <button
                     type="button"
@@ -2891,14 +2900,14 @@ export default function ResearchCanvas() {
               {entry.status === "failed" && (
                 <div className="mt-2 space-y-1.5" data-ai-failed>
                   <p className="text-[12px] leading-relaxed" style={{ color: C.secondary }}>
-                    AI interpretation is temporarily unavailable. Current evidence remains available.
+                    AI 解读暂时未能完成，当前证据仍可查看。
                   </p>
                   <div className="flex gap-3">
                     <button type="button" data-ai-retry onClick={() => retryTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.blue, minHeight: 28 }}>
-                      Retry answer
+                      重试回答
                     </button>
                     <button type="button" onClick={() => editTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 28 }}>
-                      Edit question
+                      修改问题
                     </button>
                   </div>
                 </div>
@@ -2906,14 +2915,14 @@ export default function ResearchCanvas() {
               {entry.status === "stopped" && (
                 <div className="mt-2 space-y-1.5" data-ai-stopped>
                   <p className="font-mono text-[11px]" style={{ color: C.coral }}>
-                    Stopped by you
+                    已停止
                   </p>
                   <div className="flex gap-3">
                     <button type="button" data-ai-retry onClick={() => retryTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.blue, minHeight: 28 }}>
-                      Retry answer
+                      重试回答
                     </button>
                     <button type="button" onClick={() => editTurn(entry)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 28 }}>
-                      Edit question
+                      修改问题
                     </button>
                   </div>
                 </div>
@@ -2924,7 +2933,7 @@ export default function ResearchCanvas() {
                   {entry.confirmed?.length ? (
                     <div>
                       <div className="font-mono text-[9.5px] tracking-[0.18em]">可以确认</div>
-                      {entry.confirmed.slice(0, 3).map((c, j) => (
+                      {entry.confirmed.slice(0, 4).map((c, j) => (
                         <p key={j} className="mt-0.5">
                           {c}
                         </p>
@@ -2934,7 +2943,7 @@ export default function ResearchCanvas() {
                   {entry.inferred?.length ? (
                     <div>
                       <div className="font-mono text-[9.5px] tracking-[0.18em]">基于证据可以推断</div>
-                      {entry.inferred.slice(0, 2).map((c, j) => (
+                      {entry.inferred.slice(0, 3).map((c, j) => (
                         <p key={j} className="mt-0.5">
                           {c}
                         </p>
@@ -2944,7 +2953,7 @@ export default function ResearchCanvas() {
                   {entry.unknowns?.length ? (
                     <div>
                       <div className="font-mono text-[9.5px] tracking-[0.18em]">暂时不能确认</div>
-                      {entry.unknowns.slice(0, 2).map((c, j) => (
+                      {entry.unknowns.slice(0, 3).map((c, j) => (
                         <p key={j} className="mt-0.5">
                           {c}
                         </p>

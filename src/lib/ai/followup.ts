@@ -183,47 +183,58 @@ export async function runFollowup(input: {
     return { ...base, mode: "followup", synthesis: firstValidation.synthesis, ai: { status: "success", trace: first.trace } }
   }
 
-  const second = await runLLM({
-    task: "diagnosis_synthesis",
-    promptVersion: FOLLOWUP_PROMPT_VERSION,
-    systemPrompt: buildFollowupSystemPrompt(),
-    userPrompt: buildFollowupRepairPrompt(
-      first.output,
-      firstValidation.issues.map((i) => `${i.section}/${i.rule}: ${i.message}`),
-    ),
-    temperature: FOLLOWUP_TEMPERATURE,
-    maxTokens: FOLLOWUP_MAX_TOKENS,
-  })
-
+  // 修复重试：最多 2 轮，每轮回喂上一轮输出与累计问题。
+  // 2026-09 模型世代切换后（chat 别名指向推理型 Flash），首轮分区纪律的偶发违规率上升，
+  // 单轮修复不稳；证据纪律本身不让步——重试仍不通过才判 failed。
   const issues = [...firstValidation.issues]
-  if (second.trace.status === "failed") {
-    issues.push(...(second.trace.validationIssues ?? []).map((m) => ({ section: "llm", rule: "request-failed", message: m })))
-    return {
-      ...base,
-      mode: "followup",
-      synthesis: null,
-      ai: { status: "failed", trace: failedTrace(second.trace, issues.map((i) => `${i.section}/${i.rule}: ${i.message}`)) },
+  let lastOutput = first.output
+  let lastTrace = first.trace
+  for (let repairRound = 1; repairRound <= 2; repairRound++) {
+    const repaired = await runLLM({
+      task: "diagnosis_synthesis",
+      promptVersion: FOLLOWUP_PROMPT_VERSION,
+      systemPrompt: buildFollowupSystemPrompt(),
+      userPrompt: buildFollowupRepairPrompt(
+        lastOutput,
+        issues.map((i) => `${i.section}/${i.rule}: ${i.message}`),
+      ),
+      temperature: FOLLOWUP_TEMPERATURE,
+      maxTokens: FOLLOWUP_MAX_TOKENS,
+    })
+
+    if (repaired.trace.status === "failed") {
+      issues.push(...(repaired.trace.validationIssues ?? []).map((m) => ({ section: "llm", rule: "request-failed", message: m })))
+      return {
+        ...base,
+        mode: "followup",
+        synthesis: null,
+        ai: { status: "failed", trace: failedTrace(repaired.trace, issues.map((i) => `${i.section}/${i.rule}: ${i.message}`)) },
+      }
     }
-  }
-  const secondValidation = attemptValidation(second.output)
-  if (!secondValidation.ok) {
-    return {
-      ...base,
-      mode: "followup",
-      synthesis: null,
-      ai: {
-        status: "failed",
-        trace: failedTrace(second.trace, [...issues, ...secondValidation.issues].map((i) => `${i.section}/${i.rule}: ${i.message}`)),
-      },
+    const validation = attemptValidation(repaired.output)
+    if (validation.ok) {
+      return {
+        ...base,
+        mode: "followup",
+        synthesis: validation.synthesis,
+        ai: {
+          status: "success",
+          trace: {
+            ...repaired.trace,
+            retries: repaired.trace.retries + repairRound,
+            validationIssues: issues.map((i) => `${i.section}/${i.rule}: ${i.message}`),
+          },
+        },
+      }
     }
+    issues.push(...validation.issues)
+    lastOutput = repaired.output
+    lastTrace = repaired.trace
   }
   return {
     ...base,
     mode: "followup",
-    synthesis: secondValidation.synthesis,
-    ai: {
-      status: "success",
-      trace: { ...second.trace, retries: second.trace.retries + 1, validationIssues: issues.map((i) => `${i.section}/${i.rule}: ${i.message}`) },
-    },
+    synthesis: null,
+    ai: { status: "failed", trace: failedTrace(lastTrace, issues.map((i) => `${i.section}/${i.rule}: ${i.message}`)) },
   }
 }

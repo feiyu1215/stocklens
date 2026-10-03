@@ -1,7 +1,7 @@
 import type { Evidence } from "@/lib/evidence/types"
 import type { DiagnosisContext } from "@/lib/diagnosis/types"
 
-export const FOLLOWUP_PROMPT_VERSION = "followup_v2"
+export const FOLLOWUP_PROMPT_VERSION = "followup_v3"
 
 export interface FollowupPromptInput {
   question: string
@@ -33,6 +33,11 @@ export function buildFollowupSystemPrompt(): string {
     "- inferences：基于证据可以推断的关系（每条至少引用 1 条 type=inference 证据）。没有可引用的 inference 证据时，本分区必须是空数组；「无法判断」「证据不足以回答」这类内容属于 unknowns，绝不写入本分区，也绝不引用 fact 或 unknown 证据。",
     "- unknowns：当前还不能确认的事项（只引 unknown；没有则为空数组）。「无法判断」「现有证据不能回答该问题」这类表述放在这里。",
     "- nextQuestions：1–4 条可以继续研究的方向。",
+    "",
+    "分区归类示例（务必照此归类，归类错误整份会被拒绝）：",
+    "- 证据里直接陈述的事实（快照数字、同比方向、行业对比的原文）→ 逐条写入 confirmedFacts（只引其 evidenceId，最多 8 条）。不要因为问题整体难以完全回答，就把这些可确认的事实也丢进 unknowns 或留空 confirmedFacts；",
+    "- 基于 type=inference 证据的推断 → analysisInferences（每条至少引用 1 条 inference）。没有可引用的 inference 证据时，该分区必须是空数组；",
+    "- 「历史位置、是否合理、是否被高估」这类输入证据不支持判断的结论 → 写入 unknowns（只引 unknown 证据），不要硬写进 analysisInferences。",
     "",
     "只输出一个 JSON 对象，格式与 DiagnosisSynthesis 相同：",
     '{"summary":{"text":"...","evidenceIds":[...]},"confirmedFacts":[{"text":"...","evidenceIds":[...]}],"analysisInferences":[{"text":"...","evidenceIds":[...]}],"unknowns":[{"text":"...","evidenceIds":[...]}],"nextQuestions":["..."]}',

@@ -102,7 +102,7 @@ describe("runPlanner（mock LLM，无外网依赖）", () => {
     expect(run.planner?.dimensions).toEqual(["growth", "profitability", "cashflow"])
     expect(run.trace.status).toBe("success")
     expect(run.trace.retries).toBe(0)
-    expect(run.trace.promptVersion).toBe("planner_v1")
+    expect(run.trace.promptVersion).toBe("planner_v2")
   })
 
   it("§8 repair：第一次校验失败，repair 一次成功", async () => {

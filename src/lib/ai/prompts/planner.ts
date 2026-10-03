@@ -1,6 +1,6 @@
 import type { DiagnosisDimension } from "@/lib/ai/types"
 
-export const PLANNER_PROMPT_VERSION = "planner_v1"
+export const PLANNER_PROMPT_VERSION = "planner_v2"
 
 export interface PlannerPromptInput {
   stockCode: string
@@ -36,6 +36,7 @@ export function buildPlannerSystemPrompt(): string {
     "3. dimensions 只能从可用维度中选择，最多 4 个；无法获取的维度不要选。",
     "4. optionalDimensions 仅在与问题相关且对理解有直接帮助时填写，否则为空数组。",
     "5. reason 用一句话说明为什么选择这些维度，不得包含任何数字。",
+    "6. dimensions 按与用户问题的相关度排序，最相关的在前。",
     "",
     "只输出一个 JSON 对象，不要输出其他文字：",
     '{"intent": "overall_diagnosis|growth_review|profitability_review|cashflow_review|valuation_review|market_review|risk_review", "dimensions": [...], "optionalDimensions": [...], "reason": "..."}',

@@ -2,7 +2,7 @@ import type { Evidence } from "@/lib/evidence/types"
 import type { DiagnosisContext } from "@/lib/diagnosis/types"
 import { toCompactEvidence, type CompactEvidenceForLLM } from "../evidence-pack"
 
-export const SYNTHESIS_PROMPT_VERSION = "diagnosis_synthesis_v1"
+export const SYNTHESIS_PROMPT_VERSION = "diagnosis_synthesis_v2"
 
 export interface SynthesisPromptInput {
   question: string
@@ -29,6 +29,13 @@ export function buildSynthesisSystemPrompt(): string {
     "4. 不得生成对股票的评价或评级：禁止「优秀」「差」「低估」「高估」「便宜」「贵」「值得买」「看涨」「看跌」「强势股」等词。",
     "5. 不得提供买卖建议、目标价、涨跌预测或收益预期。",
     "6. 不得输出 signal 或重新给证据分类；类型（fact/inference/unknown）与方向由证据本身携带。",
+    "",
+    "表达风格（结构、详略与可读性）：",
+    "- 结论先行：summary 的第一句直接回应用户的问题，能答到什么程度就说到什么程度，再用一句交代主要限制或冲突；不要写「总体而言」式的空泛总评。",
+    "- 每条 text 只表达一个要点：一到两句、约 15–60 字；不要把多个事实挤进一句话，也不要写过渡句和套话。",
+    "- 深入浅出：用普通读者能懂的语言；专业术语第一次出现时用括号给一句白话解释（如「PE TTM（滚动市盈率）」「同比（与去年同期相比）」）；连续几句话不要堆砌指标名。",
+    "- 详略：与用户问题直接相关的证据写足；间接相关的收敛为一条或省略；confirmedFacts 按与问题的相关度排序，最重要的在前，不追求凑满数量。",
+    "- 数字尽量少重复（数字由证据卡片负责展示），你的文字负责「这意味着什么」的白话解释。",
     "",
     "输出结构要求：",
     '- summary：2–4 句，概括当前状态；evidenceIds 至少 1 个；优先覆盖：主要已验证事实、真实 conflict、重要 unknown。不要写「总体而言公司基本面优秀」这类总评。',

@@ -73,8 +73,8 @@ describe("runDiagnosis —— 完整成功链路", () => {
     expect(resp.errors).toEqual([])
 
     // Trace 完整且无敏感信息
-    expect(resp.ai.planner?.promptVersion).toBe("planner_v1")
-    expect(resp.ai.synthesizer?.promptVersion).toBe("diagnosis_synthesis_v1")
+    expect(resp.ai.planner?.promptVersion).toBe("planner_v2")
+    expect(resp.ai.synthesizer?.promptVersion).toBe("diagnosis_synthesis_v2")
     const traceJson = JSON.stringify([resp.ai.planner, resp.ai.synthesizer])
     expect(traceJson).not.toContain("sk-")
     expect(traceJson).not.toContain("Authorization")

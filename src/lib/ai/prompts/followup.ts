@@ -1,7 +1,7 @@
 import type { Evidence } from "@/lib/evidence/types"
 import type { DiagnosisContext } from "@/lib/diagnosis/types"
 
-export const FOLLOWUP_PROMPT_VERSION = "followup_v3"
+export const FOLLOWUP_PROMPT_VERSION = "followup_v4"
 
 export interface FollowupPromptInput {
   question: string
@@ -26,6 +26,11 @@ export function buildFollowupSystemPrompt(): string {
     "4. 若某条 Evidence 带 interpretationNote（同比解释护栏），必须保留该限制：不得仅根据极端同比数字推断经营状况出现同等幅度的恶化或改善。",
     "4b. 若某条 Evidence 带 freshness=stale（数据已过期）：不得据此陈述「当前 / 目前 / 最新」状态，必须显式说明该数据已过期、当前状态无法由该数据确认；freshness=unknown 时同样不得当作当前状态使用。带 dataAsOf 的报告期证据以报告期为准，无需声称时效。",
     "5. 绝对不要发明输入中不存在的 evidenceId。各分区只能引用对应类型的证据：confirmed 只引 type=fact；inferences 每条至少引用 1 条 type=inference；unknowns 只引 type=unknown。若证据不支持回答，如实写入 unknowns。",
+    "",
+    "表达风格（结构、详略与可读性）：",
+    "- 结论先行：summary 第一句直接回答用户的问题，能答到什么程度就说到什么程度；答不了的边界放进 unknowns，不要在 summary 里绕弯子。",
+    "- 每条 text 只表达一个要点：一到两句；术语第一次出现时用括号给一句白话解释（如「PE TTM（滚动市盈率）」「同比（与去年同期相比）」）。",
+    "- 详略：与问题直接相关的证据展开说；间接相关的收敛或省略。confirmedFacts 不追求数量——3 条高相关的强于 8 条流水账（上限仍是 8）。",
     "",
     "输出结构要求：",
     "- summary：1–3 句，直接回答追问；evidenceIds 至少 1 个。",

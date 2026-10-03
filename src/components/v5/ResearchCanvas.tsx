@@ -103,6 +103,7 @@ interface AiEntry {
   generatedAt?: string
   summary?: string
   confirmed?: string[]
+  inferred?: string[]
   unknowns?: string[]
   message?: string
   /** §37：本地保存问题以便 Edit question（Retry 用冻结上下文） */
@@ -144,6 +145,7 @@ interface AskState {
   status: "idle" | "loading" | "done" | "failed"
   summary?: string
   confirmed?: string[]
+  inferred?: string[]
   unknowns?: string[]
   message?: string
 }
@@ -855,6 +857,7 @@ export default function ResearchCanvas() {
           status: "done",
           summary: s?.summary?.text,
           confirmed: (s?.confirmedFacts ?? []).map((x: { text: string }) => x.text),
+          inferred: (s?.analysisInferences ?? []).map((x: { text: string }) => x.text),
           unknowns: (s?.unknowns ?? []).map((x: { text: string }) => x.text),
         })
       } catch {
@@ -1004,6 +1007,7 @@ export default function ResearchCanvas() {
           generatedAt: new Date().toISOString(),
           summary: syn?.summary?.text,
           confirmed: (syn?.confirmedFacts ?? []).map((x: { text: string; evidenceIds?: string[] }) => x.text),
+          inferred: (syn?.analysisInferences ?? []).map((x: { text: string }) => x.text),
           unknowns: (syn?.unknowns ?? []).map((x: { text: string }) => x.text),
         })
       } catch (err) {
@@ -2164,6 +2168,7 @@ export default function ResearchCanvas() {
                       <div className="mt-2 space-y-1 text-[12px] leading-relaxed" style={{ color: C.secondary }}>
                         {ask.summary && <p style={{ color: C.ink }}>{ask.summary}</p>}
                         {ask.confirmed?.length ? <p>可以确认：{ask.confirmed.slice(0, 2).join("；")}</p> : null}
+                        {ask.inferred?.length ? <p>基于证据可以推断：{ask.inferred.slice(0, 2).join("；")}</p> : null}
                         {ask.unknowns?.length ? <p>不能确认：{ask.unknowns.slice(0, 2).join("；")}</p> : null}
                         {ask.message && <p>{ask.message}</p>}
                       </div>
@@ -2679,14 +2684,17 @@ export default function ResearchCanvas() {
         data-ui
         data-ai-lens
         onPointerDown={() => setAiOpen(true)}
-        className="absolute bottom-6 z-[55] flex items-center gap-3 rounded-full border px-4 backdrop-blur"
+        className="absolute bottom-6 z-[55] flex items-center gap-3 rounded-full border px-4 backdrop-blur transition-all"
         style={{
           left: readingId ? panelW / 2 : viewport.width / 2,
           transform: "translateX(-50%)",
           width: 580,
           height: 50,
-          borderColor: C.hair,
-          background: "rgba(255,255,255,0.86)",
+          borderColor: aiOpen ? "rgba(47,102,255,0.45)" : "rgba(17,21,27,0.20)",
+          background: aiOpen ? "rgba(255,255,255,0.97)" : "rgba(255,255,255,0.9)",
+          boxShadow: aiOpen
+            ? "0 6px 24px rgba(47,102,255,0.16), 0 1px 3px rgba(17,21,27,0.08)"
+            : "0 3px 14px rgba(17,21,27,0.08)",
         }}
       >
         <span aria-hidden style={{ color: C.blue }}>
@@ -2717,9 +2725,15 @@ export default function ResearchCanvas() {
           type="button"
           data-ai-send
           onClick={() => (aiStatus === "loading" ? stopAi() : void handleAskAI(aiInput, aiScope))}
-          className="font-mono text-[12px]"
-          style={{ color: aiStatus === "loading" ? C.coral : aiInput.trim() ? C.blue : C.secondary, minWidth: 28, minHeight: 36 }}
-          title={aiStatus === "loading" ? "Stop" : "Send (Enter)"}
+          className="font-mono text-[12px] transition-colors"
+          style={
+            aiStatus === "loading"
+              ? { color: C.coral, minWidth: 28, minHeight: 36 }
+              : aiInput.trim()
+                ? { background: C.blue, color: "#FFFFFF", borderRadius: 999, width: 30, height: 30, minWidth: 28, minHeight: 28 }
+                : { color: C.secondary, minWidth: 28, minHeight: 36 }
+          }
+          title={aiStatus === "loading" ? "Stop" : "发送（Enter）"}
         >
           {aiStatus === "loading" ? "■" : "↵"}
         </button>
@@ -2727,8 +2741,9 @@ export default function ResearchCanvas() {
           type="button"
           data-command-hint
           onClick={() => setLensOpen(true)}
-          className="font-mono text-[10px] tracking-[0.12em]"
-          style={{ color: C.secondary, opacity: 0.75, minHeight: 36, whiteSpace: "nowrap" }}
+          className="font-mono text-[10px] tracking-[0.12em] rounded-full border px-2.5 py-1 transition-colors hover:bg-[rgba(47,102,255,0.08)]"
+          style={{ color: C.blue, borderColor: "rgba(47,102,255,0.35)", background: "rgba(255,255,255,0.92)", minHeight: 26, whiteSpace: "nowrap" }}
+          title="打开命令面板"
         >
           ⌘K Commands
         </button>
@@ -2916,6 +2931,16 @@ export default function ResearchCanvas() {
                       ))}
                     </div>
                   ) : null}
+                  {entry.inferred?.length ? (
+                    <div>
+                      <div className="font-mono text-[9.5px] tracking-[0.18em]">基于证据可以推断</div>
+                      {entry.inferred.slice(0, 2).map((c, j) => (
+                        <p key={j} className="mt-0.5">
+                          {c}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                   {entry.unknowns?.length ? (
                     <div>
                       <div className="font-mono text-[9.5px] tracking-[0.18em]">暂时不能确认</div>
@@ -2928,30 +2953,34 @@ export default function ResearchCanvas() {
                   ) : null}
                   {/* §16：回答内 Evidence anchors 可点 → Canvas 高亮 + Inspector */}
                   {entry.evidenceIds.length > 0 && (
-                    <div className="flex items-center gap-2 pt-0.5">
-                      {entry.evidenceIds.slice(0, 4).map((id, j) => (
-                        <button
-                          key={id}
-                          type="button"
-                          data-ai-anchor={id}
-                          onClick={() => {
-                            setReadingEvidenceId(id)
-                            const ev = payload.evidence.find((e) => e.evidenceId === id)
-                            if (ev) {
-                              const dim = payload.dimensions.find((d) => d.label === ev.dimension)
-                              if (dim) {
-                                setReadingId(dim.dimensionId)
-                                return
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {entry.evidenceIds.slice(0, 4).map((id, j) => {
+                        const ev = payload.evidence.find((e) => e.evidenceId === id)
+                        const label = ev?.title ?? id.replace(/^EV_/, "").slice(0, 12)
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            data-ai-anchor={id}
+                            onClick={() => {
+                              setReadingEvidenceId(id)
+                              const ev2 = payload.evidence.find((e) => e.evidenceId === id)
+                              if (ev2) {
+                                const dim = payload.dimensions.find((d) => d.label === ev2.dimension)
+                                if (dim) {
+                                  setReadingId(dim.dimensionId)
+                                  return
+                                }
                               }
-                            }
-                          }}
-                          className="font-mono text-[13px]"
-                          style={{ color: C.blue, minWidth: 24, minHeight: 28 }}
-                          title={id}
-                        >
-                          {["①", "②", "③", "④"][j]}
-                        </button>
-                      ))}
+                            }}
+                            className="font-mono text-[11px] rounded-full border px-2 transition-colors hover:bg-[rgba(47,102,255,0.08)]"
+                            style={{ color: C.blue, borderColor: "rgba(47,102,255,0.35)", background: "rgba(255,255,255,0.92)", minHeight: 28 }}
+                            title={ev ? `点击查看证据：${ev.title}` : id}
+                          >
+                            {["①", "②", "③", "④"][j]} {label.length > 12 ? `${label.slice(0, 12)}…` : label}
+                          </button>
+                        )
+                      })}
                       {payload.dimensions
                         .filter((d) => d.dimensionId !== entry.dimensionId && (entry.summary ?? "").includes(d.label))
                         .slice(0, 2)

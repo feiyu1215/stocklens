@@ -1,7 +1,7 @@
 import type { Evidence } from "@/lib/evidence/types"
 import type { DiagnosisContext } from "@/lib/diagnosis/types"
 
-export const FOLLOWUP_PROMPT_VERSION = "followup_v1"
+export const FOLLOWUP_PROMPT_VERSION = "followup_v2"
 
 export interface FollowupPromptInput {
   question: string
@@ -29,9 +29,9 @@ export function buildFollowupSystemPrompt(): string {
     "",
     "输出结构要求：",
     "- summary：1–3 句，直接回答追问；evidenceIds 至少 1 个。",
-    "- confirmed：当前可以确认的事实（只引 fact）。",
-    "- inferences：基于证据可以推断的关系（每条至少 1 条 inference）。",
-    "- unknowns：当前还不能确认的事项（只引 unknown；没有则为空数组）。",
+    "- confirmed：当前可以确认的事实（只引 fact）。最多 8 条——超过 8 条整份输出会被拒绝。",
+    "- inferences：基于证据可以推断的关系（每条至少引用 1 条 type=inference 证据）。没有可引用的 inference 证据时，本分区必须是空数组；「无法判断」「证据不足以回答」这类内容属于 unknowns，绝不写入本分区，也绝不引用 fact 或 unknown 证据。",
+    "- unknowns：当前还不能确认的事项（只引 unknown；没有则为空数组）。「无法判断」「现有证据不能回答该问题」这类表述放在这里。",
     "- nextQuestions：1–4 条可以继续研究的方向。",
     "",
     "只输出一个 JSON 对象，格式与 DiagnosisSynthesis 相同：",

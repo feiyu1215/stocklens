@@ -23,7 +23,9 @@ import type { AIInvocationTrace, DiagnosisSynthesis } from "./types"
 // 每次调用重新执行 Truth Layer（无持久化），保证证据始终是当次真实数据。
 
 const FOLLOWUP_TEMPERATURE = 0.2
-const FOLLOWUP_MAX_TOKENS = 1800
+// 1800 是旧世代模型的预算；2026-09 DeepSeek 换代后（chat 别名指向推理型 Flash），
+// 推理 token 会挤占输出预算导致 JSON 截断，放宽到 4000
+const FOLLOWUP_MAX_TOKENS = 4000
 
 /** 与 diagnosis 编排器同一趋势访问器（复用 Task 02 差分算法） */
 function makeTrendLookup(periods: Parameters<typeof buildFinancialTrend>[0]) {

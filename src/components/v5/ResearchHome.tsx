@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { WipeLink, useRouteWipe } from "@/components/v5/RouteWipe"
 import StockLensMark from "@/components/v5/StockLensMark"
+import AssistantPanel from "@/components/v5/AssistantPanel"
+import type { PlannedAction } from "@/lib/v5/assistant/capabilities"
 import {
   ensureShelfMigrated,
   cleanupOldestCachedResearch,
@@ -23,7 +25,7 @@ import {
   type StorageEviction,
   type StorageFailure,
 } from "@/lib/v5/shelf"
-import { HOME_HREF } from "@/lib/v5/routes"
+import { HOME_HREF, RESEARCH_LIBRARY_HREF } from "@/lib/v5/routes"
 
 const SAMPLE: SavedCompany = {
   stockCode: "000333.SZ",
@@ -195,6 +197,8 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
   // 对比模式是显式开关，默认关闭；开启后行变成多选（最多两家），默认导航行为不变。
   const [compareMode, setCompareMode] = useState(false)
   const [compareSelection, setCompareSelection] = useState<string[]>([])
+  // P1 AI 助手：页面级显式入口（非常驻悬浮球）；动作由页面侧 ActionExecutor 执行
+  const [assistantOpen, setAssistantOpen] = useState(false)
   // 语言开关已下线：研究空间内所有文案仍是中文，保留半套 EN 会被当成 bug。
   // COPY.en 与 statusLabel 的 locale 参数刻意保留，作为后续做完整 i18n 的底稿。
   const locale: Locale = "zh"
@@ -375,6 +379,55 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
   }
   const compareSelectedNames = compareSelection
     .map((code) => library.find((item) => item.stockCode === code)?.name ?? code)
+
+  // P1 ActionExecutor：只执行能力白名单内的动作；参数在能力注册表里声明，这里做最终校验
+  const executeAssistantAction = useCallback(
+    (action: PlannedAction) => {
+      switch (action.action) {
+        case "navigate.home":
+          setAssistantOpen(false)
+          wipeTo(HOME_HREF)
+          break
+        case "navigate.library":
+          setAssistantOpen(false)
+          wipeTo(RESEARCH_LIBRARY_HREF)
+          break
+        case "navigate.compare":
+          if (action.stockCodes?.length === 2) {
+            setAssistantOpen(false)
+            wipeTo(`/research/compare?stocks=${action.stockCodes.map((c) => c.stockCode).join(",")}`)
+          }
+          break
+        case "company.open":
+          if (action.stockCode) {
+            setAssistantOpen(false)
+            wipeTo(workspaceHref(action.stockCode, "", false, true))
+          }
+          break
+        case "search.focus": {
+          setAssistantOpen(false)
+          if (surfaceRef.current === "library") goToSurface("start")
+          window.setTimeout(() => document.getElementById("research-company")?.focus(), 60)
+          break
+        }
+        default:
+          break
+      }
+    },
+    [wipeTo, goToSurface],
+  )
+
+  // ⌘K / Ctrl+K：画布的 ⌘K 绑定的是 AI Lens（画布路由内），首页/研究库路由互不冲突
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        setAssistantOpen((value) => !value)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
   const hasSampleResearch = library.some((item) => item.stockCode === SAMPLE.stockCode)
 
   return (
@@ -470,6 +523,17 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
           </span>
         </button>
         <div className="flex items-center gap-3 font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] sm:gap-5">
+          <button
+            type="button"
+            data-assistant-toggle
+            aria-pressed={assistantOpen}
+            title="AI 助手（⌘K）"
+            onClick={() => setAssistantOpen((value) => !value)}
+            className="group relative flex items-center gap-1.5 py-2 text-[#11151B] transition hover:text-[#2F66FF]"
+          >
+            <span aria-hidden className="text-[12px] leading-none">✦</span>
+            <span>AI 助手</span>
+          </button>
           <button
             type="button"
             data-library-nav
@@ -983,6 +1047,14 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
           <span className="stocklens-surface-wipe absolute left-1/2 top-1/2 h-[88px] w-[88px] rounded-full border border-[#2F66FF]/35 shadow-[0_0_36px_rgba(47,102,255,0.16)]" />
         </div>
       )}
+
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        pageContext={surface === "library" ? "library" : "home"}
+        onExecute={executeAssistantAction}
+      />
+
       <style>{`
         @keyframes stocklens-surface-wipe {
           0% { opacity: 0; transform: translate(-50%, -50%) scale(.08); }

@@ -2937,6 +2937,22 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
             <StockLensMark size={31} decorative />
             <span>STOCKLENS</span>
           </WipeLink>
+          {/* 手机上整组右上导航因放不下被隐藏，这里补一个研究库出口，避免"手机上回不去研究库" */}
+          <WipeLink
+            href={RESEARCH_LIBRARY_HREF}
+            data-research-library-link-mobile
+            aria-label="打开研究库"
+            className="pointer-events-auto inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] transition hover:opacity-65 md:hidden"
+            style={{ color: C.ink, minHeight: 36 }}
+          >
+            <span aria-hidden>▦</span>
+            <span>研究库</span>
+            {libraryCompanies.length > 0 && (
+              <span className="text-[9px] tracking-normal" style={{ color: C.secondary }}>
+                {String(libraryCompanies.length).padStart(2, "0")}
+              </span>
+            )}
+          </WipeLink>
           {isRecordedSample && (
             <span
               data-recorded-sample

@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react"
 
 import AssistantPanel from "@/components/v5/AssistantPanel"
+import GlobalNav from "@/components/v5/GlobalNav"
 import { PALETTE } from "@/components/v5/palette"
 import { useRouteWipe } from "@/components/v5/RouteWipe"
 import type { PlannedAction } from "@/lib/v5/assistant/capabilities"
@@ -28,6 +29,7 @@ import {
   toSummaryFacts,
   type CompareSummaryResponse,
 } from "@/lib/v5/compare-summary"
+import { HOME_HREF, RESEARCH_LIBRARY_HREF } from "@/lib/v5/routes"
 import { ensureShelfMigrated, loadResearch } from "@/lib/v5/shelf"
 
 const C = PALETTE
@@ -267,19 +269,12 @@ export default function ResearchCompare() {
       data-research-compare
       className="min-h-screen overflow-x-hidden bg-[#F5F7FA] text-[#11151B]"
     >
-      <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-black/10 bg-[#F5F7FA]/95 px-5 backdrop-blur-md sm:px-9">
-        <div className="flex items-center gap-4">
-          <a
-            href="/research"
-            data-compare-back
-            className="font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] transition hover:text-[#11151B]"
-          >
-            ← 研究库
-          </a>
-          <span aria-hidden className="h-4 w-px bg-black/10" />
-          <div className="font-mono text-[9px] tracking-[0.24em] text-[#6D7480]">COMPARE · 双公司对比</div>
-        </div>
+      <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between gap-4 border-b border-black/10 bg-[#F5F7FA]/95 px-5 backdrop-blur-md sm:px-9">
+        {/* 与其它页同一套全局出口：品牌标回首页、▦ 回研究库 */}
+        <GlobalNav mode="link" homeHref={HOME_HREF} libraryHref={RESEARCH_LIBRARY_HREF} />
         <div className="hidden items-center gap-3 font-mono text-[8.5px] tracking-[0.1em] text-[#9AA0AA] sm:flex">
+          <span className="tracking-[0.24em]">COMPARE · 双公司对比</span>
+          <span aria-hidden className="h-3 w-px bg-black/10" />
           <span>对比数据来自本机 · 只有点「生成对比摘要」才会发一次请求</span>
         </div>
       </header>

@@ -2,9 +2,9 @@
 
 
 import type { ResearchSpacePayload } from "@/components/observatory/theme"
+import GlobalNav from "@/components/v5/GlobalNav"
 import MarketTrendStrip from "@/components/v5/MarketTrendStrip"
-import { WipeLink } from "@/components/v5/RouteWipe"
-import { RESEARCH_LIBRARY_HREF } from "@/lib/v5/routes"
+import { HOME_HREF, RESEARCH_LIBRARY_HREF } from "@/lib/v5/routes"
 
 export default function MobileResearchList({
   payload,
@@ -21,9 +21,9 @@ export default function MobileResearchList({
       className="absolute inset-0 z-[80] overflow-y-auto bg-[#F5F7FA] px-5 pb-20 pt-6 md:hidden"
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-[10px] tracking-[0.28em] text-[#11151B]">STOCKLENS</span>
-        {/* 与桌面端「▦ 研究库」同一目的地，保证研究库往返闭合 */}
-        <WipeLink href={RESEARCH_LIBRARY_HREF} className="relative text-[11px] text-[#6D7480] after:absolute after:-inset-y-3 after:-inset-x-2 after:content-['']">← 研究库</WipeLink>
+        {/* 品牌标此前是纯文字（点了没反应），用户会以为"左上角回不去"。
+            改为与其它页同一套全局导航：品牌标回首页、▦ 回研究库。 */}
+        <GlobalNav mode="link" homeHref={HOME_HREF} libraryHref={RESEARCH_LIBRARY_HREF} />
         {isRecordedSample && (
           <span className="border border-black/10 px-2 py-1 font-mono text-[8px] tracking-[0.1em] text-[#6D7480]">
             录制示例 · 2026-09-30

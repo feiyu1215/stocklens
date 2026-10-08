@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import GlobalNav from "@/components/v5/GlobalNav"
 import { WipeLink, useRouteWipe } from "@/components/v5/RouteWipe"
 import StockLensMark from "@/components/v5/StockLensMark"
 import AssistantPanel from "@/components/v5/AssistantPanel"
@@ -504,41 +505,15 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
       />
 
       <header className="absolute inset-x-0 top-0 z-40 flex h-[74px] items-center justify-between border-b border-black/10 bg-[#F5F7FA]/90 px-5 backdrop-blur-md sm:px-9">
-        <button
-          type="button"
-          data-home-nav
-          aria-label={locale === "zh" ? "返回首页" : "Back to home"}
-          aria-current={surface === "start" ? "page" : undefined}
-          onClick={openStart}
-          className="group flex items-center gap-3 text-[#11151B]"
-        >
-          <StockLensMark size={31} decorative />
-          <span className="relative font-mono text-[11px] font-semibold tracking-[0.32em]">
-            STOCKLENS
-            <span
-              aria-hidden
-              className="absolute -bottom-2 left-0 h-px bg-[#2F66FF] transition-[width,opacity] duration-500"
-              style={{ width: surface === "start" ? "100%" : "0%", opacity: surface === "start" ? 1 : 0 }}
-            />
-          </span>
-        </button>
+        {/* 全局导航（与其它页同一组件）：品牌标回起始面/首页，▦ 回研究库 */}
+        <GlobalNav
+          mode="action"
+          onHome={openStart}
+          onLibrary={openLibrary}
+          active={surface === "library" ? "library" : "home"}
+          libraryCount={library.length}
+        />
         <div className="flex items-center gap-3 font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] sm:gap-5">
-          <button
-            type="button"
-            data-library-nav
-            aria-current={surface === "library" ? "page" : undefined}
-            onClick={openLibrary}
-            className="group relative flex items-center gap-2 py-2 text-[#11151B] transition hover:text-[#2F66FF]"
-          >
-            <span aria-hidden className="text-[13px] leading-none">▦</span>
-            <span>{copy.library}</span>
-            <span className="text-[8px] text-[#6D7480]">{String(library.length).padStart(2, "0")}</span>
-            <span
-              aria-hidden
-              className="absolute inset-x-0 bottom-0 h-px bg-[#2F66FF] transition-[transform,opacity] duration-500"
-              style={{ transform: surface === "library" ? "scaleX(1)" : "scaleX(0)", opacity: surface === "library" ? 1 : 0 }}
-            />
-          </button>
           <WipeLink
             href={workspaceHref(SAMPLE.stockCode, "", true, hasSampleResearch)}
             className="relative hidden border-b border-[#11151B] pb-1 text-[#11151B] transition after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-[''] hover:opacity-60 sm:inline"

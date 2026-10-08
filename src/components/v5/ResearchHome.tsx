@@ -525,17 +525,6 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
         <div className="flex items-center gap-3 font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] sm:gap-5">
           <button
             type="button"
-            data-assistant-toggle
-            aria-pressed={assistantOpen}
-            title="AI 助手（⌘K）"
-            onClick={() => setAssistantOpen((value) => !value)}
-            className="group relative flex items-center gap-1.5 py-2 text-[#11151B] transition hover:text-[#2F66FF]"
-          >
-            <span aria-hidden className="text-[12px] leading-none">✦</span>
-            <span>AI 助手</span>
-          </button>
-          <button
-            type="button"
             data-library-nav
             aria-current={surface === "library" ? "page" : undefined}
             onClick={openLibrary}
@@ -760,13 +749,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
               })}
             </div>
           )}
-          <button
-            type="button"
-            onClick={openLibrary}
-            className="absolute bottom-7 left-1/2 flex -translate-x-1/2 items-center gap-3 font-mono text-[9px] tracking-[0.12em] text-[#6D7480] transition after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-[#11151B]"
-          >
-            {copy.browseMatrix}<span aria-hidden>↓</span>
-          </button>
+          {/* 原「查看公司研究矩阵」按钮已并入底部中央 dock（data-dock-surface） */}
         </div>
       </section>
 
@@ -1047,6 +1030,33 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
           <span className="stocklens-surface-wipe absolute left-1/2 top-1/2 h-[88px] w-[88px] rounded-full border border-[#2F66FF]/35 shadow-[0_0_36px_rgba(47,102,255,0.16)]" />
         </div>
       )}
+
+      {/* 底部中央 dock：常驻入口——AI 助手 + 面间快捷切换（取代原 browseMatrix 按钮与顶部 AI 按钮） */}
+      <div
+        data-assistant-dock
+        className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-black/10 bg-white/95 p-1.5 shadow-[0_18px_50px_rgba(17,21,27,0.16)] backdrop-blur-md"
+      >
+        <button
+          type="button"
+          data-dock-surface
+          onClick={surface === "start" ? openLibrary : openStart}
+          className="group flex items-center gap-1.5 rounded-full px-3.5 py-2 font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] transition hover:bg-[#F5F7FA] hover:text-[#11151B]"
+        >
+          <span aria-hidden className="text-[11px] leading-none">{surface === "start" ? "▦" : "↑"}</span>
+          <span className="hidden sm:inline">{surface === "start" ? copy.browseMatrix : copy.backToResearch}</span>
+        </button>
+        <span aria-hidden className="mx-0.5 h-4 w-px bg-black/10" />
+        <button
+          type="button"
+          data-assistant-toggle
+          aria-pressed={assistantOpen}
+          onClick={() => setAssistantOpen((value) => !value)}
+          className="flex items-center gap-1.5 rounded-full bg-[#11151B] px-3.5 py-2 font-mono text-[9.5px] tracking-[0.1em] text-white transition hover:bg-[#2F66FF]"
+        >
+          <span aria-hidden className="text-[11px] leading-none">✦</span>
+          <span className="hidden sm:inline">AI 助手</span>
+        </button>
+      </div>
 
       <AssistantPanel
         open={assistantOpen}

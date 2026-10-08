@@ -302,6 +302,9 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   const payloadCacheRef = useRef<Record<string, ResearchSpacePayload>>({})
   const payloadCachedAtRef = useRef<Record<string, number>>({})
   const recordedSampleCodesRef = useRef<Set<string>>(new Set())
+  // 进入即更新（2026-10-09 用户拍板）：本挂载内已自动/已实时刷过的代码——
+  // live 链路进来的数据是刚拉的，标记后跳过自动刷，避免同一进入重复请求
+  const autoRefreshedCodesRef = useRef<Set<string>>(new Set())
   const restoredCompaniesRef = useRef<Set<string>>(new Set())
   const switchAbortRef = useRef<AbortController | null>(null)
   /** §2/§3：未缓存 init 的唯一所有者 + 在途去重（同一公司只允许一个在途请求）；
@@ -443,8 +446,13 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
           data = (await res.json()) as ResearchSpacePayload
         }
         if (cancelled || controller.signal.aborted) return
-        if (isLive) recordedSampleCodesRef.current.delete(data.company.stockCode)
-        else recordedSampleCodesRef.current.add(data.company.stockCode)
+        if (isLive) {
+          recordedSampleCodesRef.current.delete(data.company.stockCode)
+          // live 进入 = 数据刚拉取，无需再自动刷
+          autoRefreshedCodesRef.current.add(data.company.stockCode)
+        } else {
+          recordedSampleCodesRef.current.add(data.company.stockCode)
+        }
         setIsRecordedSample(!isLive)
         setPayload(data)
       } catch {
@@ -971,11 +979,13 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   // ---- 证据快刷（阶段 4 / P1-2 路线 A）----
   // 口径：只刷数据层（服务端重算），受影响结论打「证据已更新」标记；
   // 「重新组织该维度」用最新证据重跑该维度合成。失败时 payload 原样保留 = 天然回滚。
+  // 2026-10-09 用户拍板两层更新：①每次进入研究空间自动刷（见下方 effect，source="auto"）；
+  // ②手动更新常驻顶栏（不只在过期时才出现）。
   const [updatedClaims, setUpdatedClaims] = useState<{ stockCode: string; ids: Set<string> } | null>(null)
   const [evidenceRefreshing, setEvidenceRefreshing] = useState(false)
   const [reorganizingDimId, setReorganizingDimId] = useState<string | null>(null)
 
-  const runEvidenceRefresh = useCallback(async () => {
+  const runEvidenceRefresh = useCallback(async (source: "auto" | "manual" = "manual") => {
     const current = payloadRef.current
     if (!current || evidenceRefreshing) return
     setEvidenceRefreshing(true)
@@ -992,7 +1002,8 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       setUpdatedClaims({ stockCode: merged.payload.company.stockCode, ids: new Set(merged.updatedClaimIds) })
       const asOf = merged.payload.marketHistory?.latestDate ?? "未知"
       setRefreshNote(
-        `数据已刷新（截至 ${asOf}）` +
+        (source === "auto" ? "已自动更新数据" : "数据已刷新") +
+          `（截至 ${asOf}）` +
           (merged.updatedClaimIds.length > 0 ? `；${merged.updatedClaimIds.length} 条结论为更新前生成，可重新组织` : ""),
       )
       window.setTimeout(() => setRefreshNote(null), 6000)
@@ -1488,6 +1499,21 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
     askRef.current = handleAskAI
     payloadRef.current = payload
   }, [focusAiLens, handleAskAI, payload])
+
+  // ---- 进入即更新（2026-10-09 用户拍板）：每次进入研究空间，后台自动刷数据层 ----
+  // 顺序纪律：本 effect 必须排在上面 payloadRef 同步 effect 之后（runEvidenceRefresh 读的是 ref）。
+  // 首屏不受影响：先渲染存档/fixture 载荷，刷新在后台跑，完成后原地合并 + 顶部出提示。
+  // 两个例外：
+  // - 录制示例：它是演示 fixture（带「录制示例」标记），自动刷会把真实行情合并进演示载荷，
+  //   破坏秒开与确定性——示例画布保持 fixture 原样，要看实时走 live=1。
+  // - 本次进入就是 live 链路（?live=1）：数据是刚拉的，再刷一次纯属浪费，直接标记已刷。
+  useEffect(() => {
+    if (!payload || isRecordedSample) return
+    const code = payload.company.stockCode
+    if (autoRefreshedCodesRef.current.has(code)) return
+    autoRefreshedCodesRef.current.add(code)
+    void runEvidenceRefresh("auto")
+  }, [payload, isRecordedSample, runEvidenceRefresh])
 
   const externalJob = useMemo(() => {
     const code = payload?.company.stockCode
@@ -3044,7 +3070,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                 导出笔记
               </button>
             )}
-            {payload && hasStaleTimeSensitiveEvidence(payload) && (
+            {payload && hasStaleTimeSensitiveEvidence(payload) ? (
               <button
                 type="button"
                 data-ui
@@ -3058,6 +3084,22 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                   ? "刷新中…"
                   : `行情数据已过期 · 快速刷新`}
               </button>
+            ) : (
+              // 手动更新常驻（2026-10-09 用户拍板）：数据不靠 Calendar 兜底，进入已自动刷，
+              // 这里给用户一个随时可点的入口。录制示例是 fixture，不提供刷新（看实时走 live=1）。
+              payload && !isRecordedSample && (
+                <button
+                  type="button"
+                  data-ui
+                  data-refresh-evidence
+                  disabled={evidenceRefreshing}
+                  onClick={() => void runEvidenceRefresh()}
+                  className="transition hover:opacity-80 disabled:opacity-60"
+                  style={{ minHeight: 36, cursor: evidenceRefreshing ? "wait" : "pointer" }}
+                >
+                  {evidenceRefreshing ? "更新中…" : "手动更新"}
+                </button>
+              )
             )}
             {resolvingName && (
               <span data-resolving className="font-mono text-[10.5px]" style={{ color: C.secondary }}>

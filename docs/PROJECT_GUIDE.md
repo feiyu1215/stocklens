@@ -9,7 +9,7 @@
 
 - **检索范围**：仅 A 股（沪深北三所）。港股/美股不在数据源索引内（如"小米"）
 - **数据源**：扶摇金融数据 API（唯一事实来源）+ DeepSeek（仅三处模型调用）；端点使用与边界实测见 [FUYAO_CAPABILITY_AUDIT.md](design-audit/FUYAO_CAPABILITY_AUDIT.md)
-- **技术栈**：Next.js 16（App Router）+ React 19 + TypeScript + Tailwind 4 + Vitest；测试 402 个 / 29 文件
+- **技术栈**：Next.js 16（App Router）+ React 19 + TypeScript + Tailwind 4 + Vitest；测试 409 个 / 30 文件
 
 ## 2. 源代码
 
@@ -24,8 +24,10 @@
 | 路径 | 内容 |
 |---|---|
 | `src/app/observatory-v5/` | 产品主入口页面（另有 v3/v4 历史版本与 `/lab` 实验页） |
+| `src/app/lab/ai-workspace-v1/` | AI Research Sidekick 隔离实验入口；设计判断与实测记录见 `docs/design-audit/ai-workspace-v1/DECISION.md` |
 | `src/app/api/` | 9 个后端路由：`research/init`、`research/dimension`、`followup`、`stocks/search`、`diagnosis` 等（**语义冻结**） |
-| `src/components/v5/ResearchCanvas.tsx` | 主编排（~3400 行）：研究画布、AI Research Thread、追问面板、composer 都在这 |
+| `src/components/v5/ResearchCanvas.tsx` | 主编排：研究会话、画布状态、AI Research Thread 与 composer；锚点渲染、证据轨迹和移动端列表分别拆到 `CanvasAnchorLayer.tsx`、`CanvasEvidenceTrace.tsx`、`MobileResearchList.tsx` |
+| `src/components/v5/ResearchSidekickPanel.tsx` | Lab 用画布原生 AI 工作区：上下文标签、结构化回答、证据回跳、研究角度预览/确认和移动端全屏布局 |
 | `src/lib/ai/` | 三个 AI 角色：`planner.ts`（维度规划）、`synthesizer.ts`(研究空间综合)、`followup.ts`（追问）；`prompts/` 是各自的系统提示词（**改提示词必须同步 bump `*_PROMPT_VERSION`**，且 `tests/ai/orchestrator.test.ts`、`tests/ai/planner.test.ts` 里钉了版本断言） |
 | `src/lib/data/fuyao.ts` | 扶摇 API 接入层（鉴权 `X-api-key`，base `https://fuyao.aicubes.cn`） |
 | `src/lib/research/`、`src/lib/evidence/`、`src/lib/metrics/` | 证据链 / 证据类型 / 指标引擎与新鲜度守卫（`metrics/freshness.ts`） |
@@ -58,7 +60,7 @@ npm run dev                # http://localhost:3000/observatory-v5
 ```bash
 npx tsc --noEmit
 npx eslint src
-npx vitest run        # 402 个测试
+npx vitest run        # 409 个测试
 npx next build
 ```
 

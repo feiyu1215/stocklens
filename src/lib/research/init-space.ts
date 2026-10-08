@@ -53,6 +53,12 @@ export interface ResearchSpaceResponse {
   suggestions: { label: string; researchQuestion: string; rationale: string; capabilityRefs: string[] }[]
   trend: ReturnType<typeof buildFinancialTrend>
   metrics: ReturnType<typeof calculateMetrics>["metrics"]
+  marketHistory: {
+    source: "fuyao"
+    adjustment: "forward"
+    latestDate: string | null
+    points: { date: string; close: number }[]
+  }
   ai: {
     status: "success" | "partial_failure" | "failed"
     framer?: { model: string; promptVersion: string; latencyMs: number; retries: number; status: string }
@@ -72,6 +78,18 @@ interface TruthBundle {
   industryResolved: boolean
   industryValuationAvailable: boolean
 }
+
+function marketHistoryFromTruth(truth: TruthBundle): ResearchSpaceResponse["marketHistory"] {
+  return {
+    source: "fuyao",
+    adjustment: "forward",
+    latestDate: truth.dataResp.meta.latest_price_date,
+    points: truth.dataResp.prices.map((price) => ({ date: price.date, close: price.close })),
+  }
+}
+
+export { marketHistoryFromTruth }
+export type { TruthBundle }
 
 async function loadTruth(stockCode: string): Promise<TruthBundle> {
   const [dataResp, marketCtx, eventCtx] = await Promise.all([
@@ -327,10 +345,29 @@ async function runComposer(input: {
 export async function initResearchSpace(input: {
   stockCode: string
   question?: string
+  /** P2-3：真实分阶段进度回调（可选，不影响原有签名与返回值）。
+   * 阶段边界与 InitialResearchLoading 的 STEPS 一一对应：
+   *   step 0「连接公司与行情数据」= loadTruth（实测 0.17–0.6s）
+   *   step 1「校验研究证据」= buildContextFromTruth（能力清单校验，毫秒级）
+   *   step 2「组织研究角度」= framer + 证据打包 + composer（两次模型调用，占 94–97% 耗时）
+   * step 2 不发 complete 事件——结果本身就是完成，由调用方在收到结果时收尾。 */
+  onPhase?: (event: { step: 0 | 1 | 2; state: "active" | "complete" }) => void
 }): Promise<ResearchSpaceResponse> {
+  const emit = (step: 0 | 1 | 2, state: "active" | "complete") => {
+    try {
+      input.onPhase?.({ step, state })
+    } catch {
+      // 进度回调绝不影响主流程
+    }
+  }
   const spaceId = randomUUID()
+  emit(0, "active")
   const truth = await loadTruth(input.stockCode)
+  emit(0, "complete")
+  emit(1, "active")
   const context = buildContextFromTruth(input.stockCode, truth)
+  emit(1, "complete")
+  emit(2, "active")
 
   const framer = await runFramer(context, input.question)
   if (framer.status === "failed") {
@@ -346,6 +383,7 @@ export async function initResearchSpace(input: {
       suggestions: [],
       trend: truth.trend,
       metrics: truth.metrics.metrics,
+      marketHistory: marketHistoryFromTruth(truth),
       ai: {
         status: "failed",
         framer: { model: framer.trace.model, promptVersion: framer.trace.promptVersion, latencyMs: framer.trace.latencyMs, retries: framer.trace.retries, status: "failed" },
@@ -416,6 +454,7 @@ export async function initResearchSpace(input: {
     })),
     trend: truth.trend,
     metrics: truth.metrics.metrics,
+    marketHistory: marketHistoryFromTruth(truth),
     ai: {
       status: composer.status === "success" ? "success" : "partial_failure",
       framer: { model: framer.trace.model, promptVersion: framer.trace.promptVersion, latencyMs: framer.trace.latencyMs, retries: framer.trace.retries, status: framer.trace.status },

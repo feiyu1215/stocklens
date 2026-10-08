@@ -78,6 +78,9 @@ describe("Research Init（§39–§41/§77）", () => {
     expect(resp.dimensions).toHaveLength(4)
     expect(resp.dimensions[0].label).toBe("增长韧性")
     expect(resp.suggestions).toHaveLength(1)
+    expect(resp.marketHistory.source).toBe("fuyao")
+    expect(resp.marketHistory.adjustment).toBe("forward")
+    expect(resp.marketHistory.points.length).toBeGreaterThan(1)
     // 所有 claim 的引用都在其维度证据包内（grounded）
     for (const claim of resp.claims) {
       const dim = resp.dimensions.find((d) => d.dimensionId === claim.dimensionId)!
@@ -142,6 +145,47 @@ describe("Research Init（§39–§41/§77）", () => {
     // Framer 输入不含任何金融数字（§21–§22）
     expect(framerCall.user).not.toContain("operating_income")
     expect(framerCall.user).not.toContain("pe_ttm")
+  })
+
+  it("阶段回调（P2-3）：成功路径按真实边界发出（0→1→2，2 无 complete）", async () => {
+    const { fetchMock, setScript } = stubFetch()
+    setScript({ planner: [VALID_FRAME], synthesizer: [VALID_COMPOSER] })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const events: { step: number; state: string }[] = []
+    await initResearchSpace({ stockCode: "000333.SZ", onPhase: (e) => events.push(e) })
+    expect(events).toEqual([
+      { step: 0, state: "active" },
+      { step: 0, state: "complete" },
+      { step: 1, state: "active" },
+      { step: 1, state: "complete" },
+      { step: 2, state: "active" },
+    ])
+  })
+
+  it("阶段回调（P2-3）：Framer 失败路径照常发出（进度诚实，与 AI 成败无关）", async () => {
+    const { fetchMock, setScript } = stubFetch()
+    setScript({ planner: ["not json", "still not json"] })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const events: { step: number; state: string }[] = []
+    const resp = await initResearchSpace({ stockCode: "000333.SZ", onPhase: (e) => events.push(e) })
+    expect(resp.ai.status).toBe("failed")
+    expect(events.map((e) => e.step)).toEqual([0, 0, 1, 1, 2])
+  })
+
+  it("阶段回调（P2-3）：onPhase 抛错不影响主流程", async () => {
+    const { fetchMock, setScript } = stubFetch()
+    setScript({ planner: [VALID_FRAME], synthesizer: [VALID_COMPOSER] })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const resp = await initResearchSpace({
+      stockCode: "000333.SZ",
+      onPhase: () => {
+        throw new Error("回调炸了")
+      },
+    })
+    expect(resp.ai.status).toBe("success")
   })
 
   void VALID_PLANNER_JSON

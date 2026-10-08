@@ -1,19 +1,40 @@
 "use client"
 
 import dynamic from "next/dynamic"
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import CompanyTransition from "@/components/v5/CompanyTransition"
+import InitialResearchLoading from "@/components/v5/InitialResearchLoading"
+import ResearchNotesExport from "@/components/v5/ResearchNotesExport"
+import {
+  applyReorganizedDimension,
+  hasStaleTimeSensitiveEvidence,
+  latestTimeSensitiveDataAsOf,
+  mergeRefreshedTruth,
+} from "@/lib/v5/refresh-merge"
+import { streamInitResearchSpace, type InitPhaseFrame } from "@/lib/v5/init-stream"
+import CanvasEvidenceTrace from "@/components/v5/CanvasEvidenceTrace"
+import CanvasAnchorLayer from "@/components/v5/CanvasAnchorLayer"
 import DemoOverlay from "@/components/v5/DemoOverlay"
+import MobileResearchList from "@/components/v5/MobileResearchList"
+import MarketTrendStrip from "@/components/v5/MarketTrendStrip"
+import StockLensMark from "@/components/v5/StockLensMark"
+import { PALETTE } from "@/components/v5/palette"
+import { WipeLink } from "@/components/v5/RouteWipe"
+import { HOME_HREF, RESEARCH_LIBRARY_HREF } from "@/lib/v5/routes"
+import ResearchSidekickPanel, {
+  type ResearchAngleDraft,
+  type SidekickMode,
+  type SidekickTurn,
+} from "@/components/v5/ResearchSidekickPanel"
 import { instrumentPointer, interactionPerf, perfDebugEnabled, type InteractionRecord } from "@/lib/v5/perf"
 import { DEMO_ANGLE_PLACEHOLDER, DEMO_SCENES, DEMO_TYPED_QUESTION, isLastScene, sceneAt, sceneBy, type DemoActionKind } from "@/lib/v5/demo"
 import { anchorGlyph, type ResearchSpacePayload } from "@/components/observatory/theme"
 import { computeFitCamera, panCamera, screenToWorld, zoomAtPointer, boundsOfObjects, type CameraState } from "@/lib/spatial/camera"
 import {
   DESIGN,
-  ambientLabels,
   anchorBoxSize,
-  buildTrace,
   composeCanvas,
   evidenceAnnotations,
   gatherTargets,
@@ -24,19 +45,27 @@ import {
   formatLastResearch,
   isSaved,
   loadCanvas,
+  loadLibrary,
+  loadResearch,
   loadRecent,
   loadSaved,
+  mergeLibraryCompanies,
   pushRecent,
+  reconcileCanvasSnapshot,
   saveCanvas,
+  saveLibrary,
+  saveResearch,
   saveRecent,
   saveSaved,
   demoCompleted,
   demoSeen,
+  ensureShelfMigrated,
   markDemoCompleted,
   markDemoSeen,
   searchCompanies,
   toggleSaved,
   touchSaved,
+  upsertLibrary,
   type CanvasSnapshot,
   type SavedCompany,
 } from "@/lib/v5/shelf"
@@ -55,19 +84,18 @@ import {
 
 const ReadingV3 = dynamic(() => import("@/components/v3/ReadingV3"), { ssr: false })
 
-const C = {
-  bg: "#F5F7FA",
-  ink: "#11151B",
-  secondary: "#6D7480",
-  hair: "rgba(17,21,27,0.12)",
-  blue: "#2F66FF",
-  violet: "#7659E8",
-  amber: "#B4802A",
-  coral: "#D9534F",
-} as const
+const C = PALETTE
 
-const FOCUS_DIM = 0.1
 const DRAG_THRESHOLD = 5
+/** 行情/估值会变化；会话内研究空间最多复用 30 分钟，之后重新取证。 */
+const RESEARCH_CACHE_TTL_MS = 30 * 60 * 1_000
+
+function fitDesignCamera(viewport: { width: number; height: number }): CameraState {
+  const bounds = boundsOfObjects([
+    { x: DESIGN.width / 2, y: DESIGN.height / 2, width: DESIGN.width, height: DESIGN.height },
+  ])
+  return computeFitCamera(bounds!, viewport, 60)
+}
 
 interface PinnedNote {
   id: string
@@ -75,6 +103,17 @@ interface PinnedNote {
   summary: string
   x: number
   y: number
+}
+
+interface RemovedDimensionSnapshot {
+  stockCode: string
+  dimension: ResearchSpacePayload["dimensions"][number]
+  index: number
+  claims: ResearchSpacePayload["claims"]
+  position?: { x: number; y: number }
+  wasParked: boolean
+  wasSelected: boolean
+  notes: PinnedNote[]
 }
 
 type AiScopeType = "company" | "dimension" | "claim" | "evidence"
@@ -108,6 +147,50 @@ interface AiEntry {
   message?: string
   /** §37：本地保存问题以便 修改问题（Retry 用冻结上下文） */
   frozenQuestion: string
+}
+
+function researchAngleDraftFor(text: string, payload: ResearchSpacePayload): ResearchAngleDraft {
+  const sourceText = text.trim()
+  const normalized = sourceText.replace(/[？?。！!]+$/g, "")
+  const suggestion = payload.suggestions.find((item) => {
+    const suggestedQuestion = item.researchQuestion.replace(/[？?。！!]+$/g, "").trim()
+    return (
+      normalized === suggestedQuestion ||
+      normalized.includes(item.label) ||
+      item.label.includes(normalized)
+    )
+  })
+  if (suggestion) {
+    return {
+      sourceText,
+      title: suggestion.label,
+      researchQuestion: suggestion.researchQuestion,
+      rationale: suggestion.rationale,
+      checks: ["匹配当前公司已有证据", "区分可确认结论与证据缺口", "生成可回溯的 Claim 与 Evidence"],
+      evidenceCount: Math.min(6, Math.max(3, suggestion.capabilityRefs.length + 2)),
+    }
+  }
+
+  const overseas = /海外|全球|国际/.test(normalized)
+  const inventory = /库存|周转/.test(normalized)
+  const title = overseas
+    ? "海外收入与盈利贡献"
+    : inventory
+      ? "库存效率与周转压力"
+      : normalized.replace(/怎么样|如何|是否|情况/g, "").trim().slice(0, 16) || "自定义研究角度"
+  const checks = overseas
+    ? ["海外收入规模及变化", "海外业务的盈利贡献", "区域与汇率相关证据缺口"]
+    : inventory
+      ? ["存货规模与增速", "周转效率变化", "收入、利润与库存的方向关系"]
+      : ["匹配当前能力清单中的相关指标", "寻找支持与反向证据", "明确暂时无法验证的信息"]
+  return {
+    sourceText,
+    title,
+    researchQuestion: sourceText.endsWith("？") || sourceText.endsWith("?") ? sourceText : `${sourceText}？`,
+    rationale: `把“${normalized}”整理为可验证的研究任务；确认后才会调用真实研究接口并写入画布。`,
+    checks,
+    evidenceCount: Math.min(6, Math.max(3, checks.length + 1)),
+  }
 }
 
 function aiSuggestionsFor(scope: AiScope, payload: ResearchSpacePayload | null): string[] {
@@ -150,9 +233,19 @@ interface AskState {
   message?: string
 }
 
-export default function ResearchCanvas() {
+export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?: boolean }) {
   const [payload, setPayload] = useState<ResearchSpacePayload | null>(null)
+  const [initialRequest, setInitialRequest] = useState({ stockCode: "", question: "" })
+  const [initialElapsedSec, setInitialElapsedSec] = useState(0)
   const [failed, setFailed] = useState(false)
+  /** 首次研究被用户主动中止；与 failed 分开，因为它有自己的确认界面（重试 / 返回研究库） */
+  const [initCancelled, setInitCancelled] = useState(false)
+  /** init 运行代号：重试时递增，让 init effect 与计时器一并重启 */
+  const [initRun, setInitRun] = useState(0)
+  const initAbortRef = useRef<AbortController | null>(null)
+  // P2-3：服务端真实阶段帧（驱动 InitialResearchLoading，取代假秒表）
+  const [initServerPhase, setInitServerPhase] = useState<InitPhaseFrame | null>(null)
+  const [isRecordedSample, setIsRecordedSample] = useState(false)
   const [camera, setCamera] = useState<CameraState>({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
   const [viewport, setViewport] = useState({ width: 1440, height: 900 })
   const [hoverId, setHoverId] = useState<string | null>(null)
@@ -161,6 +254,9 @@ export default function ResearchCanvas() {
   const [menuOpen, setMenuOpen] = useState(false)
   /** §20：thread 按公司隔离（Map<stockCode, entries>） */
   const [aiThreads, setAiThreads] = useState<Record<string, AiEntry[]>>({})
+  // 移动端修复（2026-10）：侧板在手机上是全屏覆盖，默认打开会把研究列表完全盖住——
+  // 新用户手机进来看到的是聊天面板而不是研究空间。改为默认关闭，挂载后仅桌面端补开
+  //（见下方 effect），桌面行为不变。
   const [aiOpen, setAiOpen] = useState(false)
   const [aiInput, setAiInput] = useState("")
   const [aiStatus, setAiStatus] = useState<"idle" | "loading">("idle")
@@ -168,6 +264,10 @@ export default function ResearchCanvas() {
   const [aiScopeOverride, setAiScopeOverride] = useState<AiScope | null>(null)
   const [aiDebugOn, setAiDebugOn] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
+  const [sidekickMode, setSidekickMode] = useState<SidekickMode>("ask")
+  const [sidekickWidth, setSidekickWidth] = useState(430)
+  const [sidekickDraft, setSidekickDraft] = useState<ResearchAngleDraft | null>(null)
+  const [sidekickNotice, setSidekickNotice] = useState<string | null>(null)
   // 贴底跟随用 ref：避免闭包/提交时序导致「上翻仍被强制拉到底」
   const atBottomRef = useRef(true)
   const [hasNewResponse, setHasNewResponse] = useState(false)
@@ -201,6 +301,9 @@ export default function ResearchCanvas() {
   const pendingRestoreRef = useRef<{ code: string; dimensionId: string } | null>(null)
   /** §6：已研究会话（缓存路径不调用 /api/research/init） */
   const payloadCacheRef = useRef<Record<string, ResearchSpacePayload>>({})
+  const payloadCachedAtRef = useRef<Record<string, number>>({})
+  const recordedSampleCodesRef = useRef<Set<string>>(new Set())
+  const restoredCompaniesRef = useRef<Set<string>>(new Set())
   const switchAbortRef = useRef<AbortController | null>(null)
   /** §2/§3：未缓存 init 的唯一所有者 + 在途去重（同一公司只允许一个在途请求）；
    *  Refresh（force）有意绕过去重，因为那是用户显式发起的新请求。 */
@@ -222,7 +325,7 @@ export default function ResearchCanvas() {
   const [focusSet, setFocusSet] = useState(false)
   const [parked, setParked] = useState<string[]>([])
   const [notes, setNotes] = useState<PinnedNote[]>([])
-  const [suggestOpen, setSuggestOpen] = useState<string | null>(null)
+  const [removedDimension, setRemovedDimension] = useState<RemovedDimensionSnapshot | null>(null)
   const [suggestDrag, setSuggestDrag] = useState<{ label: string; x: number; y: number; over: boolean } | null>(null)
   const [adding, setAdding] = useState<{ label: string; x: number; y: number } | null>(null)
   /** §43：失败的临时研究角度（不删除用户输入） */
@@ -233,12 +336,17 @@ export default function ResearchCanvas() {
   const [addAngle, setAddAngle] = useState<string | null>(null)
   const [readingId, setReadingId] = useState<string | null>(null)
   const [readingEvidenceId, setReadingEvidenceId] = useState<string | null>(null)
+  // 研究笔记打印导出（阶段 3 / P2-2）：覆盖层预览 + window.print()
+  const [notesOpen, setNotesOpen] = useState(false)
   const [flipFrom, setFlipFrom] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [companyQuery, setCompanyQuery] = useState<string | null>(null)
   const [companyResults, setCompanyResults] = useState<{ stockCode: string; stockName: string }[]>([])
+  // 已检索完成、且确认无结果的查询词。只在检索返回后写入，避免输入过程中就把"无结果"闪给用户。
+  const [companySearched, setCompanySearched] = useState("")
   // Task 16 PART B：Research Shelf（研究架）
   const [savedCompanies, setSavedCompanies] = useState<SavedCompany[]>([])
   const [recentCompanies, setRecentCompanies] = useState<SavedCompany[]>([])
+  const [libraryCompanies, setLibraryCompanies] = useState<SavedCompany[]>([])
   const [lastResearchAt, setLastResearchAt] = useState<number | null>(null)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
   // §5–§15：公司切换双路径（缓存 / 未缓存过渡）
@@ -282,11 +390,16 @@ export default function ResearchCanvas() {
   const suggestDragRef = useRef<{ label: string; x: number; y: number; over: boolean } | null>(null)
   /** 指针捕获推迟到真正开始拖动时才做（见 onPointerMove）：pointerdown 就捕获会把 click 改派给捕获元素 */
   const suggestCapturedRef = useRef(false)
-  const addDimensionRef = useRef<((label: string, sx?: number, sy?: number) => Promise<void>) | null>(null)
+  const suppressSuggestionClickRef = useRef(false)
+  const removedDimensionTimerRef = useRef<number | null>(null)
+  const addDimensionRef = useRef<((label: string, sx?: number, sy?: number) => Promise<boolean>) | null>(null)
 
   // ---- fixture ----
+  // initRun 递增（用户点"重新开始"）时整体重跑；cleanup 里 abort 上一次未完成的请求。
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
+    initAbortRef.current = controller
     void (async () => {
       await Promise.resolve()
       if (cancelled) return
@@ -295,26 +408,68 @@ export default function ResearchCanvas() {
       const params = new URLSearchParams(window.location.search)
       setHitAreas(params.get("hitAreas") === "1")
       setAiDebugOn(params.get("aiDebug") === "1")
+      setInitServerPhase(null)
       try {
-        const res =
-          params.get("live") === "1"
-            ? await fetch("/api/research/init", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ stockCode: "000333.SZ" }),
-              })
-            : await fetch(`/api/observatory/fixture?name=${params.get("fixture") ?? "midea-artdirection"}`)
-        if (!res.ok) throw new Error()
-        const data = (await res.json()) as ResearchSpacePayload
-        if (!cancelled) setPayload(data)
+        const isLive = params.get("live") === "1"
+        const requestedCode = /^\d{6}\.(SZ|SH|BJ)$/.test((params.get("stockCode") ?? "").trim().toUpperCase())
+          ? (params.get("stockCode") ?? "").trim().toUpperCase()
+          : "000333.SZ"
+        const entryQuestion = params.get("q")?.trim()
+        setInitialRequest({ stockCode: requestedCode, question: entryQuestion ?? "" })
+        const savedResearch = params.get("resume") === "1" ? await loadResearch(requestedCode) : null
+        if (savedResearch) {
+          if (savedResearch.recordedSample) recordedSampleCodesRef.current.add(requestedCode)
+          setIsRecordedSample(savedResearch.recordedSample)
+          setPayload(savedResearch.payload)
+          return
+        }
+        let data: ResearchSpacePayload
+        if (isLive) {
+          // P2-3：流式 init——服务端阶段帧驱动真实进度
+          data = await streamInitResearchSpace({
+            body: {
+              stockCode: requestedCode,
+              ...(entryQuestion ? { question: entryQuestion.slice(0, 500) } : {}),
+            },
+            signal: controller.signal,
+            onPhase: (frame) => {
+              if (!cancelled) setInitServerPhase(frame)
+            },
+          })
+        } else {
+          const res = await fetch(`/api/observatory/fixture?name=${params.get("fixture") ?? "midea-artdirection"}`, {
+            signal: controller.signal,
+          })
+          if (!res.ok) throw new Error()
+          data = (await res.json()) as ResearchSpacePayload
+        }
+        if (cancelled || controller.signal.aborted) return
+        if (isLive) recordedSampleCodesRef.current.delete(data.company.stockCode)
+        else recordedSampleCodesRef.current.add(data.company.stockCode)
+        setIsRecordedSample(!isLive)
+        setPayload(data)
       } catch {
-        if (!cancelled) setFailed(true)
+        // 中止 = 用户主动选择，不算失败；只有真正的请求/解析错误才进入失败态
+        setInitServerPhase(null)
+        if (!cancelled && !controller.signal.aborted) setFailed(true)
+        if (!cancelled && controller.signal.aborted) setInitCancelled(true)
       }
     })()
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [])
+  }, [initRun])
+
+  useEffect(() => {
+    // 中止后停表；重试（initRun 递增）时 startedAt 重置，首次 update() 即归零
+    if (payload || failed || initCancelled) return
+    const startedAt = Date.now()
+    const update = () => setInitialElapsedSec(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    update()
+    const id = window.setInterval(update, 1000)
+    return () => window.clearInterval(id)
+  }, [failed, initCancelled, initRun, payload])
 
   // §4：session 内持久化（仅 thread 数据，不含任何 secret）
   useEffect(() => {
@@ -363,23 +518,48 @@ export default function ResearchCanvas() {
     }
   }, [aiThreads])
 
+  useEffect(
+    () => () => {
+      if (removedDimensionTimerRef.current !== null) {
+        window.clearTimeout(removedDimensionTimerRef.current)
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
+    const target = rootRef.current
     const update = () => {
-      const w = window.innerWidth
-      const h = window.innerHeight
+      const rect = target?.getBoundingClientRect()
+      const w = Math.max(1, Math.round(rect?.width ?? window.innerWidth))
+      const h = Math.max(1, Math.round(rect?.height ?? window.innerHeight))
       setViewport({ width: w, height: h })
-      // §5：仅 viewport < 1200px 自动 fit；1440×900 保持 scale 1.00
-      if (w < 1200) {
-        setCamera(computeFitCamera(boundsOfObjects([{ x: 0, y: 0, width: DESIGN.width, height: DESIGN.height }])!, { width: w, height: h }, 60))
+      // 画布使用左上角为 0 的正坐标，Fit 的对象坐标必须传入设计面的中心。
+      if (w < 1200 || workspaceLab) {
+        setCamera(fitDesignCamera({ width: w, height: h }))
       }
     }
     update()
+    const observer = target ? new ResizeObserver(update) : null
+    if (target) observer?.observe(target)
     window.addEventListener("resize", update)
-    return () => window.removeEventListener("resize", update)
-  }, [])
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener("resize", update)
+    }
+  }, [workspaceLab])
+
+  // 桌面端 Lab 页保持「侧板默认打开」的原有行为；移动端默认关闭（见 aiOpen useState 注释）。
+  // rAF 延迟一帧：规避 react-hooks/set-state-in-effect（同步 setState 会触发级联渲染告警）。
+  useEffect(() => {
+    if (!workspaceLab) return
+    const raf = window.requestAnimationFrame(() => {
+      if (window.innerWidth >= 768) setAiOpen(true)
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [workspaceLab])
 
   const anchors: AnchorSpec[] = useMemo(() => (payload ? composeCanvas(payload) : []), [payload])
-  const labels = useMemo(() => ambientLabels(), [])
   const focalId = useMemo(
     () => anchors.find((a) => a.isFocalCandidate)?.dimensionId ?? anchors[0]?.dimensionId ?? null,
     [anchors],
@@ -409,7 +589,7 @@ export default function ResearchCanvas() {
   }, [])
 
   const fitAll = useCallback(() => {
-    setCamera(computeFitCamera(boundsOfObjects([{ x: 0, y: 0, width: DESIGN.width, height: DESIGN.height }])!, viewport, 60))
+    setCamera(fitDesignCamera(viewport))
   }, [viewport])
   const resetZoom = useCallback(() => setCamera((c) => ({ ...c, scale: 1 })), [])
   const zoomBy = useCallback(
@@ -432,6 +612,14 @@ export default function ResearchCanvas() {
     setMenuOpen(false)
     setAsk(null)
   }, [])
+
+  const autoArrange = useCallback(() => {
+    closeAperture()
+    setPositions({})
+    setSelection([])
+    setFocusSet(false)
+    window.requestAnimationFrame(fitAll)
+  }, [closeAperture, fitAll])
 
   /** 世界坐标 ↔ 屏幕坐标（camera 数学） */
   const toScreenRect = useCallback(
@@ -524,12 +712,13 @@ export default function ResearchCanvas() {
         e.preventDefault()
         setLensOpen((v) => !v)
       }
-      // §A2：单一 Esc 优先级链（Palette → Thread → Evidence → Reading → Aperture → Canvas）
+      // §A2：单一 Esc 优先级链（Demo → Notes → Palette → Thread → Evidence → Reading → Aperture → Canvas）
       if (e.key === "Escape") {
         if (demoExitRef.current) {
           demoExitRef.current()
           return
         }
+        if (notesOpen) { setNotesOpen(false); return }
         if (lensOpen) { setLensOpen(false); return }
         if (aiOpen) {
           setAiOpen(false)
@@ -539,8 +728,7 @@ export default function ResearchCanvas() {
         if (readingEvidenceId) { setReadingEvidenceId(null); backNav(); return }
         if (readingId) { closeReadingRef.current?.(); backNav(); return }
         if (apertureId) { closeAperture(); backNav(); return }
-        if (suggestOpen || ask || addAngle !== null) {
-          setSuggestOpen(null)
+        if (ask || addAngle !== null) {
           setAsk(null)
           setAddAngle(null)
           return
@@ -584,7 +772,7 @@ export default function ResearchCanvas() {
       window.removeEventListener("keyup", onUp)
     }
     // 事件回调在触发时读取最新 state；此处依赖稳定回调即可
-  }, [fitAll, fitSelection, aiOpen, lensOpen, closeAperture, backNav, apertureId, readingId, readingEvidenceId, suggestOpen, ask, addAngle, savedCompanies, payload])
+  }, [fitAll, fitSelection, aiOpen, lensOpen, closeAperture, backNav, apertureId, readingId, readingEvidenceId, ask, addAngle, savedCompanies, payload, notesOpen])
 
   // ---- pointer 仲裁（§17：5px 阈值，click 与 drag 分离） ----
   const onPointerDown = useCallback(
@@ -657,7 +845,8 @@ export default function ResearchCanvas() {
       }
       const sg = suggestRef.current
       if (sg) {
-        if (!suggestCapturedRef.current && Math.hypot(e.clientX - sg.clientX, e.clientY - sg.clientY) > DRAG_THRESHOLD) {
+        if (!suggestCapturedRef.current) {
+          if (Math.hypot(e.clientX - sg.clientX, e.clientY - sg.clientY) <= DRAG_THRESHOLD) return
           try {
             ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
             suggestCapturedRef.current = true
@@ -665,7 +854,11 @@ export default function ResearchCanvas() {
             // 合成事件下可能失败
           }
         }
-        const over = local.x > DESIGN.width * 0.2 && local.x < DESIGN.width * 0.95 && local.y > DESIGN.height * 0.06 && local.y < DESIGN.height * 0.94
+        const over =
+          local.x > Math.min(330, viewport.width * 0.3) &&
+          local.x < rect.width - 24 &&
+          local.y > 76 &&
+          local.y < rect.height - 70
         const next = { label: sg.label, x: local.x, y: local.y, over }
         suggestDragRef.current = next
         setSuggestDrag(next)
@@ -703,10 +896,17 @@ export default function ResearchCanvas() {
     if (suggestRef.current) {
       const sd = suggestDragRef.current
       const label = suggestRef.current.label
+      const didDrag = suggestCapturedRef.current
       suggestRef.current = null
       suggestDragRef.current = null
       suggestCapturedRef.current = false
       setSuggestDrag(null)
+      if (didDrag) {
+        suppressSuggestionClickRef.current = true
+        window.setTimeout(() => {
+          suppressSuggestionClickRef.current = false
+        }, 0)
+      }
       if (sd?.over) void addDimensionRef.current?.(label, sd.x, sd.y)
     }
     if (marqueeRef.current) {
@@ -762,6 +962,83 @@ export default function ResearchCanvas() {
     [closeAperture],
   )
 
+  const commitResearchPayload = useCallback((next: ResearchSpacePayload) => {
+    payloadRef.current = next
+    payloadCacheRef.current[next.company.stockCode] = next
+    saveResearch(next, isRecordedSample)
+    setPayload(next)
+  }, [isRecordedSample])
+
+  // ---- 证据快刷（阶段 4 / P1-2 路线 A）----
+  // 口径：只刷数据层（服务端重算），受影响结论打「证据已更新」标记；
+  // 「重新组织该维度」用最新证据重跑该维度合成。失败时 payload 原样保留 = 天然回滚。
+  const [updatedClaims, setUpdatedClaims] = useState<{ stockCode: string; ids: Set<string> } | null>(null)
+  const [evidenceRefreshing, setEvidenceRefreshing] = useState(false)
+  const [reorganizingDimId, setReorganizingDimId] = useState<string | null>(null)
+
+  const runEvidenceRefresh = useCallback(async () => {
+    const current = payloadRef.current
+    if (!current || evidenceRefreshing) return
+    setEvidenceRefreshing(true)
+    try {
+      const res = await fetch("/api/research/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockCode: current.company.stockCode }),
+      })
+      const body = (await res.json()) as Parameters<typeof mergeRefreshedTruth>[1] & { error?: string }
+      if (!res.ok) throw new Error(body?.error ?? `刷新服务返回 ${res.status}`)
+      const merged = mergeRefreshedTruth(current, body)
+      commitResearchPayload(merged.payload)
+      setUpdatedClaims({ stockCode: merged.payload.company.stockCode, ids: new Set(merged.updatedClaimIds) })
+      const asOf = merged.payload.marketHistory?.latestDate ?? "未知"
+      setRefreshNote(
+        `数据已刷新（截至 ${asOf}）` +
+          (merged.updatedClaimIds.length > 0 ? `；${merged.updatedClaimIds.length} 条结论为更新前生成，可重新组织` : ""),
+      )
+      window.setTimeout(() => setRefreshNote(null), 6000)
+    } catch (err) {
+      // 合并失败不写入 state：旧 payload 原样保留（回滚），明确报错不修饰
+      setRefreshNote(`刷新失败：${err instanceof Error ? err.message : String(err)}`)
+      window.setTimeout(() => setRefreshNote(null), 6000)
+    } finally {
+      setEvidenceRefreshing(false)
+    }
+  }, [evidenceRefreshing, commitResearchPayload])
+
+  const runReorganize = useCallback(
+    async (dimension: ResearchSpacePayload["dimensions"][number]) => {
+      const current = payloadRef.current
+      if (!current || reorganizingDimId) return
+      setReorganizingDimId(dimension.dimensionId)
+      try {
+        const res = await fetch("/api/research/reorganize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stockCode: current.company.stockCode, dimension }),
+        })
+        const body = (await res.json()) as { error?: string } & Parameters<typeof applyReorganizedDimension>[1]
+        if (!res.ok) throw new Error(body?.error ?? `重新组织服务返回 ${res.status}`)
+        const next = applyReorganizedDimension(current, body)
+        commitResearchPayload(next)
+        // 该维度旧结论已被重写：解除其「更新前生成」标记（新结论基于最新证据，无需标记）
+        setUpdatedClaims((prev) =>
+          prev && prev.stockCode === next.company.stockCode
+            ? { stockCode: prev.stockCode, ids: new Set([...prev.ids].filter((id) => !dimension.claimIds.includes(id))) }
+            : prev,
+        )
+        setRefreshNote(`「${dimension.label}」已按最新证据重新组织`)
+        window.setTimeout(() => setRefreshNote(null), 6000)
+      } catch (err) {
+        setRefreshNote(`重新组织失败：${err instanceof Error ? err.message : String(err)}`)
+        window.setTimeout(() => setRefreshNote(null), 6000)
+      } finally {
+        setReorganizingDimId(null)
+      }
+    },
+    [reorganizingDimId, commitResearchPayload],
+  )
+
   /** §30：Add Dimension —— anchor 出现在操作位置；先 resolving 再由 API 结果定态 */
   const addDimension = useCallback(
     async (label: string, screenX?: number, screenY?: number) => {
@@ -792,40 +1069,140 @@ export default function ResearchCanvas() {
           // §43：不静默删除用户意图——保留临时锚点并给出重试
           setAdding(null)
           setFailedAngle({ label, x: sx, y: sy })
-          return
+          return false
         }
         const dim = body.dimension
         const rect = containerRef.current?.getBoundingClientRect()
         const world = rect
           ? screenToWorld(camera, viewport, sx - rect.left, sy - rect.top)
           : { x: DESIGN.width / 2, y: DESIGN.height / 2 }
-        setPayload((prev) =>
-          prev
-            ? {
-                ...prev,
-                dimensions: [...prev.dimensions, dim],
-                claims: [...prev.claims, ...(body.claims ?? [])],
-                evidence: [
-                  ...prev.evidence,
-                  ...(body.evidence ?? []).filter((e) => !prev.evidence.some((x) => x.evidenceId === e.evidenceId)),
-                ],
-              }
-            : prev,
-        )
-        setPositions((p) => ({ ...p, [dim.dimensionId]: { x: world.x, y: world.y } }))
+        const current = payloadRef.current
+        if (!current) return false
+        const next = {
+            ...current,
+            dimensions: [...current.dimensions, dim],
+            claims: [...current.claims, ...(body.claims ?? [])],
+            evidence: [
+              ...current.evidence,
+              ...(body.evidence ?? []).filter((e) => !current.evidence.some((x) => x.evidenceId === e.evidenceId)),
+            ],
+          }
+        commitResearchPayload(next)
+        // 只有真正拖放时才保留手动位置；普通新增直接获得下一个编号与自动位置。
+        if (screenX !== undefined && screenY !== undefined) {
+          setPositions((p) => ({ ...p, [dim.dimensionId]: { x: world.x, y: world.y } }))
+        } else {
+          // 点击确认新标签就是一次完整的“加入并整理”：清掉历史手动偏移，
+          // 让全部标签立即回到新的连续编号与编辑节奏位，不再要求用户多点一次“恢复自动”。
+          setPositions({})
+          setSelection([])
+          setFocusSet(false)
+          window.requestAnimationFrame(fitAll)
+        }
         // §6：新维度原地转为 ready/partial/unknown；不自动打开 Aperture（保持标签可见）
         setApertureId(null)
         setDisplaced({})
         setAdding(null)
         setFailedAngle(null)
+        return true
       } catch {
         // §43：失败不得静默回退；保留用户输入与位置，允许重试
         setAdding(null)
         setFailedAngle({ label, x: sx, y: sy })
+        return false
       }
     },
-    [payload, anchors, camera, viewport],
+    [payload, anchors, camera, viewport, fitAll, commitResearchPayload],
   )
+
+  const removeAddedDimension = useCallback(
+    (dimensionId: string) => {
+      const current = payloadRef.current
+      if (!current) return
+      const index = current.dimensions.findIndex((dimension) => dimension.dimensionId === dimensionId)
+      const dimension = current.dimensions[index]
+      if (!dimension || dimension.origin === "ai_initial") return
+
+      const relatedClaims = current.claims.filter((claim) => claim.dimensionId === dimensionId)
+      const snapshot: RemovedDimensionSnapshot = {
+        stockCode: current.company.stockCode,
+        dimension,
+        index,
+        claims: relatedClaims,
+        position: positions[dimensionId],
+        wasParked: parked.includes(dimensionId),
+        wasSelected: selection.includes(dimensionId),
+        notes: notes.filter((note) => note.id === dimensionId),
+      }
+
+      if (removedDimensionTimerRef.current !== null) {
+        window.clearTimeout(removedDimensionTimerRef.current)
+      }
+      setRemovedDimension(snapshot)
+      removedDimensionTimerRef.current = window.setTimeout(() => {
+        setRemovedDimension(null)
+        removedDimensionTimerRef.current = null
+      }, 7000)
+
+      commitResearchPayload({
+        ...current,
+        dimensions: current.dimensions.filter((item) => item.dimensionId !== dimensionId),
+        claims: current.claims.filter((claim) => claim.dimensionId !== dimensionId),
+      })
+      setPositions((items) => Object.fromEntries(Object.entries(items).filter(([id]) => id !== dimensionId)))
+      setDisplaced((items) => Object.fromEntries(Object.entries(items).filter(([id]) => id !== dimensionId)))
+      setParked((items) => items.filter((id) => id !== dimensionId))
+      setSelection((items) => items.filter((id) => id !== dimensionId))
+      setNotes((items) => items.filter((note) => note.id !== dimensionId))
+      setFocusSet(false)
+      setAiScopeOverride((scope) => {
+        if (!scope) return scope
+        if (scope.dimensionId === dimensionId) return null
+        if (scope.claimId && relatedClaims.some((claim) => claim.claimId === scope.claimId)) return null
+        return scope
+      })
+      if (apertureId === dimensionId) closeAperture()
+      if (readingId === dimensionId) {
+        setReadingId(null)
+        setReadingEvidenceId(null)
+      }
+    },
+    [apertureId, closeAperture, commitResearchPayload, notes, parked, positions, readingId, selection],
+  )
+
+  const undoRemovedDimension = useCallback(() => {
+    if (!removedDimension) return
+    const snapshot = removedDimension
+    if (removedDimensionTimerRef.current !== null) {
+      window.clearTimeout(removedDimensionTimerRef.current)
+      removedDimensionTimerRef.current = null
+    }
+    const current = payloadRef.current
+    if (current && current.company.stockCode === snapshot.stockCode && !current.dimensions.some((dimension) => dimension.dimensionId === snapshot.dimension.dimensionId)) {
+      const dimensions = [...current.dimensions]
+      dimensions.splice(Math.min(snapshot.index, dimensions.length), 0, snapshot.dimension)
+      const existingClaims = new Set(current.claims.map((claim) => claim.claimId))
+      const next = {
+        ...current,
+        dimensions,
+        claims: [...current.claims, ...snapshot.claims.filter((claim) => !existingClaims.has(claim.claimId))],
+      }
+      commitResearchPayload(next)
+    }
+    if (snapshot.position) {
+      const restoredPosition = snapshot.position
+      setPositions((items) => ({ ...items, [snapshot.dimension.dimensionId]: restoredPosition }))
+    }
+    if (snapshot.wasParked) setParked((items) => [...new Set([...items, snapshot.dimension.dimensionId])])
+    if (snapshot.wasSelected) setSelection((items) => [...new Set([...items, snapshot.dimension.dimensionId])])
+    if (snapshot.notes.length > 0) {
+      setNotes((items) => [
+        ...items,
+        ...snapshot.notes.filter((note) => !items.some((item) => item.id === note.id)),
+      ])
+    }
+    setRemovedDimension(null)
+  }, [commitResearchPayload, removedDimension])
 
   const runAsk = useCallback(
     async (a: AnchorSpec) => {
@@ -1140,9 +1517,12 @@ export default function ResearchCanvas() {
     setCompanyQuery(q)
     if (q.trim().length === 0) {
       setCompanyResults([])
+      setCompanySearched("")
       return
     }
-    setCompanyResults(await searchCompanies(q))
+    const results = await searchCompanies(q)
+    setCompanyResults(results)
+    setCompanySearched(q.trim())
   }, [])
 
   /** §B14/§A5：把当前画布现场写进该公司快照（内存 + sessionStorage） */
@@ -1163,21 +1543,51 @@ export default function ResearchCanvas() {
     setResearchTimes((m) => ({ ...m, [code]: snap.updatedAt }))
   }, [camera, positions, parked, notes, selection, readingId, apertureId])
 
+  // 刷新/关闭页面前立即保存一次，避免 900ms 节流窗口内的最后操作丢失。
+  useEffect(() => {
+    const saveBeforeLeave = () => snapshotCurrent()
+    window.addEventListener("pagehide", saveBeforeLeave)
+    return () => window.removeEventListener("pagehide", saveBeforeLeave)
+  }, [snapshotCurrent])
+
   /** 把某公司的会话恢复到画布（缓存路径与未缓存路径共用） */
   const applySession = useCallback(
-    (data: ResearchSpacePayload, stockCode: string, snap: CanvasSnapshot | null) => {
+    (
+      data: ResearchSpacePayload,
+      stockCode: string,
+      snap: CanvasSnapshot | null,
+      opts?: { fetchedAt?: number },
+    ) => {
+      restoredCompaniesRef.current.add(stockCode)
       payloadCacheRef.current[stockCode] = data
+      if (opts?.fetchedAt) payloadCachedAtRef.current[stockCode] = opts.fetchedAt
+      setIsRecordedSample(recordedSampleCodesRef.current.has(stockCode))
       setPayload(data)
-      if (snap) {
-        canvasCacheRef.current[stockCode] = snap
-        setCamera(snap.camera)
-        setPositions(snap.positions ?? {})
-        setParked(snap.parked ?? [])
-        setNotes((snap.notes ?? []) as PinnedNote[])
-        setSelection(snap.selection ?? [])
-        setLastResearchAt(snap.updatedAt)
-        setResearchTimes((m) => ({ ...m, [stockCode]: snap.updatedAt }))
-        if (snap.lastDimensionId) pendingRestoreRef.current = { code: stockCode, dimensionId: snap.lastDimensionId }
+      const safeSnapshot = snap
+        ? reconcileCanvasSnapshot(snap, data.dimensions.map((dimension) => dimension.dimensionId))
+        : null
+      if (safeSnapshot) {
+        canvasCacheRef.current[stockCode] = safeSnapshot
+        // Sidekick 会改变画布可用宽度。恢复研究内容和手动位置，但按当前分栏重新适配视角，
+        // 避免旧宽度保存的相机把所有标签恢复到屏幕外。
+        const rect = rootRef.current?.getBoundingClientRect()
+        setCamera(
+          workspaceLab
+            ? fitDesignCamera({
+                width: Math.max(1, Math.round(rect?.width ?? viewport.width)),
+                height: Math.max(1, Math.round(rect?.height ?? viewport.height)),
+              })
+            : safeSnapshot.camera,
+        )
+        setPositions(safeSnapshot.positions)
+        setParked(safeSnapshot.parked)
+        setNotes(safeSnapshot.notes as PinnedNote[])
+        setSelection(safeSnapshot.selection)
+        setLastResearchAt(safeSnapshot.updatedAt)
+        setResearchTimes((m) => ({ ...m, [stockCode]: safeSnapshot.updatedAt }))
+        if (safeSnapshot.lastDimensionId) {
+          pendingRestoreRef.current = { code: stockCode, dimensionId: safeSnapshot.lastDimensionId }
+        }
       } else {
         delete canvasCacheRef.current[stockCode]
         setCamera({ x: DESIGN.width / 2, y: DESIGN.height / 2, scale: 1 })
@@ -1203,17 +1613,32 @@ export default function ResearchCanvas() {
       }
       pushNav({ sl: true, stockCode, dim: null, read: false, ev: null })
     },
-    [pushNav, savedCompanies],
+    [pushNav, savedCompanies, viewport.height, viewport.width, workspaceLab],
   )
 
-  const recordVisit = useCallback(
-    (stockCode: string, name: string, industry?: string) => {
-      const nextRecent = pushRecent(recentCompanies, { stockCode, name, industry })
-      setRecentCompanies(nextRecent)
-      saveRecent(nextRecent)
-    },
-    [recentCompanies],
-  )
+  const recordVisit = useCallback((data: ResearchSpacePayload) => {
+    const now = Date.now()
+    const entry = {
+      stockCode: data.company.stockCode,
+      name: data.company.stockName,
+      industry: data.company.industryName ?? undefined,
+      dimensionCount: data.dimensions.length,
+      evidenceCount: data.evidence.length,
+      aiStatus: data.ai.status,
+      lastResearchAt: now,
+    }
+    setRecentCompanies((previous) => {
+      const next = pushRecent(previous, entry, now)
+      saveRecent(next)
+      return next
+    })
+    setLibraryCompanies((previous) => {
+      const next = upsertLibrary(previous, entry, now)
+      saveLibrary(next)
+      return next
+    })
+    setResearchTimes((times) => ({ ...times, [data.company.stockCode]: now }))
+  }, [])
 
   /** §13：取消解析中的切换——旧 Canvas 一直在屏上，因此只需移除过渡层 */
   const cancelSwitch = useCallback(() => {
@@ -1254,12 +1679,18 @@ export default function ResearchCanvas() {
       setCompanyResults([])
 
       // ---- §6/§20 CACHED PATH：有会话就不调用 /api/research/init，也不开全屏 ----
-      const cached = opts?.force ? undefined : payloadCacheRef.current[stockCode]
+      const cachedAt = payloadCachedAtRef.current[stockCode]
+      const cacheFresh = typeof cachedAt === "number" && Date.now() - cachedAt <= RESEARCH_CACHE_TTL_MS
+      const cached = opts?.force || !cacheFresh ? undefined : payloadCacheRef.current[stockCode]
+      if (!cacheFresh) {
+        delete payloadCacheRef.current[stockCode]
+        delete payloadCachedAtRef.current[stockCode]
+      }
       if (cached) {
         const seq = ++switchSeqRef.current
         interactionPerf.markStart(`company:cache:${stockCode}`, "local")
-        applySession(cached, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
-        recordVisit(stockCode, cached.company.stockName, cached.company.industryName ?? undefined)
+        applySession(cached, stockCode, canvasCacheRef.current[stockCode] ?? (await loadCanvas(stockCode)))
+        recordVisit(cached)
         if (seq !== switchSeqRef.current) return
         interactionPerf.markVisual(`company:cache:${stockCode}`)
         return
@@ -1286,13 +1717,8 @@ export default function ResearchCanvas() {
         const existing = opts?.force ? undefined : inFlightInitRef.current[stockCode]
         const inflight =
           existing ??
-          fetch("/api/research/init", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ stockCode }),
-            signal: controller.signal,
-          })
-            .then((r) => (r.ok ? ((r.json() as Promise<ResearchSpacePayload>) as Promise<ResearchSpacePayload>) : null))
+          // P2-3：切换公司同样走流式端点（此处 UI 是 CompanyTransition，不渲染阶段帧，仅取结果）
+          streamInitResearchSpace({ body: { stockCode }, signal: controller.signal })
             .catch(() => null)
             .finally(() => {
               delete inFlightInitRef.current[stockCode]
@@ -1301,8 +1727,14 @@ export default function ResearchCanvas() {
         const data = await inflight
         if (!data) throw new Error("init failed")
         if (seq !== switchSeqRef.current) return // §15：过期响应不得覆盖更新的目标
-        applySession(data, stockCode, canvasCacheRef.current[stockCode] ?? loadCanvas(stockCode))
-        recordVisit(stockCode, data.company.stockName, data.company.industryName ?? undefined)
+        recordedSampleCodesRef.current.delete(stockCode)
+        applySession(
+          data,
+          stockCode,
+          canvasCacheRef.current[stockCode] ?? (await loadCanvas(stockCode)),
+          { fetchedAt: Date.now() },
+        )
+        recordVisit(data)
         // §17/§18：不硬切——身份保持位置连续，占位逐个被真实维度取代后再退出
         setSwitchMorph(true)
         window.setTimeout(() => {
@@ -1398,7 +1830,7 @@ export default function ResearchCanvas() {
         reducedMotionRef.current = e.matches
       }
       mq.addEventListener?.("change", onChange)
-      setDemoPrompt(!demoSeen() && !demoCompleted())
+      setDemoPrompt(!(await demoSeen()) && !(await demoCompleted()))
     })()
     return () => {
       cancelled = true
@@ -1411,15 +1843,21 @@ export default function ResearchCanvas() {
     void (async () => {
       await Promise.resolve()
       if (cancelled) return
-      const saved = loadSaved()
-      const recent = loadRecent()
+      await ensureShelfMigrated()
+      if (cancelled) return
+      const saved = await loadSaved()
+      const recent = await loadRecent()
+      const library = mergeLibraryCompanies(await loadLibrary(), saved, recent)
       setSavedCompanies(saved)
       setRecentCompanies(recent)
+      setLibraryCompanies(library)
+      await saveLibrary(library)
       const times: Record<string, number> = {}
-      for (const c of [...saved, ...recent]) {
+      for (const c of library) {
         if (times[c.stockCode]) continue
-        const snap = canvasCacheRef.current[c.stockCode] ?? loadCanvas(c.stockCode)
+        const snap = canvasCacheRef.current[c.stockCode] ?? (await loadCanvas(c.stockCode))
         if (snap) times[c.stockCode] = snap.updatedAt
+        else if (c.lastResearchAt) times[c.stockCode] = c.lastResearchAt
       }
       setResearchTimes(times)
     })()
@@ -1427,6 +1865,53 @@ export default function ResearchCanvas() {
       cancelled = true
     }
   }, [])
+
+  // 首屏载荷就绪后恢复刷新前的画布。先对账维度 ID，旧维度引用不会进入新研究空间。
+  useEffect(() => {
+    if (!payload) return
+    const stockCode = payload.company.stockCode
+    if (restoredCompaniesRef.current.has(stockCode)) return
+    restoredCompaniesRef.current.add(stockCode)
+
+    let raf: number | null = null
+    let cancelled = false
+    void (async () => {
+      const stored = await loadCanvas(stockCode)
+      if (cancelled || !stored) return
+      const snapshot = reconcileCanvasSnapshot(
+        stored,
+        payload.dimensions.map((dimension) => dimension.dimensionId),
+      )
+      canvasCacheRef.current[stockCode] = snapshot
+      raf = window.requestAnimationFrame(() => {
+        const rect = rootRef.current?.getBoundingClientRect()
+        setCamera(
+          workspaceLab
+            ? fitDesignCamera({
+                width: Math.max(1, Math.round(rect?.width ?? window.innerWidth)),
+                height: Math.max(1, Math.round(rect?.height ?? window.innerHeight)),
+              })
+            : snapshot.camera,
+        )
+        setPositions(snapshot.positions)
+        setParked(snapshot.parked)
+        setNotes(snapshot.notes as PinnedNote[])
+        setSelection(snapshot.selection)
+        setLastResearchAt(snapshot.updatedAt)
+        setResearchTimes((times) => ({ ...times, [stockCode]: snapshot.updatedAt }))
+        if (snapshot.lastDimensionId) {
+          pendingRestoreRef.current = {
+            code: stockCode,
+            dimensionId: snapshot.lastDimensionId,
+          }
+        }
+      })
+    })()
+    return () => {
+      cancelled = true
+      if (raf !== null) window.cancelAnimationFrame(raf)
+    }
+  }, [payload, workspaceLab])
 
   // §A4：基准 history entry（replaceState，保证 Back 不会离开 StockLens）
   useEffect(() => {
@@ -1444,21 +1929,37 @@ export default function ResearchCanvas() {
     }
     // §6：首次载入的公司也进入会话缓存（切走再切回即走缓存路径，不再请求 init）
     payloadCacheRef.current[payload.company.stockCode] = payload
-    // §B9：首次载入的公司同样计入 RECENT（否则研究的起点不会出现在研究架里）
-    const entry = {
-      stockCode: payload.company.stockCode,
-      name: payload.company.stockName,
-      industry: payload.company.industryName ?? undefined,
-    }
+    payloadCachedAtRef.current[payload.company.stockCode] ??= Date.now()
     const raf = window.requestAnimationFrame(() => {
-      setRecentCompanies((prev) => {
-        const next = pushRecent(prev, entry)
-        saveRecent(next)
-        return next
-      })
+      // 首次载入同样写入 RECENT 与持久研究库；公司切换路径会复用同一记录函数。
+      recordVisit(payload)
     })
     return () => window.cancelAnimationFrame(raf)
-  }, [payload])
+  }, [payload, recordVisit])
+
+  useEffect(() => {
+    if (!payload) return
+    let cancelled = false
+    void (async () => {
+      await saveResearch(payload, isRecordedSample)
+      if (cancelled) return
+      const previous = await loadLibrary()
+      await saveLibrary(
+        upsertLibrary(previous, {
+          stockCode: payload.company.stockCode,
+          name: payload.company.stockName,
+          industry: payload.company.industryName ?? undefined,
+          dimensionCount: payload.dimensions.length,
+          evidenceCount: payload.evidence.length,
+          aiStatus: payload.ai.status,
+          lastResearchAt: previous.find((company) => company.stockCode === payload.company.stockCode)?.lastResearchAt,
+        }),
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [payload, isRecordedSample])
 
   // §A4：浏览器 Back/Forward → 语义后退
   useEffect(() => {
@@ -1655,6 +2156,14 @@ export default function ResearchCanvas() {
         setAiInput("")
         return
       }
+      if (kind === "close-ai") {
+        setAiOpen(false)
+        return
+      }
+      if (kind === "close-add-angle") {
+        setAddAngle(null)
+        return
+      }
       if (kind === "open-add-dimension") {
         setAddAngle(DEMO_ANGLE_PLACEHOLDER)
         return
@@ -1809,28 +2318,182 @@ export default function ResearchCanvas() {
   // ---- derived ----
   const transform = `translate3d(${-camera.x * camera.scale}px, ${-camera.y * camera.scale}px, 0) scale(${camera.scale})`
   const zoomPct = Math.round(camera.scale * 100)
-  const panelW = readingId ? Math.round(Math.max(viewport.width * 0.3, 300)) : viewport.width
+  const isMobile = viewport.width < 768
+  // 在 Sidekick 并排模式里，把左侧完整宽度留给 Reading：证据页本身已经是
+  // “论点 + 原始证据”双栏，再保留缩略画布会在常见笔记本宽度下形成四栏挤压。
+  const panelW = readingId
+    ? (isMobile || (workspaceLab && aiOpen) ? 0 : Math.round(Math.max(viewport.width * 0.3, 300)))
+    : viewport.width
   const visible = anchors.filter((a) => !parked.includes(a.dimensionId))
   // §B10：切换器里的 SAVED / RECENT（已收藏的公司不在 RECENT 重复出现）
   const recentOnly = recentCompanies.filter((c) => !isSaved(savedCompanies, c.stockCode))
   const lastResearchFor = (code: string) => formatLastResearch(researchTimes[code] ?? null)
   const currentSaved = payload ? isSaved(savedCompanies, payload.company.stockCode) : false
-  const suggestions = (payload?.suggestions ?? []).slice(0, 2)
+  const confirmedLabels = new Set((payload?.dimensions ?? []).map((dimension) => dimension.label.trim()))
+  const suggestions = (payload?.suggestions ?? [])
+    .filter((suggestion) => !confirmedLabels.has(suggestion.label.trim()))
+    .slice(0, 3)
   const readingDimension = payload && readingId ? payload.dimensions.find((d) => d.dimensionId === readingId) ?? null : null
   const hitStyle = (on: boolean) => (on ? { outline: "1px dashed rgba(47,102,255,0.6)", outlineOffset: 2, background: "rgba(47,102,255,0.06)" } : undefined)
+  const sidekickTurns: SidekickTurn[] = payload
+    ? (aiThreads[payload.company.stockCode] ?? []).map((entry) => ({
+        id: entry.id,
+        question: entry.question,
+        scopeLabel: entry.scopeLabel,
+        evidenceIds: entry.evidenceIds,
+        dimensionId: entry.dimensionId,
+        status: entry.status,
+        summary: entry.summary,
+        confirmed: entry.confirmed,
+        inferred: entry.inferred,
+        unknowns: entry.unknowns,
+      }))
+    : []
+  const sidekickContext = payload
+    ? [
+        { id: payload.company.stockCode, label: payload.company.stockName, kind: "company" as const },
+        ...(selection.length > 0
+          ? selection.flatMap((dimensionId) => {
+              const dimension = payload.dimensions.find((item) => item.dimensionId === dimensionId)
+              return dimension ? [{ id: dimension.dimensionId, label: dimension.label, kind: "dimension" as const }] : []
+            })
+          : aiScope.type === "dimension" && aiScope.dimensionId
+            ? [{ id: aiScope.dimensionId, label: scopeLabel(aiScope).split(" / ").at(-1) ?? "当前维度", kind: "dimension" as const }]
+            : aiScope.type === "claim" && aiScope.claimId
+              ? [{ id: aiScope.claimId, label: "当前结论", kind: "claim" as const }]
+              : aiScope.type === "evidence" && aiScope.evidenceId
+                ? [{ id: aiScope.evidenceId, label: payload.evidence.find((item) => item.evidenceId === aiScope.evidenceId)?.title ?? "当前证据", kind: "evidence" as const }]
+                : []),
+      ]
+    : []
+
+  const openEvidenceFromSidekick = (evidenceId: string) => {
+    if (!payload) return
+    const dimension = payload.dimensions.find((item) => item.evidenceIds.includes(evidenceId))
+    setReadingEvidenceId(evidenceId)
+    setAiScopeOverride({ type: "evidence", evidenceId })
+    if (dimension) setReadingId(dimension.dimensionId)
+  }
+
+  const saveSidekickTurn = (turn: SidekickTurn) => {
+    if (!turn.summary) return
+    const dimension = turn.dimensionId ? payload?.dimensions.find((item) => item.dimensionId === turn.dimensionId) : null
+    setNotes((current) => {
+      const id = `ai-note-${turn.id}`
+      if (current.some((item) => item.id === id)) return current
+      return [
+        ...current,
+        {
+          id,
+          title: dimension ? `${dimension.label} · AI 研究便签` : "AI 研究便签",
+          summary: turn.summary!.slice(0, 88),
+          x: camera.x + 120,
+          y: camera.y + 90,
+        },
+      ].slice(-3)
+    })
+    setSidekickNotice("回答已保存为画布便签")
+  }
+
+  const submitSidekick = () => {
+    const text = aiInput.trim()
+    if (!payload || !text) return
+    if (sidekickMode === "ask") {
+      void handleAskAI(text, aiScope)
+      return
+    }
+    setSidekickDraft(researchAngleDraftFor(text, payload))
+    setAiInput("")
+    setSidekickNotice(null)
+  }
+
+  const confirmSidekickDraft = async () => {
+    if (!sidekickDraft) return
+    const draft = sidekickDraft
+    setSidekickNotice(`正在把“${draft.title}”写入研究空间…`)
+    const ok = await addDimension(draft.title)
+    setSidekickDraft(null)
+    setSidekickMode("ask")
+    setSidekickNotice(ok ? `“${draft.title}”已加入画布` : `“${draft.title}”暂时无法解析，画布已保留可重试入口`)
+  }
+
+  /** 首次研究重试：清掉失败/中止态，init effect 随 initRun 递增整体重跑 */
+  const retryInitialResearch = useCallback(() => {
+    setFailed(false)
+    setInitCancelled(false)
+    setPayload(null)
+    setInitialElapsedSec(0)
+    setInitRun((run) => run + 1)
+  }, [])
+
+  /** 用户中止首次研究：abort 请求，加载页据此切换为"已中止"确认态 */
+  const cancelInitialResearch = useCallback(() => {
+    initAbortRef.current?.abort()
+  }, [])
 
   if (failed) {
+    // 原先这里只有一行英文、没有任何出口（死胡同）；补齐中文文案与出路，与 CompanyTransition 的失败态措辞一致
     return (
-      <main className="flex h-screen w-screen items-center justify-center" style={{ background: C.bg, color: C.ink }}>
-        <div className="font-mono text-[12px]" style={{ color: C.secondary }}>
-          RESEARCH SPACE UNAVAILABLE
+      <main
+        data-research-failed
+        className="flex h-screen w-screen flex-col items-center justify-center gap-6 px-6 text-center"
+        style={{ background: C.bg, color: C.ink }}
+      >
+        <div>
+          <div className="font-mono text-[11px] tracking-[0.22em]" style={{ color: C.secondary }}>
+            RESEARCH SPACE UNAVAILABLE
+          </div>
+          <h1 className="mt-3 text-[26px] font-medium tracking-[-0.02em] md:text-[34px]">研究空间暂时无法完成</h1>
+          <p className="mx-auto mt-3 max-w-[560px] text-[12.5px] leading-6" style={{ color: C.secondary }}>
+            {initialRequest.stockCode ? `${initialRequest.stockCode} 的` : "本次"}
+            研究没有生成任何数据。通常是数据源临时不可用，重试一般即可恢复。
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            data-research-failed-retry
+            onClick={retryInitialResearch}
+            className="flex min-h-11 items-center rounded-full bg-[#11151B] px-5 text-[12.5px] text-white transition hover:bg-[#2F66FF]"
+          >
+            重试 →
+          </button>
+          <WipeLink
+            href={RESEARCH_LIBRARY_HREF}
+            className="flex min-h-11 items-center border px-4 font-mono text-[11px] transition hover:opacity-80"
+            style={{ borderColor: C.hair, background: "rgba(255,255,255,0.7)", color: C.ink }}
+          >
+            ← 返回研究库
+          </WipeLink>
         </div>
       </main>
     )
   }
 
   return (
-    <main ref={rootRef} className="relative h-screen w-screen select-none overflow-hidden overflow-x-hidden" style={{ background: C.bg, color: C.ink }}>
+    <div className="relative h-screen w-screen overflow-hidden" style={{ background: C.bg }}>
+    {!payload && (
+      <InitialResearchLoading
+        stockCode={initialRequest.stockCode}
+        question={initialRequest.question}
+        elapsedSec={initialElapsedSec}
+        serverPhase={initServerPhase}
+        reducedMotion={reducedMotion}
+        cancelled={initCancelled}
+        onCancel={cancelInitialResearch}
+        onRetry={retryInitialResearch}
+      />
+    )}
+    <main
+      ref={rootRef}
+      className="relative h-full select-none overflow-hidden overflow-x-hidden"
+      style={{
+        width: workspaceLab && aiOpen && !isMobile ? `calc(100% - ${sidekickWidth}px)` : "100%",
+        background: C.bg,
+        color: C.ink,
+        transition: "width 360ms cubic-bezier(0.22,1,0.36,1)",
+      }}
+    >
       {/* 画布底纹（§12） */}
       <div
         aria-hidden
@@ -1873,195 +2536,36 @@ export default function ResearchCanvas() {
           }}
         >
           {/* Evidence Trace（§13） */}
-          <svg aria-hidden className="pointer-events-none absolute left-0 top-0 overflow-visible" width={DESIGN.width} height={DESIGN.height}>
-            <path d="M 300 900 Q 700 700 1120 820 T 1700 620" fill="none" stroke={C.ink} strokeWidth="0.8" strokeDasharray="2 8" opacity="0.06" />
-            {payload &&
-              visible.map((a) => {
-                const pos = anchorPos(a)
-                const dimEvidenceIds = payload.dimensions.find((d) => d.dimensionId === a.dimensionId)?.evidenceIds ?? []
-                // §24：Reading 中选中的证据必须出现在该维度的 trace 里（即使在默认 4 个之外）
-                const traceIds =
-                  readingEvidenceId && a.dimensionId === readingId && !dimEvidenceIds.slice(0, 4).includes(readingEvidenceId)
-                    ? [readingEvidenceId, ...dimEvidenceIds]
-                    : dimEvidenceIds
-                const trace = buildTrace({ x: pos.x, y: pos.y, dimensionId: a.dimensionId }, traceIds, 5)
-                const isActive = activeId === a.dimensionId || apertureId === a.dimensionId
-                return (
-                  <g key={a.dimensionId}>
-                    {trace.edges.map((e, i) => (
-                      <path
-                        key={i}
-                        d={e.path}
-                        fill="none"
-                        stroke={isActive ? "#6F87B5" : C.ink}
-                        strokeWidth={isActive ? 1.1 : 0.8}
-                        opacity={isActive ? 0.5 : 0.05}
-                        strokeDasharray={a.status === "unknown" ? "3 6" : undefined}
-                        style={{ transition: "opacity 320ms ease-out" }}
-                      />
-                    ))}
-                    {trace.nodes.map((n) => {
-                      const isReadingEvidence = readingEvidenceId !== null && n.evidenceId === readingEvidenceId
-                      return (
-                        <circle
-                          key={n.evidenceId}
-                          data-evidence-node={n.evidenceId}
-                          cx={n.x}
-                          cy={n.y}
-                          r={isReadingEvidence ? 5.5 : isActive ? 3.6 : 2.6}
-                          fill={isReadingEvidence ? C.blue : a.status === "unknown" ? C.amber : isActive ? "#4E7BD4" : C.ink}
-                          opacity={isReadingEvidence ? 1 : isActive ? 0.75 : 0.06}
-                          style={{ transition: "opacity 300ms ease-out" }}
-                        />
-                      )
-                    })}
-                  </g>
-                )
-              })}
-          </svg>
-
-          {labels.map((l) => (
-            <div
-              key={l.text}
-              className="pointer-events-none absolute font-mono text-[10px] tracking-[0.34em]"
-              style={{ left: l.x, top: l.y, color: C.secondary, opacity: 0.32 }}
-            >
-              {l.text}
-            </div>
-          ))}
+          {payload && (
+            <CanvasEvidenceTrace
+              payload={payload}
+              anchors={visible}
+              positionOf={anchorPos}
+              activeDimensionId={activeId}
+              apertureDimensionId={apertureId}
+              readingDimensionId={readingId}
+              readingEvidenceId={readingEvidenceId}
+            />
+          )}
 
           {/* Research Anchors */}
-          {visible.map((a, vi) => {
-            const pos = anchorPos(a)
-            const f = tierFont(a.tier)
-            const isUnknown = a.status === "unknown"
-            const isActive = activeId === a.dimensionId
-            const selected = selection.includes(a.dimensionId)
-            const othersDim = hoverId !== null && hoverId !== a.dimensionId
-            const focusDim = focusSet && selection.length > 0 && !selected
-            const summary = payload?.claims.find((c) => c.dimensionId === a.dimensionId && c.type !== "unknown")?.text ?? ""
-            const dim = payload?.dimensions.find((d) => d.dimensionId === a.dimensionId)
-            return (
-              <div
-                key={a.dimensionId}
-                data-anchor-id={a.dimensionId}
-                data-reveal={vi < revealCount ? "in" : "out"}
-                data-hit="anchor"
-                className="absolute"
-                style={{
-                  left: pos.x,
-                  top: pos.y,
-                  opacity: focusDim ? FOCUS_DIM : othersDim ? 0.36 : isActive ? 1 : 0.92,
-                  transition: "opacity 320ms ease-out",
-                  zIndex: isActive || selected ? 20 : 10,
-                  padding: "14px 20px 16px 0",
-                  marginLeft: -10,
-                  width: "max-content",
-                  cursor: "pointer",
-                  ...hitStyle(hitAreas),
-                }}
-                onPointerEnter={() => setHoverId(a.dimensionId)}
-                onPointerLeave={() => setHoverId(null)}
-                onClick={(e) => {
-                  if (e.shiftKey) {
-                    setSelection((sel) => (sel.includes(a.dimensionId) ? sel.filter((x) => x !== a.dimensionId) : [...sel, a.dimensionId]))
-                  }
-                }}
-              >
-                <div className="font-mono text-[10px] tracking-[0.2em]" style={{ color: C.secondary, opacity: 0.85 }}>
-                  {a.index}
-                </div>
-
-                {isUnknown && (
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute"
-                    style={{
-                      left: -40,
-                      top: -26,
-                      width: 300,
-                      height: 150,
-                      backdropFilter: "blur(9px)",
-                      WebkitBackdropFilter: "blur(9px)",
-                      maskImage: "radial-gradient(ellipse 60% 58% at 50% 50%, black 30%, transparent 78%)",
-                      WebkitMaskImage: "radial-gradient(ellipse 60% 58% at 50% 50%, black 30%, transparent 78%)",
-                    }}
-                  />
-                )}
-
-                <div
-                  style={{
-                    transform: `scale(${isActive ? 1.08 : 1})`,
-                    transformOrigin: "left top",
-                    transition: "transform 320ms cubic-bezier(0.22,1,0.36,1)",
-                    display: apertureId === a.dimensionId ? "none" : undefined,
-                  }}
-                >
-                  <div className="flex items-baseline gap-2.5">
-                    {selected && <span aria-hidden style={{ width: 2, height: f.size * 0.86, background: C.blue, display: "inline-block" }} />}
-                    <span
-                      data-anchor-title
-                      className="font-medium leading-tight tracking-[-0.01em]"
-                      style={{ fontSize: f.size, color: isUnknown ? C.amber : C.ink, whiteSpace: "nowrap" }}
-                    >
-                      {a.label}
-                    </span>
-                  </div>
-
-                  <div className="mt-1.5 flex items-center gap-2.5 font-mono" style={{ fontSize: f.meta, color: C.secondary }}>
-                    {isUnknown ? (
-                      <span style={{ color: C.amber }}>Evidence incomplete</span>
-                    ) : (
-                      <>
-                        <span>{a.evidenceCount} evidence</span>
-                        <BarGlyph />
-                        {a.conflictCount > 0 && (
-                          <span className="flex items-center gap-1.5" style={{ color: C.coral }}>
-                            <span aria-hidden style={{ width: 5, height: 5, borderRadius: 1, background: C.coral, display: "inline-block" }} />
-                            {a.conflictCount} conflict
-                          </span>
-                        )}
-                        {!a.hasInterpretation && <span>AI interpretation temporarily unavailable</span>}
-                      </>
-                    )}
-                  </div>
-
-
-
-                  {/* §3：hover 轻量——一句摘要 + ≤2 条微证据（无动作行、无长 leader） */}
-                  {isActive && hoverId === a.dimensionId && (
-                    <div className="mt-2.5 w-[290px]" style={{ animation: "v5-in 200ms ease-out" }}>
-                      {summary && !isUnknown && (
-                        <p className="text-[12.5px] leading-relaxed" style={{ color: C.secondary }}>
-                          {trimSummary(summary, 42)}
-                        </p>
-                      )}
-                      {!isUnknown && payload && (
-                        <div className="mt-2 space-y-1">
-                          {evidenceAnnotations(payload, a.dimensionId, 2).map((r) => (
-                            <div key={r.index} className="flex items-baseline justify-between gap-3 font-mono text-[11px]">
-                              <span style={{ color: C.secondary }}>{r.name}</span>
-                              <span style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{r.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {isUnknown && dim?.missingInformation && (
-                        <ul className="space-y-0.5">
-                          {dim.missingInformation.slice(0, 2).map((m) => (
-                            <li key={m} className="font-mono text-[10.5px]" style={{ color: C.amber }}>
-                              · {m}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            )
-          })}
+          {payload && (
+            <CanvasAnchorLayer
+              payload={payload}
+              anchors={visible}
+              positionOf={anchorPos}
+              activeDimensionId={activeId}
+              apertureDimensionId={apertureId}
+              hoverDimensionId={hoverId}
+              selectedDimensionIds={selection}
+              focusSet={focusSet}
+              revealCount={revealCount}
+              showHitAreas={hitAreas}
+              setHoverDimensionId={setHoverId}
+              setSelectedDimensionIds={setSelection}
+              onRemoveDimension={removeAddedDimension}
+            />
+          )}
 
           {/* Focus Aperture（§5–§14/§33）：专属排除区 + 半透明白面，非 SaaS 卡 */}
           {/* 菜单项里的 ref 读取发生在点击回调内（非渲染期），编译器保守报错 */}
@@ -2195,6 +2699,9 @@ export default function ResearchCanvas() {
                       { label: "Pin summary", key: "pin", run: () => pinNote(a) },
                       { label: "Ask about this", key: "ask", run: () => focusAiLensRef.current?.({ type: "dimension", dimensionId: a.dimensionId }) },
                       { label: "Park", key: "park", run: () => park(a.dimensionId) },
+                      ...(a.origin !== "ai_initial"
+                        ? [{ label: "Remove from research", key: "remove", run: () => removeAddedDimension(a.dimensionId) }]
+                        : []),
                     ].map((item) => (
                       <button
                         key={item.key}
@@ -2205,7 +2712,7 @@ export default function ResearchCanvas() {
                           setMenuOpen(false)
                         }}
                         className="block w-full px-3 text-left font-mono text-[11px] hover:bg-black/[0.04]"
-                        style={{ color: C.ink, minHeight: 36 }}
+                        style={{ color: item.key === "remove" ? C.coral : C.ink, minHeight: 36 }}
                       >
                         {item.label}
                       </button>
@@ -2216,93 +2723,11 @@ export default function ResearchCanvas() {
             )
           })()}
 
-          {/* AI Suggested Dimension（§28/§29/§47） */}
-          {suggestions.map((s, i) => (
-            <div
-              key={s.label}
-              data-suggestion={s.label}
-              data-hit="suggestion"
-              className="absolute"
-              style={{ left: 150 + i * 250, top: 700, opacity: i === 0 ? 0.95 : 0.6, zIndex: 5, ...hitStyle(hitAreas) }}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                suggestRef.current = { label: s.label, clientX: e.clientX, clientY: e.clientY }
-              }}
-            >
-              <button
-                type="button"
-                data-ui
-                data-suggestion-trigger={s.label}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setSuggestOpen((cur) => (cur === s.label ? null : s.label))
-                }}
-                className="flex items-baseline gap-2"
-                style={{ minHeight: 36, cursor: "pointer" }}
-              >
-                <span className="text-[15px]" style={{ color: C.blue }}>
-                  +
-                </span>
-                <span className="whitespace-nowrap text-[15px]" style={{ color: C.ink, borderBottom: "1px dashed rgba(17,21,27,0.28)", paddingBottom: 2 }}>
-                  {s.label}
-                </span>
-              </button>
-              <div className="whitespace-nowrap pl-5 font-mono text-[10px] tracking-[0.18em]" style={{ color: C.secondary, opacity: 0.8 }}>
-                suggested research
-              </div>
-              {suggestOpen === s.label && (
-                <div
-                  data-ui
-                  data-suggest-pop
-                  className="absolute bottom-full left-0 mb-2 w-[300px] border-l pl-3"
-                  style={{ borderColor: "rgba(17,21,27,0.2)", animation: "v5-in 220ms ease-out" }}
-                >
-                  <p className="text-[12px] leading-relaxed" style={{ color: C.secondary }}>
-                    {s.rationale || "该研究方向由 StockLens 依据当前证据结构建议。"}
-                  </p>
-                  <div className="mt-1.5 font-mono text-[10px] tracking-[0.16em]" style={{ color: C.secondary }}>
-                    {s.capabilityRefs?.length ? `${s.capabilityRefs.length} CAPABILITIES` : "CAPABILITY: PARTIAL"}
-                  </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    <button
-                      type="button"
-                      data-suggest-add
-                      onClick={() => void addDimension(s.label)}
-                      className="rounded-[4px] px-3 text-white"
-                      style={{ background: C.blue, minHeight: 36, fontSize: 11 }}
-                    >
-                      Add to research
-                    </button>
-                    <button type="button" onClick={() => setSuggestOpen(null)} className="font-mono text-[10.5px]" style={{ color: C.secondary, minHeight: 36 }}>
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* suggestion 拖动 ghost */}
-          {suggestDrag && (
-            <div className="pointer-events-none absolute" style={{ left: suggestDrag.x - 60, top: suggestDrag.y - 14, zIndex: 40 }}>
-              <span
-                className="whitespace-nowrap rounded-[4px] px-2 py-1 text-[13px]"
-                style={{
-                  background: suggestDrag.over ? C.blue : "rgba(255,255,255,0.92)",
-                  color: suggestDrag.over ? "#fff" : C.ink,
-                  border: `1px solid ${C.hair}`,
-                }}
-              >
-                {suggestDrag.over ? "Release to add" : suggestDrag.label}
-              </span>
-            </div>
-          )}
-
           {/* Add Dimension resolving 态（§30） */}
           {adding && (
             <div className="pointer-events-none absolute" style={{ left: adding.x - 20, top: adding.y - 20, zIndex: 30 }}>
               <div className="font-mono text-[10px]" style={{ color: C.secondary }}>
-                08
+                {String(anchors.length + 1).padStart(2, "0")}
               </div>
               <div className="text-[22px] font-medium" style={{ color: C.ink }}>
                 {adding.label}
@@ -2371,6 +2796,26 @@ export default function ResearchCanvas() {
           ))}
         </div>
 
+        {/* 待加入建议从公司信息栏拖出时使用屏幕坐标，不跟随世界缩放。 */}
+        {suggestDrag && (
+          <div
+            data-suggestion-ghost
+            className="pointer-events-none absolute z-40"
+            style={{ left: suggestDrag.x - 62, top: suggestDrag.y - 18 }}
+          >
+            <span
+              className="whitespace-nowrap rounded-full border px-3 py-2 text-[12px] shadow-lg"
+              style={{
+                background: suggestDrag.over ? C.blue : "rgba(255,255,255,0.96)",
+                color: suggestDrag.over ? "#fff" : C.ink,
+                borderColor: suggestDrag.over ? C.blue : C.hair,
+              }}
+            >
+              {suggestDrag.over ? "松开并加入研究" : suggestDrag.label}
+            </span>
+          </div>
+        )}
+
         {marquee && (
           <div
             className="pointer-events-none absolute z-30"
@@ -2387,11 +2832,22 @@ export default function ResearchCanvas() {
       </div>
 
       {/* READING SHEET（§21–§24：复用 Claim Spine / Evidence / Ask / Challenge） */}
-      {readingId && payload && readingDimension && readingEvidenceId && (
+      {!readingId && payload && (
+        <MobileResearchList
+          payload={payload}
+          isRecordedSample={isRecordedSample}
+          onOpenDimension={(dimensionId) => {
+            const anchor = anchors.find((item) => item.dimensionId === dimensionId)
+            if (anchor) openReading(anchor)
+          }}
+        />
+      )}
+
+      {readingId && payload && readingDimension && readingEvidenceId && !(workspaceLab && aiOpen) && (
         <div
           data-evidence-breadcrumb
-          className="absolute z-[70] flex items-center gap-2 font-mono text-[10.5px]"
-          style={{ left: `calc(30% + 3rem)`, top: 12, color: C.secondary }}
+          className="absolute z-[70] hidden items-center gap-2 font-mono text-[10.5px] md:flex"
+          style={{ left: workspaceLab && aiOpen ? "3rem" : `calc(30% + 3rem)`, top: 12, color: C.secondary }}
         >
           <button
             type="button"
@@ -2441,7 +2897,7 @@ export default function ResearchCanvas() {
       {readingId && payload && readingDimension && (
         <div
           data-reading-sheet
-          className="absolute right-0 top-0 z-40 h-full overflow-hidden"
+          className="absolute right-0 top-0 z-[80] h-full overflow-hidden md:z-40"
           style={{
             width: `calc(100% - ${panelW}px)`,
             background: C.bg,
@@ -2460,15 +2916,37 @@ export default function ResearchCanvas() {
             onAsk={(claimId) => focusAiLens({ type: "claim", claimId })}
             escOwnedByParent
             onBack={closeReading}
+            updatedClaimIds={updatedClaims?.stockCode === payload.company.stockCode ? updatedClaims.ids : undefined}
+            onReorganize={() => void runReorganize(readingDimension)}
+            reorganizing={reorganizingDimId === readingDimension.dimensionId}
           />
         </div>
       )}
 
       {/* ---- CHROME ---- */}
+      {!(workspaceLab && aiOpen && readingId) && (
       <header className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between px-8 py-6">
-        <span className="font-mono text-[11px] tracking-[0.3em]" style={{ color: C.ink }}>
-          STOCKLENS
-        </span>
+        <div className="flex items-center gap-3">
+          <WipeLink
+            href={HOME_HREF}
+            data-home-link
+            aria-label="返回 StockLens 首页"
+            className="pointer-events-auto inline-flex items-center gap-3 font-mono text-[11px] tracking-[0.3em] transition hover:opacity-65"
+            style={{ color: C.ink, minHeight: 36 }}
+          >
+            <StockLensMark size={31} decorative />
+            <span>STOCKLENS</span>
+          </WipeLink>
+          {isRecordedSample && (
+            <span
+              data-recorded-sample
+              className="border px-2 py-1 font-mono text-[9px] tracking-[0.12em]"
+              style={{ borderColor: C.hair, color: C.secondary }}
+            >
+              录制示例 · 2026-09-30
+            </span>
+          )}
+        </div>
         {readingId && payload && readingDimension ? (
           <button
             type="button"
@@ -2481,7 +2959,21 @@ export default function ResearchCanvas() {
             ← {payload.company.stockName} / <span style={{ color: C.ink }}>{readingDimension?.label}</span>
           </button>
         ) : (
-          <div data-ui className="pointer-events-auto relative flex items-center gap-5 font-mono text-[12px] tracking-[0.14em]" style={{ color: C.secondary }}>
+          <div data-ui className="pointer-events-auto relative hidden items-center gap-5 font-mono text-[12px] tracking-[0.14em] md:flex" style={{ color: C.secondary }}>
+            <WipeLink
+              href={RESEARCH_LIBRARY_HREF}
+              data-research-library-link
+              className="flex items-center gap-2 border-r pr-5 transition hover:opacity-80"
+              style={{ minHeight: 36, borderColor: C.hair, color: C.ink }}
+            >
+              <span aria-hidden>▦</span>
+              <span>研究库</span>
+              {libraryCompanies.length > 0 && (
+                <span className="text-[9px] tracking-normal" style={{ color: C.secondary }}>
+                  {String(libraryCompanies.length).padStart(2, "0")}
+                </span>
+              )}
+            </WipeLink>
             <SearchGlyph />
             <button
               type="button"
@@ -2525,6 +3017,33 @@ export default function ResearchCanvas() {
             >
               更换公司 →
             </button>
+            {payload && (
+              <button
+                type="button"
+                data-ui
+                data-export-notes
+                onClick={() => setNotesOpen(true)}
+                className="transition hover:opacity-80"
+                style={{ minHeight: 36, cursor: "pointer" }}
+              >
+                导出笔记
+              </button>
+            )}
+            {payload && hasStaleTimeSensitiveEvidence(payload) && (
+              <button
+                type="button"
+                data-ui
+                data-refresh-evidence
+                disabled={evidenceRefreshing}
+                onClick={() => void runEvidenceRefresh()}
+                className="transition hover:opacity-80 disabled:opacity-60"
+                style={{ minHeight: 36, cursor: evidenceRefreshing ? "wait" : "pointer", color: C.amber }}
+              >
+                {evidenceRefreshing
+                  ? "刷新中…"
+                  : `数据已过期（截至 ${latestTimeSensitiveDataAsOf(payload) ?? "未知"}）· 快速刷新`}
+              </button>
+            )}
             {resolvingName && (
               <span data-resolving className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
                 Resolving {resolvingName}…
@@ -2664,11 +3183,60 @@ export default function ResearchCanvas() {
                     </li>
                   ))}
                 </ul>
+                {companySearched.length > 0 && companyResults.length === 0 && (
+                  <div data-company-search-empty className="mt-3 border-t pt-3" style={{ borderColor: C.hair }}>
+                    <div className="flex items-center gap-2">
+                      <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 13 13"
+                        aria-hidden
+                        className="shrink-0"
+                        style={{ color: C.secondary }}
+                      >
+                        <circle cx="5.5" cy="5.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                        <path d="M8.6 8.6 12 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      </svg>
+                      <span className="text-[12.5px]" style={{ color: C.ink }}>
+                        没有匹配的 A 股
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="font-mono text-[9.5px] tracking-[0.16em]" style={{ color: C.secondary }}>
+                        范围
+                      </span>
+                      {["沪", "深", "北"].map((market) => (
+                        <span
+                          key={market}
+                          className="rounded-full border px-[7px] py-px text-[9.5px] leading-[14px]"
+                          style={{ borderColor: C.hair, color: C.secondary }}
+                        >
+                          {market}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-[1.55]" style={{ color: C.secondary }}>
+                      仅 A 股，港股 / 美股不在覆盖内
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
       </header>
+      )}
+
+      {/* 快刷结果提示（全局可见，不依赖侧板开关；阶段 4） */}
+      {refreshNote && (
+        <div
+          data-refresh-note
+          className="pointer-events-none absolute left-1/2 top-20 z-[60] -translate-x-1/2 border px-4 py-2 font-mono text-[11px]"
+          style={{ borderColor: C.hair, background: "rgba(255,255,255,0.96)", color: C.ink, maxWidth: "80vw" }}
+        >
+          {refreshNote}
+        </div>
+      )}
 
       {payload && !readingId && (
         <div className="pointer-events-none absolute left-8 top-[112px] z-20 max-w-[320px]">
@@ -2679,6 +3247,73 @@ export default function ResearchCanvas() {
           <div className="mt-2 font-mono text-[12.5px] tracking-[0.2em]" style={{ color: C.secondary }}>
             {payload.company.stockCode} · {payload.company.industryName ?? "—"}
           </div>
+
+          <MarketTrendStrip history={payload.marketHistory} compact />
+
+          {suggestions.length > 0 && (
+            <div
+              data-pending-suggestions
+              data-ui
+              className="pointer-events-auto mt-5 hidden w-[282px] md:block"
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            >
+              <div className="mb-2.5 flex items-center justify-between">
+                <span className="text-[12px] font-semibold">待加入</span>
+                <span className="font-mono text-[8.5px] tracking-[0.14em]" style={{ color: C.secondary }}>
+                  AI 建议 · {suggestions.length}
+                </span>
+              </div>
+              <div>
+                {suggestions.map((suggestion, suggestionIndex) => {
+                  const isAdding = adding?.label === suggestion.label
+                  const didFail = failedAngle?.label === suggestion.label
+                  return (
+                    <button
+                      key={suggestion.label}
+                      type="button"
+                      data-suggestion-trigger={suggestion.label}
+                      disabled={adding !== null}
+                      title={suggestion.rationale}
+                      onPointerDown={(event) => {
+                        if (adding) return
+                        event.stopPropagation()
+                        suggestRef.current = {
+                          label: suggestion.label,
+                          clientX: event.clientX,
+                          clientY: event.clientY,
+                        }
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (suppressSuggestionClickRef.current) {
+                          suppressSuggestionClickRef.current = false
+                          return
+                        }
+                        void addDimension(suggestion.label)
+                      }}
+                      className="group flex w-full items-start gap-3 border-b py-3 text-left transition last:border-b-0 hover:translate-x-1 disabled:cursor-wait disabled:opacity-55"
+                      style={{ borderColor: "rgba(17,21,27,0.08)" }}
+                    >
+                      <span
+                        className="mt-0.5 shrink-0 font-mono text-[9px] tracking-[0.12em] transition"
+                        style={{ color: didFail ? C.coral : C.blue }}
+                      >
+                        {isAdding ? "··" : didFail ? "!" : `+${String(suggestionIndex + 1).padStart(2, "0")}`}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[14px] font-medium leading-tight tracking-[-0.01em] group-hover:text-[#2F66FF]">{suggestion.label}</span>
+                        <span className="mt-1 block font-mono text-[8.5px] tracking-[0.05em]" style={{ color: didFail ? C.coral : C.secondary }}>
+                          {isAdding ? "正在加入…" : didFail ? "加入失败 · 点击重试" : "点击加入 · 拖动可定位"}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2695,10 +3330,12 @@ export default function ResearchCanvas() {
         onPointerDown={() => setAiOpen(true)}
         className="absolute bottom-6 z-[55] flex items-center gap-3 rounded-full border px-4 backdrop-blur transition-all"
         style={{
-          left: readingId ? panelW / 2 : viewport.width / 2,
+          display: workspaceLab && aiOpen ? "none" : undefined,
+          left: isMobile ? viewport.width / 2 : readingId ? panelW / 2 : viewport.width / 2,
           transform: "translateX(-50%)",
-          width: 580,
+          width: isMobile ? "calc(100% - 32px)" : 580,
           height: 50,
+          zIndex: workspaceLab ? 95 : undefined,
           borderColor: aiOpen ? "rgba(47,102,255,0.45)" : "rgba(17,21,27,0.20)",
           background: aiOpen ? "rgba(255,255,255,0.97)" : "rgba(255,255,255,0.9)",
           boxShadow: aiOpen
@@ -2759,7 +3396,7 @@ export default function ResearchCanvas() {
       </div>
 
       {/* §30：聚焦后的建议问题（最多 3，随 scope 变化）；线程有历史时让位，避免遮住 Retry/Stop */}
-      {aiOpen &&
+      {!workspaceLab && aiOpen &&
         aiInput.length === 0 &&
         aiStatus === "idle" &&
         (aiThreads[payload?.company.stockCode ?? ""]?.length ?? 0) === 0 && (
@@ -2784,7 +3421,7 @@ export default function ResearchCanvas() {
       )}
 
       {/* §14/§15：Research Thread（editorial；向上展开；单一 thread 模型） */}
-      {aiOpen && payload && (aiThreads[payload.company.stockCode]?.length ?? 0) > 0 && (
+      {!workspaceLab && aiOpen && payload && (aiThreads[payload.company.stockCode]?.length ?? 0) > 0 && (
         <div
           data-ui
           data-ai-thread
@@ -2968,14 +3605,14 @@ export default function ResearchCanvas() {
                         const label = ev?.title ?? id.replace(/^EV_/, "").slice(0, 12)
                         return (
                           <button
-                            key={id}
+                            key={`${id}-${j}`}
                             type="button"
                             data-ai-anchor={id}
                             onClick={() => {
                               setReadingEvidenceId(id)
                               const ev2 = payload.evidence.find((e) => e.evidenceId === id)
                               if (ev2) {
-                                const dim = payload.dimensions.find((d) => d.label === ev2.dimension)
+                                const dim = payload.dimensions.find((d) => d.evidenceIds.includes(id))
                                 if (dim) {
                                   setReadingId(dim.dimensionId)
                                   return
@@ -3018,7 +3655,7 @@ export default function ResearchCanvas() {
       )}
 
       {/* §8/§9：用户上翻时不强制拉回底部，出现 ↓ New response */}
-      {hasNewResponse && aiOpen && (
+      {hasNewResponse && aiOpen && !workspaceLab && (
         <button
           type="button"
           data-ui
@@ -3094,6 +3731,34 @@ export default function ResearchCanvas() {
         </div>
       )}
 
+      {removedDimension && (
+        <div
+          data-dimension-removed-toast
+          role="status"
+          aria-live="polite"
+          className="absolute z-[72] flex items-center gap-3 rounded-full border px-4 py-2.5 text-[11.5px] shadow-[0_10px_30px_rgba(17,21,27,0.10)]"
+          style={{
+            left: viewport.width / 2,
+            bottom: 78,
+            transform: "translateX(-50%)",
+            borderColor: C.hair,
+            background: "rgba(255,255,255,0.97)",
+            color: C.secondary,
+          }}
+        >
+          <span>已移除“{removedDimension.dimension.label}”</span>
+          <button
+            type="button"
+            data-undo-remove-dimension
+            onClick={undoRemovedDimension}
+            className="font-medium"
+            style={{ color: C.blue, minHeight: 24 }}
+          >
+            撤销
+          </button>
+        </div>
+      )}
+
       {/* §1–§21：Full-Screen Research Transition（Transition 就是当前页面） */}
       {pendingCompany && (switchPhase === "resolving" || switchPhase === "failed" || switchMorph) && (
         <CompanyTransition
@@ -3137,7 +3802,7 @@ export default function ResearchCanvas() {
       )}
 
       {/* §C20：首次访问轻提示（非 Modal），关闭后不再自动出现 */}
-      {demoPrompt && demoIndex === null && payload && companyQuery === null && (
+      {!workspaceLab && demoPrompt && demoIndex === null && payload && companyQuery === null && (
         <div
           data-demo-prompt
           className="absolute right-8 top-20 z-[62] w-[300px] border p-4 backdrop-blur"
@@ -3233,6 +3898,22 @@ export default function ResearchCanvas() {
         <span aria-hidden style={{ width: 1, height: 14, background: C.hair, display: "inline-block", margin: "0 3px" }} />
         <button type="button" data-zoom-fit onClick={fitSelection} className="px-2" style={{ minWidth: 36, minHeight: 36 }} title="Fit selection (Shift+2)">
           ⛶
+        </button>
+        <button
+          type="button"
+          data-auto-arrange
+          data-layout-mode={Object.keys(positions).length > 0 ? "manual" : "auto"}
+          onClick={autoArrange}
+          className="rounded-full px-3 text-[10px] font-medium"
+          style={{
+            minWidth: Object.keys(positions).length > 0 ? 88 : 72,
+            minHeight: 30,
+            color: C.blue,
+            background: "rgba(47,102,255,0.08)",
+          }}
+          title={Object.keys(positions).length > 0 ? "清除手动位置并按编号重新排列" : "当前已按编号自动排列"}
+        >
+          {Object.keys(positions).length > 0 ? `↻ 恢复自动 · ${Object.keys(positions).length}` : "✓ 自动排列"}
         </button>
         <button
           type="button"
@@ -3407,6 +4088,45 @@ export default function ResearchCanvas() {
         }
       `}</style>
     </main>
+    {workspaceLab && aiOpen && payload && (
+      <ResearchSidekickPanel
+        payload={payload}
+        width={isMobile ? viewport.width : sidekickWidth}
+        mode={sidekickMode}
+        turns={sidekickTurns}
+        contextItems={sidekickContext}
+        input={aiInput}
+        status={aiStatus}
+        draft={sidekickDraft}
+        notice={sidekickNotice ?? aiNotice}
+        suggestions={aiSuggestionsFor(aiScope, payload)}
+        onWidthChange={setSidekickWidth}
+        onClose={() => setAiOpen(false)}
+        onModeChange={(mode) => {
+          setSidekickMode(mode)
+          setSidekickNotice(null)
+        }}
+        onInputChange={setAiInput}
+        onSubmit={submitSidekick}
+        onStop={stopAi}
+        onSuggestion={setAiInput}
+        onEvidence={openEvidenceFromSidekick}
+        onDimension={(dimensionId) => {
+          const anchor = anchors.find((item) => item.dimensionId === dimensionId)
+          if (anchor) openAperture(anchor)
+        }}
+        onSaveTurn={saveSidekickTurn}
+        onConfirmDraft={() => void confirmSidekickDraft()}
+        onDiscardDraft={() => {
+          setSidekickDraft(null)
+          setSidekickNotice(null)
+        }}
+      />
+    )}
+      {payload && (
+        <ResearchNotesExport payload={payload} open={notesOpen} onClose={() => setNotesOpen(false)} />
+      )}
+    </div>
   )
 }
 
@@ -3418,32 +4138,6 @@ function trimSummary(text: string, limit: number): string {
   const lastPunct = Math.max(cut.lastIndexOf("，"), cut.lastIndexOf("；"), cut.lastIndexOf("。"))
   const base = lastPunct > limit * 0.45 ? cut.slice(0, lastPunct) : cut
   return `${base}。`
-}
-
-function BarGlyph() {
-  return (
-    <svg width="12" height="10" aria-hidden>
-      {[0, 1, 2].map((i) => (
-        <rect key={i} x={i * 4} y={6 - i * 2.4} width="2.4" height={4 + i * 2.4} fill={C.secondary} opacity={0.55} />
-      ))}
-    </svg>
-  )
-}
-
-function TrendGlyph({ negative }: { negative: boolean }) {
-  return (
-    <svg width="14" height="10" aria-hidden>
-      {negative ? (
-        <path d="M0 7 Q 4 3 7 6 T 13 4" fill="none" stroke={C.coral} strokeWidth="1.2" />
-      ) : (
-        <>
-          <rect x="0" y="5" width="2.6" height="4" fill={C.blue} opacity="0.5" />
-          <rect x="4" y="3" width="2.6" height="6" fill={C.blue} opacity="0.7" />
-          <rect x="8" y="1" width="2.6" height="8" fill={C.blue} />
-        </>
-      )}
-    </svg>
-  )
 }
 
 function SearchGlyph() {

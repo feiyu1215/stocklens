@@ -418,9 +418,11 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
     [wipeTo, goToSurface],
   )
 
-  // ⌘K / Ctrl+K：画布的 ⌘K 绑定的是 AI Lens（画布路由内），首页/研究库路由互不冲突
+  // ⌘K / Ctrl+K：画布的 ⌘K 绑定的是 AI Lens（画布路由内），首页/研究库路由互不冲突。
+  // 2026-10-09 起助手条只在研究库面出现，⌘K 也只在研究库面生效（start 面有大搜索框，不叠助手）。
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (surfaceRef.current !== "library") return
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setAssistantOpen(true)
@@ -1006,14 +1008,18 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
         </div>
       )}
 
-      {/* 底部中央常驻对话输入条（在 AssistantPanel 内）+ 向上弹出的对话面板 */}
-      <AssistantPanel
-        open={assistantOpen}
-        onClose={() => setAssistantOpen(false)}
-        onOpen={() => setAssistantOpen(true)}
-        pageContext={surface === "library" ? "library" : "home"}
-        onExecute={executeAssistantAction}
-      />
+      {/* 底部中央常驻对话输入条（在 AssistantPanel 内）+ 向上弹出的对话面板。
+          2026-10-09 用户拍板：首页 start 面已有大搜索框，不再叠一条底部输入条；
+          助手条只在研究库（与对比页）出现。 */}
+      {surface === "library" && (
+        <AssistantPanel
+          open={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+          onOpen={() => setAssistantOpen(true)}
+          pageContext="library"
+          onExecute={executeAssistantAction}
+        />
+      )}
 
       <style>{`
         @keyframes stocklens-surface-wipe {

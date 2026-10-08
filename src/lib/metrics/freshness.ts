@@ -86,21 +86,31 @@ export function classifyFreshness(input: {
   period?: string
   retrievedAt?: string
   now?: Date
+  /**
+   * 显式覆盖时间敏感判定（2026-10-09 用户拍板）：
+   * 带「事件日期」的具体事件（分红除权、异动记录等）是历史事实，不按自然日判过期——
+   * 否则顶栏会永久显示"数据已过期"，且快刷永远无法解除。
+   * 不传时维持原判定（sourceFields domain + dimension 推断）。
+   */
+  timeSensitive?: boolean
+  /** 非时效类数据的日期语义标签（默认"报告期"；事件类传"事件日期"） */
+  basisLabel?: string
 }): DataFreshness {
   const { sourceFields, period, retrievedAt } = input
   const now = input.now ?? new Date()
-  const timeSensitive = isTimeSensitive(sourceFields, input.dimension)
+  const timeSensitive = input.timeSensitive ?? isTimeSensitive(sourceFields, input.dimension)
   const base = { timeSensitive, retrievedAt }
 
   if (!timeSensitive) {
-    // 报告期数据：不按自然日判定时效
+    // 报告期/事件日期类数据：不按自然日判定时效
+    const label = input.basisLabel ?? "报告期"
     return {
       ...base,
       status: "fresh",
       dataAsOf: period,
       reason: period
-        ? `报告期数据：以报告期为准，不按自然日判定时效（最新报告期 ${period}）`
-        : "报告期数据：以报告期为准，不按自然日判定时效",
+        ? `${label}数据：以${label}为准，不按自然日判定时效（${label} ${period}）`
+        : `${label}数据：以${label}为准，不按自然日判定时效`,
     }
   }
 

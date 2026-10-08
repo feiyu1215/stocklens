@@ -10,7 +10,6 @@ import ResearchNotesExport from "@/components/v5/ResearchNotesExport"
 import {
   applyReorganizedDimension,
   hasStaleTimeSensitiveEvidence,
-  latestTimeSensitiveDataAsOf,
   mergeRefreshedTruth,
 } from "@/lib/v5/refresh-merge"
 import { streamInitResearchSpace, type InitPhaseFrame } from "@/lib/v5/init-stream"
@@ -2925,7 +2924,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
 
       {/* ---- CHROME ---- */}
       {!(workspaceLab && aiOpen && readingId) && (
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between px-8 py-6">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-4 whitespace-nowrap px-8 py-6">
         <div className="flex items-center gap-3">
           <WipeLink
             href={HOME_HREF}
@@ -2975,7 +2974,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
             ← {payload.company.stockName} / <span style={{ color: C.ink }}>{readingDimension?.label}</span>
           </button>
         ) : (
-          <div data-ui className="pointer-events-auto relative hidden items-center gap-5 font-mono text-[12px] tracking-[0.14em] md:flex" style={{ color: C.secondary }}>
+          <div data-ui className="pointer-events-auto relative hidden items-center gap-4 whitespace-nowrap font-mono text-[12px] tracking-[0.14em] md:flex" style={{ color: C.secondary }}>
             <WipeLink
               href={RESEARCH_LIBRARY_HREF}
               data-research-library-link
@@ -3057,7 +3056,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
               >
                 {evidenceRefreshing
                   ? "刷新中…"
-                  : `数据已过期（截至 ${latestTimeSensitiveDataAsOf(payload) ?? "未知"}）· 快速刷新`}
+                  : `行情数据已过期 · 快速刷新`}
               </button>
             )}
             {resolvingName && (

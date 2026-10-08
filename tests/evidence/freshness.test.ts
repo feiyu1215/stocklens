@@ -123,7 +123,7 @@ describe("P0 · 证据层传播", () => {
     expect(facts[0].statement).not.toContain("当前状态无法由该数据确认")
   })
 
-  it("事件核查证据也带新鲜度（过期时同样声明）", () => {
+  it("事件证据按事件日期判定（历史事实不按自然日判过期；2026-10-09 用户拍板取代旧口径）", () => {
     const ctx = {
       events: [
         {
@@ -146,8 +146,13 @@ describe("P0 · 证据层传播", () => {
     }
     const evs = buildEventEvidence(ctx as never, { now: NOW })
     const fact = evs.find((e) => e.type === "fact")
-    expect(fact?.freshness?.status).toBe("stale")
-    expect(fact?.statement).toContain("当前状态无法由该数据确认")
+    // 事件日期是很久以前 → 依旧是 fresh（以事件日期为准），statement 不带 stale 限定语，
+    // 顶栏也不会因此永久显示"数据已过期"
+    expect(fact?.freshness?.status).toBe("fresh")
+    expect(fact?.freshness?.timeSensitive).toBe(false)
+    expect(fact?.freshness?.dataAsOf).toBe("2026-08-01")
+    expect(fact?.freshness?.reason).toContain("事件日期")
+    expect(fact?.statement).not.toContain("当前状态无法由该数据确认")
   })
 
   it("新鲜度进入 AI 上下文（时间敏感证据必带 freshness/数据日期/理由）", () => {

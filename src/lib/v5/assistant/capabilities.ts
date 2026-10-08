@@ -160,7 +160,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     id: "assistant.explain",
     name: "金融概念解释",
     desc: "解释市盈率、ROE、TTM 等金融/财务概念，不涉及任何公司的真实数值",
-    page: "AI 助手（首页 / 研究库）",
+    page: "AI 助手（研究库 / 对比页；首页 start 面用大搜索框）",
     how: "直接问「ROE 是什么意思」",
     limits: "不含个股数据与投资建议；公司相关问题会引导进入研究空间",
   },

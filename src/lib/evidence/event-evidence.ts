@@ -18,13 +18,20 @@ function eventToFact(e: StockEvent, opts?: { now?: Date; retrievedAt?: string })
   const sourceFields = [
     { source: "fuyao" as const, domain: "prices" as const, field: e.sourceEndpoint, date: e.eventDate },
   ]
-  // Task 17.1 §P0：事件核查同样属于时间敏感数据（"当前无记录"只对核查当日成立）
+  // 新鲜度口径（2026-10-09 用户拍板，取代 Task 17.1 §P0 的旧口径）：
+  // 具体事件（分红除权、异动记录、热榜点位）是**带日期的历史事实**——它发生了就是发生了，
+  // 不按自然日判"过期"。旧口径把事件日期当时效数据，导致顶栏永久显示"数据已过期（截至 X）"，
+  // 且快速刷新（重算也改变不了事件日期）永远无法解除，用户感知为"刷了也白刷"。
+  // "当前无记录只对核查当日成立"的时效边界仍由 UNKNOWN 覆盖类证据与 AI 护栏表达，
+  // 不依赖给历史事件打 stale 戳。
   const freshness = classifyFreshness({
     sourceFields,
     dimension: DIMENSION,
     period: e.eventDate,
     retrievedAt: opts?.retrievedAt,
     now: opts?.now,
+    timeSensitive: false,
+    basisLabel: "事件日期",
   })
   return {
     evidenceId: `EV_FACT_RISK_${e.eventId.replace(/^EVT_/, "")}`,

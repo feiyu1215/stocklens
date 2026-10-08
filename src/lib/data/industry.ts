@@ -199,14 +199,17 @@ export async function fetchIndustryContextData(
  */
 export async function gatherMarketContext(stockCode: string): Promise<MarketContext> {
   const errors: MarketContext["errors"] = []
-  const csi300Result = await Promise.allSettled([fetchCsi300Prices()])
-  const industryResult = await Promise.allSettled([fetchIndustryContextData(stockCode)])
+  // 基准与行业上下文互不依赖，并行获取，避免两个 15 秒级上游超时串行叠加。
+  const [csi300Result, industryResult] = await Promise.allSettled([
+    fetchCsi300Prices(),
+    fetchIndustryContextData(stockCode),
+  ])
 
   let csi300: IndexPrice[] = []
-  if (csi300Result[0].status === "fulfilled") {
-    csi300 = csi300Result[0].value
+  if (csi300Result.status === "fulfilled") {
+    csi300 = csi300Result.value
   } else {
-    const err = csi300Result[0].reason
+    const err = csi300Result.reason
     errors.push({
       domain: "benchmark",
       message: err instanceof Error ? err.message : String(err),
@@ -215,10 +218,10 @@ export async function gatherMarketContext(stockCode: string): Promise<MarketCont
   }
 
   let industry: MarketContext["industry"] | undefined
-  if (industryResult[0].status === "fulfilled") {
-    industry = industryResult[0].value ?? undefined
+  if (industryResult.status === "fulfilled") {
+    industry = industryResult.value ?? undefined
   } else {
-    const err = industryResult[0].reason
+    const err = industryResult.reason
     errors.push({
       domain: "industry",
       message: err instanceof Error ? err.message : String(err),

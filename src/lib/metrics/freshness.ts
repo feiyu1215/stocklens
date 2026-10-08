@@ -50,7 +50,15 @@ export function parseDataDate(raw: string | undefined | null): Date | null {
   const day = Number(m[3])
   if (month < 1 || month > 12 || day < 1 || day > 31) return null
   const d = new Date(`${m[1]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00Z`)
-  return Number.isNaN(d.getTime()) ? null : d
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.getUTCFullYear() !== Number(m[1]) ||
+    d.getUTCMonth() + 1 !== month ||
+    d.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return d
 }
 
 /** 数据日期优先取 sourceFields[].date；其次才是可解析为日期的 period */
@@ -110,7 +118,13 @@ export function classifyFreshness(input: {
   const date = parseDataDate(dataAsOf)!
   const ageDays = daysBetween(now, date)
   if (ageDays < 0) {
-    return { ...base, status: "fresh", dataAsOf, ageDays, reason: `数据日期 ${dataAsOf}（日期晚于当前时间，按最新处理）` }
+    return {
+      ...base,
+      status: "unknown",
+      dataAsOf,
+      ageDays,
+      reason: `数据日期 ${dataAsOf} 晚于当前时间，可能存在时钟或数据异常，当前状态无法判断`,
+    }
   }
   if (ageDays > threshold) {
     return {

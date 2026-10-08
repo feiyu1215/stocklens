@@ -82,6 +82,14 @@ describe("P0 · 新鲜度判定", () => {
     expect(parseDataDate("2026-09-30")).not.toBeNull()
     expect(parseDataDate("")).toBeNull()
     expect(parseDataDate(undefined)).toBeNull()
+    expect(parseDataDate("2026-02-31")).toBeNull()
+  })
+
+  it("未来日期视为异常并返回 unknown", () => {
+    const f = classifyFreshness({ sourceFields: [price("2026-10-02")], dimension: "market", now: NOW })
+    expect(f.status).toBe("unknown")
+    expect(f.ageDays).toBe(-1)
+    expect(f.reason).toContain("晚于当前时间")
   })
 })
 

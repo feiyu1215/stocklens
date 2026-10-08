@@ -2,11 +2,7 @@ import "server-only"
 
 import { randomUUID } from "node:crypto"
 
-import { gatherStockData } from "@/lib/data/stock-data"
-import { gatherMarketContext, type MarketContext } from "@/lib/data/industry"
-import { calculateMetrics, type MarketContextInput } from "@/lib/metrics/engine"
-import { buildEvidence } from "@/lib/evidence/engine"
-import { buildFinancialTrend } from "@/lib/metrics/trend"
+import { loadTruthForResearch } from "@/lib/research/init-space"
 import type { Evidence } from "@/lib/evidence/types"
 import { LLMConfigError, parseLLMJson, runLLM } from "./model"
 import {
@@ -26,21 +22,8 @@ const FOLLOWUP_TEMPERATURE = 0.2
 // 1800 是旧世代模型的预算；2026-09 DeepSeek 换代后（chat 别名指向推理型 Flash），
 // 推理 token 会挤占输出预算导致 JSON 截断，放宽到 4000
 const FOLLOWUP_MAX_TOKENS = 4000
-
-/** 与 diagnosis 编排器同一趋势访问器（复用 Task 02 差分算法） */
-function makeTrendLookup(periods: Parameters<typeof buildFinancialTrend>[0]) {
-  const trend = buildFinancialTrend(periods)
-  return {
-    quarterYoY: (
-      field: "revenueQuarterYoY" | "netProfitQuarterYoY" | "operatingCashflowQuarterYoY",
-      n: number,
-    ) =>
-      trend
-        .filter((p) => typeof p[field] === "number")
-        .map((p) => ({ period: p.period, value: p[field] as number }))
-        .slice(-n),
-  }
-}
+const DEFAULT_FOLLOWUP_BUDGET_MS = 55_000
+const MIN_LLM_CALL_MS = 1_000
 
 export interface FollowupResult {
   followupId: string
@@ -64,36 +47,31 @@ export async function runFollowup(input: {
   stockCode: string
   question: string
   focusEvidenceIds?: string[]
+  /** 路由级绝对截止时间；为响应序列化与平台开销预留余量。 */
+  deadlineAt?: number
 }): Promise<FollowupResult> {
   const followupId = randomUUID()
-  const [dataResp, marketCtx] = await Promise.all([
-    gatherStockData(input.stockCode),
-    gatherMarketContext(input.stockCode).catch((): MarketContext => ({ csi300: [], errors: [] })),
-  ])
-  const marketInput: MarketContextInput = {
-    csi300: marketCtx.csi300,
-    industry: marketCtx.industry
-      ? {
-          indexCode: marketCtx.industry.context.industryIndexCode,
-          indexName: marketCtx.industry.context.industryName,
-          prices: marketCtx.industry.prices,
-          valuations: marketCtx.industry.valuations,
-        }
-      : undefined,
-  }
-  const metricsResp = calculateMetrics(dataResp, marketInput)
-  const bundle = buildEvidence({
-    metrics: metricsResp.metrics,
-    trend: makeTrendLookup(dataResp.financial),
-    context: {
-      stockCode: input.stockCode,
-      stockName: dataResp.stock?.stockName ?? input.stockCode,
-      industry: marketCtx.industry?.context.industryName ?? dataResp.stock?.industry ?? null,
-      latestFinancialPeriod: metricsResp.latestFinancialPeriod,
-      latestPriceDate: metricsResp.latestPriceDate,
-      metricWarnings: metricsResp.warnings,
-      industryPricesAvailable: (marketCtx.industry?.prices.length ?? 0) > 0,
-      industryValuationAvailable: Boolean(marketCtx.industry?.valuations),
+  const deadlineAt = input.deadlineAt ?? Date.now() + DEFAULT_FOLLOWUP_BUDGET_MS
+  const { truth } = await loadTruthForResearch(input.stockCode)
+  const { dataResp, metrics: metricsResp } = truth
+  const bundle = { evidence: truth.evidence }
+
+  const llmTimeoutMs = () => Math.min(20_000, Math.max(0, deadlineAt - Date.now()))
+  const budgetFailure = (base: Omit<FollowupResult, "mode" | "synthesis" | "ai">): FollowupResult => ({
+    ...base,
+    mode: "followup",
+    synthesis: null,
+    ai: {
+      status: "failed",
+      trace: {
+        task: "diagnosis_synthesis",
+        model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+        promptVersion: FOLLOWUP_PROMPT_VERSION,
+        status: "failed",
+        latencyMs: 0,
+        retries: 0,
+        validationIssues: ["追问处理已达到本次请求的总耗时预算"],
+      },
     },
   })
 
@@ -119,6 +97,8 @@ export async function runFollowup(input: {
     }
   }
 
+  if (llmTimeoutMs() < MIN_LLM_CALL_MS) return budgetFailure(base)
+
   let first: Awaited<ReturnType<typeof runLLM>>
   try {
     first = await runLLM({
@@ -137,6 +117,8 @@ export async function runFollowup(input: {
       }),
       temperature: FOLLOWUP_TEMPERATURE,
       maxTokens: FOLLOWUP_MAX_TOKENS,
+      timeoutMs: llmTimeoutMs(),
+      networkRetries: 0,
     })
   } catch (err) {
     return {
@@ -190,6 +172,7 @@ export async function runFollowup(input: {
   let lastOutput = first.output
   let lastTrace = first.trace
   for (let repairRound = 1; repairRound <= 2; repairRound++) {
+    if (llmTimeoutMs() < MIN_LLM_CALL_MS) return budgetFailure(base)
     const repaired = await runLLM({
       task: "diagnosis_synthesis",
       promptVersion: FOLLOWUP_PROMPT_VERSION,
@@ -200,6 +183,8 @@ export async function runFollowup(input: {
       ),
       temperature: FOLLOWUP_TEMPERATURE,
       maxTokens: FOLLOWUP_MAX_TOKENS,
+      timeoutMs: llmTimeoutMs(),
+      networkRetries: 0,
     })
 
     if (repaired.trace.status === "failed") {

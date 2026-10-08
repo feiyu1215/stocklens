@@ -152,4 +152,32 @@ describe("gatherStockData —— 部分失败（partial failure）", () => {
     expect(resp.valuation).toBeNull()
     expect(resp.prices).toEqual([])
   })
+
+  it("财务指标失败时保留报表数据，并明确记录指标缺口", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubFetchByRoute((url) => {
+        if (url.pathname.includes("/tickers/search")) return { body: tickerSearchBody }
+        if (url.pathname.includes("income-statements")) return { body: incomeBody }
+        if (url.pathname.includes("cash-flow-statements")) return { body: cashflowBody }
+        if (url.pathname.includes("financials/indicators")) return { status: 500 }
+        if (url.pathname.includes("/valuations/")) return { body: { code: 0, message: "success", data: { timestamp: Date.UTC(2026, 8, 30), item: [] } } }
+        if (url.pathname.includes("prices/historical")) return { body: pricesBody }
+        return { status: 404 }
+      }),
+    )
+
+    const resp = await gatherStockData("000333.SZ")
+
+    expect(resp.availability.financial).toBe(true)
+    expect(resp.financial[0]).toMatchObject({
+      period: "2026-Q2",
+      revenue: 260042490000,
+      operatingCashflow: 37552090000,
+    })
+    expect(resp.financial[0].grossMargin).toBeUndefined()
+    const indicatorErrors = resp.errors.filter((error) => error.domain === "financial")
+    expect(indicatorErrors).toHaveLength(2)
+    expect(indicatorErrors.every((error) => error.message.includes("财务指标"))).toBe(true)
+  })
 })

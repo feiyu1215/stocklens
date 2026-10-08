@@ -68,6 +68,23 @@ describe("Followup（Task 06 五个核心 Case）", () => {
     expect(resp.ai.status).toBe("success")
   })
 
+  it("Case 2B｜追问复用完整 Truth Layer，可继续引用事件覆盖证据", async () => {
+    const { fetchMock, setScript } = stubFetch()
+    setScript({ synthesizer: [VALID_SYNTHESIS_JSON] })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const eventEvidenceId = "EV_UNKNOWN_RISK_ANOMALY_UNAVAILABLE"
+    const resp = await runFollowup({
+      stockCode: "000333.SZ",
+      question: "近期异动数据的覆盖情况怎么样？",
+      focusEvidenceIds: [eventEvidenceId],
+    })
+
+    expect(resp.focusEvidenceIds).toEqual([eventEvidenceId])
+    expect(resp.ignoredEvidenceIds).toEqual([])
+    expect(resp.evidence.some((item) => item.evidenceId === eventEvidenceId)).toBe(true)
+  })
+
   it("Case 3｜模型伪造 Evidence ID：repair 后仍失败 → synthesis=null、证据保留", async () => {
     const fabricated = JSON.stringify({
       summary: { text: "回答。", evidenceIds: ["EV_FAKE_001"] },

@@ -1,13 +1,9 @@
 "use client"
 
+import { PALETTE } from "@/components/v5/palette"
 import { DEMO_FINAL_FRAME, type DemoScene } from "@/lib/v5/demo"
 
-const C = {
-  ink: "#11151B",
-  secondary: "#6D7480",
-  blue: "#2F66FF",
-  hair: "rgba(17,21,27,0.12)",
-} as const
+const C = PALETTE
 
 interface Props {
   scene: DemoScene
@@ -58,6 +54,9 @@ export default function DemoOverlay({ scene, index, total, caption, paused, fina
               <br />
               {DEMO_FINAL_FRAME.line2}
             </div>
+            <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: C.secondary }}>
+              {DEMO_FINAL_FRAME.line3}
+            </p>
             <button
               type="button"
               data-demo-finish

@@ -9,7 +9,9 @@ export type DemoActionKind =
   | "open-reading"
   | "select-evidence"
   | "focus-ai-typing"
+  | "close-ai"
   | "clear-ai-input"
+  | "close-add-angle"
   | "open-add-dimension"
   | "open-shelf"
   | "close-reading"
@@ -26,8 +28,9 @@ export interface DemoScene {
   trail?: { x: number; y: number }
 }
 
-// Task 17.1 §P2：总时长约 30 秒（3.5 / 4 / 4.5 / 7 / 5 / 6）。
-// 节奏靠"减少空等待 + 收紧 hold"实现，不是让多个动作同时发生：
+// Task 17.1 §P2：总时长约 30 秒；2026-10 演示对齐当前 UI：
+// 原 Scene 6（补角度+开面板混在 6 秒里）拆为 EXTEND / SWITCH 两幕，
+// SWITCH 对应右上角「更换公司」搜索面板（含空搜索提示与 ☆ 已保存列表）。
 // 每个 Scene 仍然只有一个主要重点，Scene 4 保留最长阅读时间（Reading 稳定后再进 Evidence）。
 export const DEMO_SCENES: DemoScene[] = [
   {
@@ -75,17 +78,31 @@ export const DEMO_SCENES: DemoScene[] = [
     pointer: { x: 0.5, y: 0.93 },
   },
   {
-    id: "extend-shelf",
+    id: "extend",
     actions: [
-      // 先回到 Canvas，否则 Reading 的面包屑会占住头部，研究架打开也看不见
+      // 先回到 Canvas 并清掉演示输入；再收起 Scene 5 打开的研究助手侧板——
+      // 否则侧板会盖住 ADD 弹窗和右上角的公司搜索面板
       { atMs: 150, kind: "close-reading" },
-      { atMs: 600, kind: "open-add-dimension" },
-      { atMs: 2800, kind: "open-shelf" },
-      { atMs: 5200, kind: "clear-ai-input" },
+      { atMs: 400, kind: "close-ai" },
+      { atMs: 700, kind: "clear-ai-input" },
+      { atMs: 1100, kind: "open-add-dimension" },
     ],
-    captions: [{ atMs: 700, title: "EXTEND & SHELF", text: "补充研究角度，并保存公司，随时继续研究。" }],
-    ms: 6000,
-    pointer: { x: 0.8, y: 0.7 },
+    captions: [{ atMs: 900, title: "EXTEND", text: "补充你想看的研究角度，AI 会生成对应的新维度。" }],
+    ms: 4000,
+    // ADD RESEARCH ANGLE 输入框居中弹出（left-1/2 top-1/2，360px 宽）
+    pointer: { x: 0.5, y: 0.52 },
+  },
+  {
+    id: "switch",
+    actions: [
+      // 收起 Scene 6 的 ADD 弹窗，让画面只聚焦公司搜索面板
+      { atMs: 200, kind: "close-add-angle" },
+      { atMs: 500, kind: "open-shelf" },
+    ],
+    captions: [{ atMs: 800, title: "SWITCH COMPANY", text: "输入代码或名称随时换一家接着研究，☆ 标过的就在列表顶部。" }],
+    ms: 5000,
+    // 公司搜索面板挂在头部右侧（right-0 top-10，340px 宽）
+    pointer: { x: 0.84, y: 0.3 },
   },
 ]
 
@@ -95,8 +112,13 @@ export const DEMO_TOTAL_MS = DEMO_SCENES.reduce((sum, s) => sum + s.ms, 0)
 export const DEMO_TYPED_QUESTION = "为什么利润增速弱于收入？"
 /** Scene 6 的示范研究角度（不提交） */
 export const DEMO_ANGLE_PLACEHOLDER = "库存压力"
-/** 结束帧文案 */
-export const DEMO_FINAL_FRAME = { line1: "Evidence first.", line2: "Conclusions second.", cta: "开始研究 →" }
+/** 结束帧文案（line3：研究库入口——用户「随时回来」的真正入口） */
+export const DEMO_FINAL_FRAME = {
+  line1: "Evidence first.",
+  line2: "Conclusions second.",
+  line3: "研究库存档你的每一次研究，随时回来接着看。",
+  cta: "开始研究 →",
+}
 
 export function clampSceneIndex(index: number): number {
   if (!Number.isFinite(index)) return 0

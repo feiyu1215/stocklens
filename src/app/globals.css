@@ -10,3 +10,44 @@ body {
   background-color: var(--color-zinc-50);
   color: var(--color-zinc-900);
 }
+
+/* ---- 研究笔记打印导出（阶段 3 / P2-2）----
+   打印时只保留 portal 文档（#research-notes-print-root），隐藏页面其余一切；
+   覆盖层回到文档流，工具条不参与打印（页码交给浏览器打印对话框的页眉页脚）。 */
+@media print {
+  body.print-notes-open > *:not(#research-notes-print-root) {
+    display: none !important;
+  }
+
+  body.print-notes-open {
+    background: #ffffff !important;
+  }
+
+  #research-notes-print-root {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+  }
+
+  #research-notes-print-root .notes-toolbar {
+    display: none !important;
+  }
+
+  #research-notes-print-root .notes-print-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #research-notes-print-root .notes-evidence-row,
+  #research-notes-print-root .notes-claim-row {
+    break-inside: avoid;
+  }
+
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+}

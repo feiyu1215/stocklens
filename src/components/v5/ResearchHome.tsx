@@ -582,7 +582,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
               )}
             </div>
 
-            <div className={`overflow-hidden transition-all duration-300 ${selected ? "mt-3 max-h-[260px] opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className={`overflow-hidden transition-all duration-300 ${selected || question.trim().length > 0 ? "mt-3 max-h-[260px] opacity-100" : "max-h-0 opacity-0"}`}>
               <div className="flex items-start gap-3 border-t border-black/10 px-2 py-3">
                 <span className="pt-2 text-[15px] text-[#6D7480]">＋</span>
                   <textarea
@@ -630,11 +630,28 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
           </form>
           {!selected && (
             <div className="mx-auto mt-4 flex max-w-[820px] flex-wrap justify-center gap-2">
-              {copy.quickQuestions.map((item) => (
-                <button key={item} type="button" onClick={() => setQuestion(item)} className="rounded-full border border-black/10 bg-white/75 px-3.5 py-2 text-[10.5px] text-[#6D7480] transition hover:border-black/25 hover:bg-white hover:text-[#11151B]">
-                  {item.replace("？", "")}
-                </button>
-              ))}
+              {copy.quickQuestions.map((item) => {
+                const active = question === item
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    data-quick-question
+                    aria-pressed={active}
+                    onClick={() => {
+                      // 反馈必须可见：填入问题的同时展开问题区（此前只写 state，用户看任何变化都没有）
+                      setQuestion(active ? "" : item)
+                    }}
+                    className={`rounded-full border px-3.5 py-2 text-[10.5px] transition ${
+                      active
+                        ? "border-[#2F66FF]/60 bg-[#2F66FF]/[0.06] text-[#2F66FF]"
+                        : "border-black/10 bg-white/75 text-[#6D7480] hover:border-black/25 hover:bg-white hover:text-[#11151B]"
+                    }`}
+                  >
+                    {item.replace("？", "")}
+                  </button>
+                )
+              })}
             </div>
           )}
           <button

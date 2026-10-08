@@ -10,10 +10,13 @@ import {
   formatLastResearch,
   isSaved,
   loadCanvas,
+  mergeLibraryCompanies,
   loadSaved,
   pushRecent,
+  reconcileCanvasSnapshot,
   toggleSaved,
   touchSaved,
+  upsertLibrary,
   type SavedCompany,
 } from "@/lib/v5/shelf"
 
@@ -61,6 +64,29 @@ describe("Research Shelf（§B7–§B10）", () => {
     expect(recent).toHaveLength(RECENT_LIMIT)
   })
 
+  it("研究库保留全部访问记录，且重访时更新摘要并置顶", () => {
+    let library: SavedCompany[] = []
+    for (let i = 0; i < RECENT_LIMIT + 4; i++) {
+      library = upsertLibrary(library, { stockCode: `8${i}.SZ`, name: `研究${i}` }, i + 1)
+    }
+    expect(library).toHaveLength(RECENT_LIMIT + 4)
+
+    library = upsertLibrary(
+      library,
+      { stockCode: "80.SZ", name: "研究0", dimensionCount: 8, evidenceCount: 36, aiStatus: "success" },
+      999,
+    )
+    expect(library[0]).toMatchObject({ stockCode: "80.SZ", dimensionCount: 8, evidenceCount: 36, lastVisitedAt: 999 })
+  })
+
+  it("旧版 SAVED / RECENT 迁移时去重，保留最新访问与已有研究摘要", () => {
+    const saved = [{ ...midea, savedAt: 1, lastVisitedAt: 10, dimensionCount: 6 }]
+    const recent = [{ ...midea, savedAt: 8, lastVisitedAt: 20, evidenceCount: 42 }]
+    const merged = mergeLibraryCompanies(saved, recent)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ savedAt: 1, lastVisitedAt: 20, dimensionCount: 6, evidenceCount: 42 })
+  })
+
   it("touchSaved 只改 lastVisitedAt", () => {
     const list = toggleSaved(toggleSaved([], midea, 1), cmb, 2)
     const touched = touchSaved(list, cmb.stockCode, 500)
@@ -77,15 +103,37 @@ describe("Research Shelf（§B7–§B10）", () => {
     expect(formatLastResearch(ts)).toBe("Last research · 21:32")
   })
 
-  it("无存储环境时读取退化为空，不抛错", () => {
-    expect(loadSaved()).toEqual([])
-    expect(loadCanvas("000333.SZ")).toBeNull()
+  it("无存储环境时读取退化为空，不抛错", async () => {
+    await expect(loadSaved()).resolves.toEqual([])
+    await expect(loadCanvas("000333.SZ")).resolves.toBeNull()
+  })
+
+  it("刷新恢复前过滤已经不存在的维度引用", () => {
+    const reconciled = reconcileCanvasSnapshot(
+      {
+        camera: { x: 720, y: 450, scale: 0.9 },
+        positions: { DIM_KEEP: { x: 1, y: 2 }, DIM_OLD: { x: 3, y: 4 } },
+        parked: ["DIM_KEEP", "DIM_OLD"],
+        notes: [{ id: "n1", title: "笔记", summary: "保留", x: 10, y: 20 }],
+        selection: ["DIM_OLD"],
+        lastDimensionId: "DIM_OLD",
+        updatedAt: 123,
+      },
+      ["DIM_KEEP"],
+    )
+
+    expect(reconciled.camera).toEqual({ x: 720, y: 450, scale: 0.9 })
+    expect(reconciled.positions).toEqual({ DIM_KEEP: { x: 1, y: 2 } })
+    expect(reconciled.parked).toEqual(["DIM_KEEP"])
+    expect(reconciled.selection).toEqual([])
+    expect(reconciled.lastDimensionId).toBeNull()
+    expect(reconciled.notes).toHaveLength(1)
   })
 })
 
 describe("Guided Demo V2 场景（§26/§27/§30）", () => {
-  it("6 个场景，总时长落在 28–35 秒（Task 17.1 §P2 收紧节奏后的契约）", () => {
-    expect(DEMO_SCENES).toHaveLength(6)
+  it("7 个场景（原 Scene 6 拆为 EXTEND/SWITCH），总时长落在 28–35 秒", () => {
+    expect(DEMO_SCENES).toHaveLength(7)
     expect(DEMO_TOTAL_MS).toBeGreaterThanOrEqual(28000)
     expect(DEMO_TOTAL_MS).toBeLessThanOrEqual(35000)
   })

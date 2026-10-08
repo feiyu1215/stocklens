@@ -1,13 +1,8 @@
 "use client"
 
-const C = {
-  bg: "#F5F7FA",
-  ink: "#11151B",
-  secondary: "#6D7480",
-  blue: "#2F66FF",
-  coral: "#D9534F",
-  hair: "rgba(17,21,27,0.12)",
-} as const
+import { PALETTE } from "@/components/v5/palette"
+
+const C = PALETTE
 
 interface Props {
   target: { name: string; stockCode: string; industry?: string }

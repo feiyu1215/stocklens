@@ -27,6 +27,13 @@ export function evidenceColor(e: Pick<Evidence, "type" | "signal">): string {
   return OBSERVATORY_COLORS.fact
 }
 
+export interface MarketHistory {
+  source: "fuyao"
+  adjustment: "forward"
+  latestDate: string | null
+  points: { date: string; close: number }[]
+}
+
 export interface ResearchSpacePayload {
   spaceId: string
   company: CompanyContext
@@ -38,6 +45,8 @@ export interface ResearchSpacePayload {
   suggestions: { label: string; researchQuestion: string; rationale: string; capabilityRefs: string[] }[]
   trend: FinancialTrendPoint[]
   metrics: import("@/lib/metrics/types").MetricResult[]
+  /** 历史日线仅作市场上下文展示；老 fixture 可没有该字段。 */
+  marketHistory?: MarketHistory
   ai: { status: "success" | "partial_failure" | "failed"; issues?: string[] }
   errors: { domain: string; message: string }[]
 }

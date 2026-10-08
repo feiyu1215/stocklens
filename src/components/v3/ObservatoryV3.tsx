@@ -67,7 +67,6 @@ export default function ObservatoryV3() {
   const shiftRef = useRef(false)
   const [suggestDragPos, setSuggestDragPos] = useState<{ label: string; x: number; y: number } | null>(null)
   const [dragKind, setDragKind] = useState<string | null>(null)
-  const objectRectsRef = useRef(new Map<string, DOMRect>())
   const hydratedRef = useRef(false)
 
   // ---------- fixture / query ----------
@@ -557,7 +556,6 @@ export default function ObservatoryV3() {
           peekId={peekId}
           setPeekId={setPeekId}
           selection={selection}
-          setSelection={setSelection}
           activeIds={activeIds}
           focusSet={focusSet}
           parked={parked}
@@ -571,7 +569,6 @@ export default function ObservatoryV3() {
           onExplore={openReading}
           worldCompaniesList={worldCompaniesList}
           positionOf={positionOf}
-          objectRectsRef={objectRectsRef}
           toScreen={toScreen}
         />
       )}
@@ -687,7 +684,6 @@ function WorldField({
   peekId,
   setPeekId,
   selection,
-  setSelection,
   activeIds,
   focusSet,
   parked,
@@ -701,7 +697,6 @@ function WorldField({
   onExplore,
   worldCompaniesList,
   positionOf,
-  objectRectsRef,
   toScreen,
 }: {
   payload: FixturePayload
@@ -714,7 +709,6 @@ function WorldField({
   peekId: string | null
   setPeekId: (id: string | null) => void
   selection: string[]
-  setSelection: (ids: string[]) => void
   activeIds: string[]
   focusSet: boolean
   parked: string[]
@@ -728,7 +722,6 @@ function WorldField({
   onExplore: (dimensionId: string, claimId: string | null) => void
   worldCompaniesList: { stockCode: string; stockName: string; industryName?: string; exploredDimensionCount?: number }[]
   positionOf: (dimensionId: string, slot: ObjectSlot) => { x: number; y: number }
-  objectRectsRef: React.MutableRefObject<Map<string, DOMRect>>
   toScreen: (x: number, y: number) => { x: number; y: number }
 }) {
   const mediaRef = useRef<HTMLCanvasElement>(null)

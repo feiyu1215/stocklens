@@ -6,24 +6,24 @@
 >
 > | 你的网络 | 用哪个 | 地址 |
 > |---|---|---|
-> | 中国大陆，**没挂代理** | **国内直连地址（推荐）** | <https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5> |
+> | 中国大陆，**没挂代理** | **国内直连地址（推荐）** | <https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/> |
 >
 > （国内地址首次在浏览器打开时，会出现一次腾讯云访问确认页——点「**确定访问**」即进入，同一浏览器之后不再出现；这是云托管平台的安全机制，与本产品无关。）
-> | 挂了代理 / 海外网络 | Vercel 地址（国内地址同样可用） | <https://stocklens-blush.vercel.app/observatory-v5> |
+> | 挂了代理 / 海外网络 | Vercel 地址（国内地址同样可用） | <https://stocklens-blush.vercel.app/> |
 >
-> - 两个地址功能完全一致；任一地址末尾加 `?live=1` 走完整实时链路（约 15–30 秒）。
+> - 两个地址都会先落到**首页**：从那里可以搜索任意 A 股公司、打开示例画布、进研究库、做双公司对比。想直接秒开示例研究空间：`/lab/ai-workspace-v1?stockCode=000333.SZ`；在示例画布地址末尾加 `?live=1` 则走完整实时链路（约 15–30 秒）。
 > - 国内地址部署于腾讯云 CloudBase（上海），实例闲置后缩容到 0：**首次打开或首次搜索可能需等几秒冷启动**，之后恢复亚秒级。
 > - 检索范围：**仅 A 股（沪深北三所）**。港股/美股不在检索索引内——例如搜索"小米"会返回空列表（小米在港股 01810.HK 上市），这是数据边界而非故障。想研究这类公司时，可转查其 **A 股产业链公司**：数据源提供「小米概念」「苹果概念」等产业链指数，成分股均为 A 股。
 >
 > 打不开时的其他选项：
 >
-> 1. **本地运行（约 2 分钟，无需代理）**：`npm install` → 复制 `.env.example` 为 `.env.local` 并填入两个密钥 → `npm run dev` → 打开 `http://localhost:3000/observatory-v5`。详细步骤见下方 [Run Locally](#run-locally)。
+> 1. **本地运行（约 2 分钟，无需代理）**：`npm install` → 复制 `.env.example` 为 `.env.local` 并填入两个密钥 → `npm run dev` → 打开 `http://localhost:3000/`。详细步骤见下方 [Run Locally](#run-locally)。
 > 2. **先看产品截图与逐步走查**：[docs/final/产品走查.md](docs/final/产品走查.md)（六张最终截图 + 每步操作说明），在 GitHub 上可直接查看，不需要代理。
 
 ## Live Demo
 
-**产品地址（Web URL）**：<https://stocklens-blush.vercel.app/observatory-v5>  
-**国内直连备用地址（大陆网络无需代理）**：<https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5>  
+**产品地址（Web URL）**：<https://stocklens-blush.vercel.app/>  
+**国内直连备用地址（大陆网络无需代理）**：<https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/>  
 **源代码仓库**：<https://github.com/feiyu1215/stocklens>
 
 建议桌面浏览器、宽度 **1280×800 或更大**（1440×900 为设计基准）。默认研究标的为美的集团 000333.SZ；可搜索并切换任意 **A 股**公司。**范围仅限沪深北三所上市的 A 股**：港股/美股不在检索索引内——例如搜索"小米"会返回空列表（小米在港股 01810.HK 上市），这是数据边界而非故障。
@@ -32,12 +32,12 @@
 
 | URL                      | 首屏                                   | 说明                                                   |
 | ------------------------ | ------------------------------------ | ---------------------------------------------------- |
-| `/observatory-v5`        | 立即加载一份**录制好的示例研究空间**                 | 先快速看产品用：不需要等模型、不受上游波动影响。**切换公司、AI 追问、新增研究角度全部是实时调用** |
-| `/observatory-v5?live=1` | 走**完整实时链路**（真实取数 + 两次模型调用，约 15–30 秒） | 首屏会出现全屏研究过渡；实时证据带数据新鲜度标记                             |
+| `/lab/ai-workspace-v1?stockCode=000333.SZ` | 立即加载一份**录制好的示例研究空间**                 | 先快速看产品用：不需要等模型、不受上游波动影响。**切换公司、AI 追问、新增研究角度全部是实时调用** |
+| 同一地址加 `?live=1` | 走**完整实时链路**（真实取数 + 两次模型调用，约 15–30 秒） | 首屏会出现全屏研究过渡；实时证据带数据新鲜度标记                             |
 
 两条路径共用同一套代码与同一套 API，区别只是首屏那次 payload 来自录制还是来自实盘调用。
 
-**评审建议**：先点第一条看产品全貌（秒开、稳定、公司切换与追问都是实时的），再点 `?live=1` 看完整实时链路——会看到全屏研究过渡，实时证据也带数据新鲜度标记。
+**评审建议**：从首页出发——先点「打开示例画布」看产品全貌（秒开、稳定、公司切换与追问都是实时的），再看「双公司对比」（对比数据来自本机：示例画布会自动把美的存入本机，第二家用研究库或对比页的「重新研究」生成，每家约 15–30 秒），最后在示例画布地址加 `?live=1` 看完整实时链路——会看到全屏研究过渡，实时证据也带数据新鲜度标记。底部输入条在任何一面都可以直接提问。
 
 ## Why StockLens
 
@@ -109,7 +109,7 @@ Company / Question
 ```bash
 npm install
 cp .env.example .env.local     # 填入下面的变量
-npm run dev                    # http://localhost:3000/observatory-v5
+npm run dev                    # http://localhost:3000/
 ```
 
 其他命令：
@@ -167,7 +167,10 @@ src/app/                 Next.js App Router 页面与 API 路由
   api/research/dimension 新增一个研究角度
   api/followup           沿当前 scope 追问
   api/stocks/search      标的检索
-  observatory-v5/        研究画布（本提交的主界面）
+  page.tsx               首页（评审入口）
+  research/              研究库 /research 与双公司对比 /research/compare
+  lab/ai-workspace-v1/   研究空间（研究画布 + Sidekick，本提交的主界面）
+  observatory-v5/        旧版画布入口（保留兼容，功能不含 Sidekick）
 src/components/v5/       研究画布与其子界面
 src/lib/data/            扶摇适配、行业注册表
 src/lib/metrics/         确定性指标引擎、解释护栏、数据新鲜度

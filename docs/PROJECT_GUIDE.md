@@ -23,7 +23,9 @@
 
 | 路径 | 内容 |
 |---|---|
-| `src/app/observatory-v5/` | 产品主入口页面（另有 v3/v4 历史版本与 `/lab` 实验页） |
+| `src/app/page.tsx` | 产品主入口（首页 `/`） |
+| `src/app/research/` | 研究库 `/research` 与双公司对比 `/research/compare` |
+| `src/app/observatory-v5/` | 旧版画布入口（保留兼容，功能不含 Sidekick；另有 v3/v4 历史版本） |
 | `src/app/lab/ai-workspace-v1/` | AI Research Sidekick 隔离实验入口；设计判断与实测记录见 `docs/design-audit/ai-workspace-v1/DECISION.md` |
 | `src/app/api/` | 9 个后端路由：`research/init`、`research/dimension`、`followup`、`stocks/search`、`diagnosis` 等（**语义冻结**） |
 | `src/components/v5/ResearchCanvas.tsx` | 主编排：研究会话、画布状态、AI Research Thread 与 composer；锚点渲染、证据轨迹和移动端列表分别拆到 `CanvasAnchorLayer.tsx`、`CanvasEvidenceTrace.tsx`、`MobileResearchList.tsx` |
@@ -43,7 +45,7 @@ git clone https://github.com/feiyu1215/stocklens.git
 cd stocklens
 npm install                # Node ≥ 20.9（仓库 .nvmrc 锁 22）
 cp .env.example .env.local # 填入下面 4 个变量（密钥不进仓库，见 §4）
-npm run dev                # http://localhost:3000/observatory-v5
+npm run dev                # http://localhost:3000/
 ```
 
 `.env.local`（全部服务端使用，前端不接触）：
@@ -77,8 +79,8 @@ npx next build
 
 | 平台 | 地址 | 网络 | 用途 |
 |---|---|---|---|
-| **Vercel**（评审主入口） | <https://stocklens-blush.vercel.app/observatory-v5> | 需代理 / 海外 | 国际访问与提交评审 |
-| **腾讯云 CloudBase 云托管** | <https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/observatory-v5> | **国内直连** | 大陆网络评审 |
+| **Vercel**（评审主入口） | <https://stocklens-blush.vercel.app/> | 需代理 / 海外 | 国际访问与提交评审 |
+| **腾讯云 CloudBase 云托管** | <https://stocklens-322840-10-1499757453.sh.run.tcloudbase.com/> | **国内直连** | 大陆网络评审 |
 
 ### 3.1 CloudBase 云托管（国内镜像）
 
@@ -103,7 +105,7 @@ npx next build
 
 | 项 | 值 |
 |---|---|
-| 生产地址 | <https://stocklens-blush.vercel.app/observatory-v5> |
+| 生产地址 | <https://stocklens-blush.vercel.app/> |
 | 部署方式 | CLI：`npx vercel --prod --yes --token=$(cat .tools/vercel-token)`（token 文件只在本机 `D:\zcode存储\stocklens\.tools\`，**不进仓库**；需走代理：`HTTPS_PROXY=http://127.0.0.1:7890`） |
 | 环境变量 | Vercel 项目设置里（同上 4 个） |
 | 说明 | 本地源码直接上传远端构建；GitHub push 不会自动触发 Vercel（除非在 Vercel 后台连接 Git 集成） |

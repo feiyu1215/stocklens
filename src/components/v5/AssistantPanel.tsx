@@ -44,7 +44,7 @@ export interface AssistantPanelProps {
   /** 展开面板（输入条聚焦 / ⌘K 时调用） */
   onOpen: () => void
   /** 来源页面（进入能力检查的上下文） */
-  pageContext: "home" | "library"
+  pageContext: "home" | "library" | "compare"
   /** ActionExecutor：只执行通过能力检查的白名单动作（由页面实现） */
   onExecute: (action: PlannedAction) => void
 }

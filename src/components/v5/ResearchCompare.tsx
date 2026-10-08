@@ -7,7 +7,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 
+import AssistantPanel from "@/components/v5/AssistantPanel"
 import { PALETTE } from "@/components/v5/palette"
+import { useRouteWipe } from "@/components/v5/RouteWipe"
+import type { PlannedAction } from "@/lib/v5/assistant/capabilities"
 import type { ResearchSpacePayload } from "@/components/observatory/theme"
 import {
   COMPARE_CATALOG,
@@ -99,7 +102,14 @@ function CompanyCard(props: {
   )
 }
 
+function researchHref(stockCode: string): string {
+  const params = new URLSearchParams({ stockCode, live: "1", resume: "1" })
+  return `/lab/ai-workspace-v1?${params.toString()}`
+}
+
 export default function ResearchCompare() {
+  const wipeTo = useRouteWipe()
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const [codes, setCodes] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [loads, setLoads] = useState<{ left: ClassifiedLoad; right: ClassifiedLoad; leftRecorded: boolean; rightRecorded: boolean } | null>(null)
@@ -170,6 +180,33 @@ export default function ResearchCompare() {
   }, [loads, codes])
 
   const sampleMix = loads ? describeSampleMix(loads.leftRecorded, loads.rightRecorded) : null
+
+  // ActionExecutor（对比页侧）：只执行能力白名单内的动作，参数在此最终校验
+  const executeAssistantAction = (action: PlannedAction) => {
+    setAssistantOpen(false)
+    switch (action.action) {
+      case "navigate.home":
+        wipeTo("/")
+        break
+      case "navigate.library":
+        wipeTo("/research")
+        break
+      case "navigate.compare":
+        if (action.stockCodes?.length === 2) {
+          wipeTo(`/research/compare?stocks=${action.stockCodes.map((c) => c.stockCode).join(",")}`)
+        }
+        break
+      case "company.open":
+        if (action.stockCode) wipeTo(researchHref(action.stockCode))
+        break
+      case "search.focus":
+        // 对比页没有公司搜索框：回首页由搜索框承接
+        wipeTo("/")
+        break
+      default:
+        break
+    }
+  }
 
   return (
     <main
@@ -404,6 +441,15 @@ export default function ResearchCompare() {
           </>
         )}
       </div>
+
+      {/* 底部中央常驻对话输入条（与首页/研究库一致）+ 向上弹出的对话面板 */}
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        onOpen={() => setAssistantOpen(true)}
+        pageContext="compare"
+        onExecute={executeAssistantAction}
+      />
     </main>
   )
 }

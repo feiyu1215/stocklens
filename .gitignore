@@ -27,3 +27,6 @@ Thumbs.db
 
 # ---- 本地参考截图（第三方素材，严禁提交 §30）----
 .tmp/
+
+# ---- 本地打包产物（CloudBase 手动上传用，不入库）----
+dist-submission/

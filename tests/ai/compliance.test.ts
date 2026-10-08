@@ -78,3 +78,33 @@ describe("Compliance Post-check（§35–36）", () => {
     ).toEqual([])
   })
 })
+
+// P1 助手入口：新通路的合规覆盖必须由确定性守卫接住，而不是靠模型兜底判为不支持。
+describe("投资建议请求（助手入口新增覆盖）", () => {
+  it("「推荐明天涨幅最大的股票」被确定性规则拦截", () => {
+    const hit = detectRestrictedInvestmentRequest("推荐明天涨幅最大的股票")
+    expect(hit.restricted).toBe(true)
+    expect(hit.matchedPattern).toBeTruthy()
+  })
+
+  it("「买什么股票好」「帮我选股」被拦截", () => {
+    expect(detectRestrictedInvestmentRequest("买什么股票好").restricted).toBe(true)
+    expect(detectRestrictedInvestmentRequest("帮我选股，哪只能翻倍").restricted).toBe(true)
+  })
+
+  it("「推荐几只牛股」「值得投吗」被拦截", () => {
+    expect(detectRestrictedInvestmentRequest("推荐几只牛股").restricted).toBe(true)
+    expect(detectRestrictedInvestmentRequest("这家值得投吗").restricted).toBe(true)
+  })
+
+  it("能力边界类请求不误判为投资建议（应走不支持说明而非合规拦截）", () => {
+    expect(detectRestrictedInvestmentRequest("哪些股票值得关注").restricted).toBe(false)
+    expect(detectRestrictedInvestmentRequest("帮我筛选出符合条件的公司").restricted).toBe(false)
+  })
+
+  it("正常研究请求不误伤", () => {
+    expect(detectRestrictedInvestmentRequest("对比美的集团和格力电器").restricted).toBe(false)
+    expect(detectRestrictedInvestmentRequest("打开研究库").restricted).toBe(false)
+    expect(detectRestrictedInvestmentRequest("ROE 是什么意思").restricted).toBe(false)
+  })
+})

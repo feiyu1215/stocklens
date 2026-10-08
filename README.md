@@ -136,7 +136,7 @@ npm run package:submission     # 生成提交包（见 docs/final/提交包清�
 
 ## Validation
 
-自动化测试 **481 个 / 39 个测试文件**全部通过，另有 `tsc --noEmit` / `eslint` / `next build` 三项工程校验。产品侧还做了浏览器真实指针验收（48 行交互清单：PASS 47 / FAIL 0 / NOT TESTED 0 / N-A 1）、网络审计（本地操作 0 业务请求、未缓存切换恰好 1 次 init、缓存恢复 0 次）与 console 审计（0 uncaught / 0 React / 0 hydration）。
+自动化测试 **486 个 / 39 个测试文件**全部通过，另有 `tsc --noEmit` / `eslint` / `next build` 三项工程校验。产品侧还做了浏览器真实指针验收（48 行交互清单：PASS 47 / FAIL 0 / NOT TESTED 0 / N-A 1）、网络审计（本地操作 0 业务请求、未缓存切换恰好 1 次 init、缓存恢复 0 次）与 console 审计（0 uncaught / 0 React / 0 hydration）。
 
 完整方法和结果见 [docs/final/测试说明.md](docs/final/测试说明.md)；需求对照见 [docs/final/需求对照.md](docs/final/需求对照.md)。
 

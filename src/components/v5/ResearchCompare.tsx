@@ -23,11 +23,21 @@ import {
   type ClassifiedLoad,
   type CompareGroup,
 } from "@/lib/v5/compare"
+import {
+  buildDeterministicSummary,
+  toSummaryFacts,
+  type CompareSummaryResponse,
+} from "@/lib/v5/compare-summary"
 import { ensureShelfMigrated, loadResearch } from "@/lib/v5/shelf"
 
 const C = PALETTE
 
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
+
+/** 摘要句子回挂的指标 chip 用展示名，避免把 metricId 直接暴露给用户 */
+const METRIC_NAMES: Record<string, string> = Object.fromEntries(
+  COMPARE_CATALOG.map((def) => [def.metricId, def.name]),
+)
 
 const GROUP_LABELS: Record<CompareGroup, string> = {
   growth: "成长",
@@ -113,6 +123,8 @@ export default function ResearchCompare() {
   const [codes, setCodes] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [loads, setLoads] = useState<{ left: ClassifiedLoad; right: ClassifiedLoad; leftRecorded: boolean; rightRecorded: boolean } | null>(null)
+  const [summary, setSummary] = useState<CompareSummaryResponse | null>(null)
+  const [summaryBusy, setSummaryBusy] = useState(false)
 
   // 客户端解析 ?stocks=A,B（与画布读 window.location.search 的既有惯例一致）。
   // rAF 延迟一帧：规避 react-hooks/set-state-in-effect（与画布侧板补开同款处理）。
@@ -181,6 +193,48 @@ export default function ResearchCompare() {
 
   const sampleMix = loads ? describeSampleMix(loads.leftRecorded, loads.rightRecorded) : null
 
+  // P2：摘要只能建立在可比/并列的事实上；全部不可比时没有可摘要的东西，按钮不开启
+  const summarizable = rows.filter((r) => r.status === "comparable" || r.status === "side_by_side").length
+
+  const generateSummary = async () => {
+    if (summarizable === 0 || !loads || !codes) return
+    setSummaryBusy(true)
+    const leftName = loads.left.payload?.company.stockName ?? codes[0]
+    const rightName = loads.right.payload?.company.stockName ?? codes[1]
+    try {
+      const res = await fetch("/api/assistant/compare-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          left: { stockCode: codes[0], stockName: leftName },
+          right: { stockCode: codes[1], stockName: rightName },
+          rows: toSummaryFacts(rows),
+        }),
+      })
+      if (!res.ok) {
+        const fallback = buildDeterministicSummary(toSummaryFacts(rows), leftName, rightName)
+        setSummary({
+          ai: { status: "failed", reason: "摘要服务不可用，已回退为按数据直接生成的版本。" },
+          sentences: fallback.sentences.map((text) => ({ text, metricIds: [], source: "system" as const })),
+          coverage: fallback.coverage,
+          deterministic: fallback.sentences,
+        })
+        return
+      }
+      setSummary((await res.json()) as CompareSummaryResponse)
+    } catch {
+      const fallback = buildDeterministicSummary(toSummaryFacts(rows), leftName, rightName)
+      setSummary({
+        ai: { status: "failed", reason: "请求失败，已回退为按数据直接生成的版本。" },
+        sentences: fallback.sentences.map((text) => ({ text, metricIds: [], source: "system" as const })),
+        coverage: fallback.coverage,
+        deterministic: fallback.sentences,
+      })
+    } finally {
+      setSummaryBusy(false)
+    }
+  }
+
   // ActionExecutor（对比页侧）：只执行能力白名单内的动作，参数在此最终校验
   const executeAssistantAction = (action: PlannedAction) => {
     setAssistantOpen(false)
@@ -226,7 +280,7 @@ export default function ResearchCompare() {
           <div className="font-mono text-[9px] tracking-[0.24em] text-[#6D7480]">COMPARE · 双公司对比</div>
         </div>
         <div className="hidden items-center gap-3 font-mono text-[8.5px] tracking-[0.1em] text-[#9AA0AA] sm:flex">
-          <span>数据来自本机 · 不发起网络请求</span>
+          <span>对比数据来自本机 · 只有点「生成对比摘要」才会发一次请求</span>
         </div>
       </header>
 
@@ -424,6 +478,99 @@ export default function ResearchCompare() {
               </div>
             )}
 
+            {/* P2 对比摘要：显式触发，默认不发请求；未通过事实校验时降级为确定性摘要 */}
+            {rows.length > 0 && (
+              <div className="mt-8 rounded-[14px] border border-black/10 bg-white/90 p-5 shadow-[0_12px_35px_rgba(17,21,27,0.045)]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[9px] tracking-[0.24em] text-[#6D7480]">AI SUMMARY · 对比摘要</span>
+                    {summary?.ai.status === "success" && (
+                      <span className="rounded-full border border-black/10 px-2 py-px font-mono text-[8.5px] text-[#6D7480]">
+                        已通过事实校验
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    data-compare-summary-generate
+                    onClick={generateSummary}
+                    disabled={summaryBusy || summarizable === 0}
+                    className="rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-[11px] text-[#11151B] transition hover:border-[#2F66FF]/40 hover:text-[#2F66FF] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-black/10 disabled:hover:text-[#11151B]"
+                  >
+                    {summaryBusy ? "生成中…" : summary ? "重新生成摘要" : "生成对比摘要"}
+                  </button>
+                </div>
+
+                {summarizable === 0 && (
+                  <p data-compare-summary-nodata className="mt-3 text-[11.5px] text-[#6D7480]">
+                    当前没有可比或并列的数据，摘要无法建立在缺失数据上。
+                  </p>
+                )}
+
+                {!summary && summarizable > 0 && (
+                  <p className="mt-3 text-[11.5px] text-[#6D7480]">
+                    摘要只使用上表已验证的数值与差值；报告中出现的每个数字都会回表核对，核对不通过的内容不会展示。
+                  </p>
+                )}
+
+                {summary && (
+                  <div data-compare-summary className="mt-4">
+                    {summary.ai.status === "failed" && (
+                      <div
+                        data-compare-summary-failed
+                        className="mb-3 flex items-start gap-2.5 rounded-[10px] border px-3 py-2.5"
+                        style={{ borderColor: "rgba(182,128,42,0.4)", background: "rgba(182,128,42,0.06)" }}
+                      >
+                        <span aria-hidden className="mt-px shrink-0 text-[12px]" style={{ color: C.amber }}>!</span>
+                        <p className="text-[11.5px] leading-5" style={{ color: "#854F0B" }}>
+                          {summary.ai.reason ?? "AI 摘要不可用。"}
+                        </p>
+                      </div>
+                    )}
+
+                    <ul className="space-y-2.5">
+                      {summary.sentences.map((sentence, index) => (
+                        <li key={`${sentence.source}-${index}`} data-compare-summary-sentence className="flex gap-2.5">
+                          <span
+                            aria-hidden
+                            className="mt-[7px] h-1 w-1 shrink-0 rounded-full"
+                            style={{ background: sentence.source === "ai" ? C.blue : "#9AA0AA" }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-[12.5px] leading-6">{sentence.text}</p>
+                            {sentence.metricIds.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {sentence.metricIds.map((id) => (
+                                  <span
+                                    key={id}
+                                    data-compare-summary-metric={id}
+                                    className="rounded-full border border-black/10 bg-[#F5F7FA] px-2 py-px font-mono text-[8.5px] text-[#6D7480]"
+                                  >
+                                    {METRIC_NAMES[id] ?? id}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {summary.coverage.notComparable > 0 && (
+                      <p data-compare-summary-coverage className="mt-3 font-mono text-[9px] leading-5 text-[#9AA0AA]">
+                        未纳入：{summary.coverage.excluded.join("、")}
+                      </p>
+                    )}
+
+                    <p className="mt-3 text-[10.5px] leading-5 text-[#9AA0AA]">
+                      摘要由 AI 组织上表已验证的数值与差值生成，不含任何推断结论，不构成投资建议；
+                      未通过事实校验时自动回退为按数据直接生成的版本。
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 两侧都不可用时给目录全貌，避免空白页 */}
             {rows.length === 0 && (
               <div className="mt-8 rounded-[14px] border border-black/10 bg-white/90 p-6">
@@ -435,7 +582,8 @@ export default function ResearchCompare() {
             )}
 
             <p className="mt-6 text-[10.5px] leading-5 text-[#9AA0AA]">
-              本页为确定性数据并排与差值计算，不包含任何 AI 判断；「不可比」与「并列参考」的数据不会被强行推导。
+              本页的并排与差值计算是确定性的，「不可比」与「并列参考」的数据不会被强行推导；
+              AI 摘要只组织这些已验证的数值，不做优劣判断，且每个数字都要回表核对。
               对比基于各侧研究生成时的缓存数据，报告期以每项标注为准。
             </p>
           </>

@@ -101,4 +101,10 @@ describe("能力注册表", () => {
     expect(findProductFeature("如何导出笔记")?.id).toBe("notes.export")
     expect(findProductFeature("这是什么神仙功能")).toBeNull()
   })
+
+  it("P2 对比摘要可被问出来，且不会被「对比」抢走", () => {
+    expect(findProductFeature("对比摘要怎么用")?.id).toBe("research.compare_summary")
+    expect(findProductFeature("对比摘要会编数字吗")?.id).toBe("research.compare_summary")
+    expect(findProductFeature("怎么对比两家公司")?.id).toBe("research.compare")
+  })
 })

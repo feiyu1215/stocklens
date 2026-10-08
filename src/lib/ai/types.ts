@@ -43,7 +43,12 @@ export interface DiagnosisSynthesis {
   nextQuestions: string[]
 }
 
-export type LLMTask = "planner" | "diagnosis_synthesis" | "assistant_intent" | "assistant_explain"
+export type LLMTask =
+  | "planner"
+  | "diagnosis_synthesis"
+  | "assistant_intent"
+  | "assistant_explain"
+  | "compare_summary"
 
 export interface AIInvocationTrace {
   task: LLMTask

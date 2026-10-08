@@ -121,7 +121,16 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     desc: "在研究库选中恰好两家公司，按固定指标目录做同口径并排对比",
     page: "研究库 → 「对比」模式",
     how: "开启对比开关，点选两家公司，点击「开始对比」",
-    limits: "需要两家的研究数据都在本机；报告期不同的指标只并列参考不算差值；不含 AI 综合结论",
+    limits: "需要两家的研究数据都在本机；报告期不同的指标只并列参考不算差值；不做优劣判断",
+  },
+  {
+    id: "research.compare_summary",
+    name: "对比摘要",
+    desc: "把对比页已验证的数值与差值组织成一段可读摘要，并说明哪些指标因数据缺失没进结论",
+    page: "对比页 → 「生成对比摘要」",
+    how: "在对比页点「生成对比摘要」，结果按句回挂它引用的指标；不自动生成，需手动触发",
+    limits:
+      "只用对比页已验证的数值，摘要里每个数字都会回表核对，核对不过的一律不展示；只描述事实差异，不给优劣结论与投资建议；不写入研究空间，刷新即消失",
   },
   {
     id: "sidekick.followup",
@@ -162,6 +171,8 @@ export function findProductFeature(query: string): ProductFeature | null {
   const q = query.trim().toLowerCase()
   if (!q) return null
   const rules: { id: string; keys: string[] }[] = [
+    // 「对比摘要」同时含"对比"，必须排在 research.compare 之前才能命中摘要本身
+    { id: "research.compare_summary", keys: ["摘要", "归纳", "总结"] },
     { id: "research.compare", keys: ["对比", "比较"] },
     { id: "notes.export", keys: ["导出", "笔记", "打印"] },
     { id: "evidence.refresh", keys: ["刷新", "快刷", "过期"] },

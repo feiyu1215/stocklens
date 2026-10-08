@@ -80,6 +80,12 @@ const COPY = {
     backToResearch: "返回新研究",
     filterLibrary: "搜索研究库中的公司 / 代码",
     emptyLibrary: "没有匹配的公司研究",
+    compareToggle: "对比",
+    compareStart: "开始对比 →",
+    compareExit: "退出对比",
+    comparePick: "点选两家公司（已选 0/2）",
+    comparePickOne: "点选两家公司（已选 1/2）",
+    compareMaxHint: "最多选择两家，点击已选可取消",
   },
   en: {
     library: "Library",
@@ -116,6 +122,12 @@ const COPY = {
     backToResearch: "Back to new research",
     filterLibrary: "Search the library by company or ticker",
     emptyLibrary: "No matching company research",
+    compareToggle: "Compare",
+    compareStart: "Start compare →",
+    compareExit: "Exit compare",
+    comparePick: "Pick two companies (0/2 selected)",
+    comparePickOne: "Pick two companies (1/2 selected)",
+    compareMaxHint: "Two companies max; click a selected one to deselect",
   },
 } as const
 
@@ -179,6 +191,10 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
   const [selected, setSelected] = useState<SearchResult | null>(null)
   const [question, setQuestion] = useState("")
   const [libraryQuery, setLibraryQuery] = useState("")
+  // 双公司对比 P0（docs/plans/2026-10-08-双公司对比-P0-PRD.md）：
+  // 对比模式是显式开关，默认关闭；开启后行变成多选（最多两家），默认导航行为不变。
+  const [compareMode, setCompareMode] = useState(false)
+  const [compareSelection, setCompareSelection] = useState<string[]>([])
   // 语言开关已下线：研究空间内所有文案仍是中文，保留半套 EN 会被当成 bug。
   // COPY.en 与 statusLabel 的 locale 参数刻意保留，作为后续做完整 i18n 的底稿。
   const locale: Locale = "zh"
@@ -341,6 +357,24 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
     if (!selected) return
     wipeTo(workspaceHref(selected.stockCode, question, false, library.some((item) => item.stockCode === selected.stockCode)))
   }
+  const toggleCompareRow = (stockCode: string) => {
+    setCompareSelection((prev) => {
+      if (prev.includes(stockCode)) return prev.filter((code) => code !== stockCode)
+      // 已满两家：忽略第三次点击（按钮 aria-pressed 状态让用户知道当前选择）
+      if (prev.length >= 2) return prev
+      return [...prev, stockCode]
+    })
+  }
+  const exitCompareMode = () => {
+    setCompareMode(false)
+    setCompareSelection([])
+  }
+  const startCompare = () => {
+    if (compareSelection.length !== 2) return
+    wipeTo(`/research/compare?stocks=${compareSelection.join(",")}`)
+  }
+  const compareSelectedNames = compareSelection
+    .map((code) => library.find((item) => item.stockCode === code)?.name ?? code)
   const hasSampleResearch = library.some((item) => item.stockCode === SAMPLE.stockCode)
 
   return (
@@ -693,9 +727,9 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
             <div className="font-mono text-[9px] tracking-[0.24em] text-[#6D7480]">{copy.libraryEyebrow}</div>
             <h2 className="mt-2 text-[24px] font-medium tracking-[-0.03em]">{copy.matrix}</h2>
           </div>
-          <div className="w-full sm:w-[320px]">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-[380px]">
             <label htmlFor="library-search" className="sr-only">{copy.filterLibrary}</label>
-            <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white/80 px-4 py-2.5 shadow-[0_8px_24px_rgba(17,21,27,0.04)]">
+            <div className="flex flex-1 items-center gap-2 rounded-full border border-black/10 bg-white/80 px-4 py-2.5 shadow-[0_8px_24px_rgba(17,21,27,0.04)]">
               <span aria-hidden className="text-[13px] text-[#6D7480]">⌕</span>
               <input
                 id="library-search"
@@ -705,6 +739,28 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
                 className="w-full bg-transparent text-[11px] outline-none placeholder:text-[#9AA0AA]"
               />
             </div>
+            <button
+              type="button"
+              data-library-compare-toggle
+              aria-pressed={compareMode}
+              disabled={library.length < 2}
+              onClick={() => {
+                if (compareMode) {
+                  exitCompareMode()
+                } else {
+                  setCompareMode(true)
+                  setCompareSelection([])
+                }
+              }}
+              title={library.length < 2 ? copy.compareMaxHint : undefined}
+              className={`shrink-0 rounded-full border px-3 py-2 text-[10.5px] transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                compareMode
+                  ? "border-[#2F66FF] bg-[#2F66FF] text-white"
+                  : "border-black/10 bg-white/80 text-[#6D7480] hover:border-[#2F66FF]/40 hover:text-[#2F66FF]"
+              }`}
+            >
+              {copy.compareToggle}
+            </button>
           </div>
         </div>
 
@@ -765,16 +821,16 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
             {rows.map((company) => {
               const isSample = library.length === 0 && company.stockCode === SAMPLE.stockCode
               const state = statusLabel(company.aiStatus, locale)
-              return (
-                <WipeLink
-                  key={company.stockCode}
-                  href={isSample ? workspaceHref(company.stockCode, "", true) : workspaceHref(company.stockCode, "", false, true)}
-                  data-research-library-row={company.stockCode}
-                  className="group grid min-h-[82px] grid-cols-[2fr_1.2fr_1fr_1fr_1.2fr_1.3fr_48px] border-b border-black/10 last:border-b-0 hover:bg-[#F8FAFF]"
-                >
+              const comparePicked = compareMode && compareSelection.includes(company.stockCode)
+              const rowBody = (
+                <>
                   <div className="flex items-center gap-3 border-r border-black/10 px-4">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-black/10 bg-[#F5F7FA] text-[12px] font-semibold">
-                      {company.name.slice(0, 1)}
+                    <span
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-[12px] font-semibold transition ${
+                        comparePicked ? "border-[#2F66FF] bg-[#2F66FF] text-white" : "border-black/10 bg-[#F5F7FA]"
+                      }`}
+                    >
+                      {comparePicked ? "✓" : company.name.slice(0, 1)}
                     </span>
                     <span className="min-w-0">
                       <span className="flex items-center gap-2 text-[13px] font-semibold">
@@ -800,7 +856,32 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
                   <div className="flex items-center border-r border-black/10 px-4 font-mono text-[10px] text-[#6D7480]">
                     {dateLabel(company.lastResearchAt ?? company.lastVisitedAt)}
                   </div>
-                  <div className="grid place-items-center text-[#6D7480] transition group-hover:translate-x-1 group-hover:text-[#2F66FF]">→</div>
+                  <div className="grid place-items-center text-[#6D7480] transition group-hover:translate-x-1 group-hover:text-[#2F66FF]">
+                    {compareMode ? "" : "→"}
+                  </div>
+                </>
+              )
+              // 对比模式下行是多选按钮；默认模式保持原导航行为不变
+              return compareMode ? (
+                <button
+                  key={company.stockCode}
+                  type="button"
+                  data-research-library-row={company.stockCode}
+                  data-compare-row={company.stockCode}
+                  aria-pressed={comparePicked}
+                  onClick={() => toggleCompareRow(company.stockCode)}
+                  className="group grid min-h-[82px] w-full grid-cols-[2fr_1.2fr_1fr_1fr_1.2fr_1.3fr_48px] border-b border-black/10 text-left last:border-b-0 hover:bg-[#F8FAFF]"
+                >
+                  {rowBody}
+                </button>
+              ) : (
+                <WipeLink
+                  key={company.stockCode}
+                  href={isSample ? workspaceHref(company.stockCode, "", true) : workspaceHref(company.stockCode, "", false, true)}
+                  data-research-library-row={company.stockCode}
+                  className="group grid min-h-[82px] grid-cols-[2fr_1.2fr_1fr_1fr_1.2fr_1.3fr_48px] border-b border-black/10 last:border-b-0 hover:bg-[#F8FAFF]"
+                >
+                  {rowBody}
                 </WipeLink>
               )
             })}
@@ -811,6 +892,45 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
             )}
           </div>
         </div>
+
+        {compareMode && (
+          <div
+            data-library-compare-bar
+            className="sticky bottom-4 z-20 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-black/10 bg-white px-4 py-3 shadow-[0_14px_40px_rgba(17,21,27,0.14)]"
+          >
+            <div className="min-w-0">
+              <p className="text-[12px] font-medium">
+                {compareSelection.length === 2
+                  ? compareSelectedNames.join(" × ")
+                  : compareSelection.length === 1
+                    ? copy.comparePickOne
+                    : copy.comparePick}
+              </p>
+              {compareSelection.length < 2 && (
+                <p className="mt-0.5 text-[10.5px] text-[#9AA0AA]">{copy.compareMaxHint}</p>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                data-library-compare-exit
+                onClick={exitCompareMode}
+                className="rounded-full border border-black/10 px-3 py-1.5 text-[10.5px] text-[#6D7480] transition hover:border-black/25 hover:text-[#11151B]"
+              >
+                {copy.compareExit}
+              </button>
+              <button
+                type="button"
+                data-library-compare-start
+                disabled={compareSelection.length !== 2}
+                onClick={startCompare}
+                className="rounded-full bg-[#11151B] px-4 py-1.5 text-[10.5px] text-white transition hover:bg-[#2F66FF] disabled:cursor-not-allowed disabled:bg-[#D2D6DC]"
+              >
+                {copy.compareStart}
+              </button>
+            </div>
+          </div>
+        )}
 
         {library.length === 0 && (
           <p className="mt-3 font-mono text-[9px] tracking-[0.08em] text-[#6D7480]">

@@ -422,7 +422,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
-        setAssistantOpen((value) => !value)
+        setAssistantOpen(true)
       }
     }
     window.addEventListener("keydown", onKeyDown)
@@ -1031,36 +1031,11 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
         </div>
       )}
 
-      {/* 底部中央 dock：常驻入口——AI 助手 + 面间快捷切换（取代原 browseMatrix 按钮与顶部 AI 按钮） */}
-      <div
-        data-assistant-dock
-        className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-black/10 bg-white/95 p-1.5 shadow-[0_18px_50px_rgba(17,21,27,0.16)] backdrop-blur-md"
-      >
-        <button
-          type="button"
-          data-dock-surface
-          onClick={surface === "start" ? openLibrary : openStart}
-          className="group flex items-center gap-1.5 rounded-full px-3.5 py-2 font-mono text-[9.5px] tracking-[0.1em] text-[#6D7480] transition hover:bg-[#F5F7FA] hover:text-[#11151B]"
-        >
-          <span aria-hidden className="text-[11px] leading-none">{surface === "start" ? "▦" : "↑"}</span>
-          <span className="hidden sm:inline">{surface === "start" ? copy.browseMatrix : copy.backToResearch}</span>
-        </button>
-        <span aria-hidden className="mx-0.5 h-4 w-px bg-black/10" />
-        <button
-          type="button"
-          data-assistant-toggle
-          aria-pressed={assistantOpen}
-          onClick={() => setAssistantOpen((value) => !value)}
-          className="flex items-center gap-1.5 rounded-full bg-[#11151B] px-3.5 py-2 font-mono text-[9.5px] tracking-[0.1em] text-white transition hover:bg-[#2F66FF]"
-        >
-          <span aria-hidden className="text-[11px] leading-none">✦</span>
-          <span className="hidden sm:inline">AI 助手</span>
-        </button>
-      </div>
-
+      {/* 底部中央常驻对话输入条（在 AssistantPanel 内）+ 向上弹出的对话面板 */}
       <AssistantPanel
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
+        onOpen={() => setAssistantOpen(true)}
         pageContext={surface === "library" ? "library" : "home"}
         onExecute={executeAssistantAction}
       />

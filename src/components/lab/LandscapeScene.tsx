@@ -121,7 +121,7 @@ function Terrain({
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3))
     geometry.computeVertexNormals()
     return { geometry, grain: makeGrainTexture() }
-  }, [model])
+  }, [model, colorTmp])
 
   const handleMove = (e: ThreeEvent<PointerEvent>) => {
     onHoverZone(zoneAt(model, e.point.x, e.point.z))

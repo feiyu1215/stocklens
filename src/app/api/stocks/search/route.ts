@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
 
 import { searchStocks } from "@/lib/data/stock-search"
+import { rateLimitResponse } from "@/lib/http/rate-limit"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   const startedAt = Date.now()
+  const limited = rateLimitResponse(request, { scope: "stock-search", limit: 60 })
+  if (limited) return limited
   const { searchParams } = new URL(request.url)
   const q = (searchParams.get("q") ?? "").trim()
   if (q.length === 0) {

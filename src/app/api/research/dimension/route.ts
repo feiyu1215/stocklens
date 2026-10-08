@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { addResearchDimension } from "@/lib/research/add-dimension"
+import { rateLimitResponse } from "@/lib/http/rate-limit"
 import {
   COMPLIANCE_REDIRECT_MESSAGE,
   COMPLIANCE_SUGGESTED_QUESTIONS,
@@ -14,6 +15,8 @@ const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function POST(request: Request) {
   const startedAt = Date.now()
+  const limited = rateLimitResponse(request, { scope: "research-dimension", limit: 15 })
+  if (limited) return limited
   let body: unknown
   try {
     body = await request.json()

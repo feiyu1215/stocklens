@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { runFollowup } from "@/lib/ai/followup"
+import { rateLimitResponse } from "@/lib/http/rate-limit"
 import {
   COMPLIANCE_REDIRECT_MESSAGE,
   COMPLIANCE_SUGGESTED_QUESTIONS,
@@ -9,11 +10,15 @@ import {
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
+const FOLLOWUP_BUDGET_MS = 55_000
 
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function POST(request: Request) {
   const startedAt = Date.now()
+  const deadlineAt = startedAt + FOLLOWUP_BUDGET_MS
+  const limited = rateLimitResponse(request, { scope: "followup", limit: 20 })
+  if (limited) return limited
   let body: unknown
   try {
     body = await request.json()
@@ -30,7 +35,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "question 限 1–500 字符" }, { status: 400 })
   }
   const focusEvidenceIds = Array.isArray(evidenceIds)
-    ? evidenceIds.filter((id): id is string => typeof id === "string")
+    ? [...new Set(evidenceIds.filter((id): id is string => typeof id === "string"))].slice(0, 50)
     : []
 
   // 投资建议类追问在进入 LLM 前拦截（与 /api/diagnosis 同一守卫）
@@ -57,6 +62,7 @@ export async function POST(request: Request) {
     stockCode: stockCode.trim().toUpperCase(),
     question: question.trim(),
     focusEvidenceIds,
+    deadlineAt,
   })
 
   const response = NextResponse.json(resp)

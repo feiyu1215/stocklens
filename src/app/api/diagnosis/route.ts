@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { runDiagnosis } from "@/lib/diagnosis/orchestrator"
+import { rateLimitResponse } from "@/lib/http/rate-limit"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -8,6 +9,8 @@ export const maxDuration = 60
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(request, { scope: "diagnosis", limit: 10 })
+  if (limited) return limited
   let body: unknown
   try {
     body = await request.json()

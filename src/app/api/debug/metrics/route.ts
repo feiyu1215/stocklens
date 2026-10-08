@@ -2,12 +2,15 @@ import { NextResponse } from "next/server"
 
 import { DEFAULT_STOCK_CODE, gatherStockData } from "@/lib/data/stock-data"
 import { calculateMetrics } from "@/lib/metrics/engine"
+import { productionDebugRouteResponse } from "@/lib/http/rate-limit"
 
 export const dynamic = "force-dynamic"
 
 const STOCK_CODE_PATTERN = /^\d{6}\.(SZ|SH|BJ)$/
 
 export async function GET(request: Request) {
+  const blocked = productionDebugRouteResponse()
+  if (blocked) return blocked
   const { searchParams } = new URL(request.url)
   const rawCode = (searchParams.get("stockCode") ?? DEFAULT_STOCK_CODE).trim().toUpperCase()
 

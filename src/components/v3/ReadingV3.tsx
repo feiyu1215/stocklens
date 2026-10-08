@@ -45,6 +45,9 @@ export default function ReadingV3({
   onAsk,
   onBack,
   escOwnedByParent,
+  updatedClaimIds,
+  onReorganize,
+  reorganizing,
 }: {
   space: SpaceLike
   dimension: ResearchDimension
@@ -57,6 +60,11 @@ export default function ReadingV3({
   onAsk?: (claimId: string) => void
   /** §A2：上层已持有单一 Esc 优先级链时置 true——本组件只处理自己的局部状态，退出 Reading 交给上层 */
   escOwnedByParent?: boolean
+  /** 阶段 4（P1-2 路线 A）：证据快刷后受影响的 claimId 集合 → 显示「证据已更新」标记 */
+  updatedClaimIds?: ReadonlySet<string>
+  /** 重新组织该维度（用最新证据重跑该维度合成）；未提供则不显示入口 */
+  onReorganize?: () => void
+  reorganizing?: boolean
   onBack: () => void
 }) {
   const claims = useMemo(
@@ -65,10 +73,17 @@ export default function ReadingV3({
   )
   const spine = claims.filter((c) => c.type !== "unknown")
   const unknownClaims = claims.filter((c) => c.type === "unknown")
-  const dimEvidence = useMemo(
-    () => dimension.evidenceIds.map((id) => space.evidence.find((e) => e.evidenceId === id)).filter((e): e is Evidence => Boolean(e)),
-    [dimension.evidenceIds, space.evidence],
-  )
+  const dimEvidence = useMemo(() => {
+    const seen = new Set<string>()
+    return dimension.evidenceIds
+      .filter((id) => {
+        if (seen.has(id)) return false
+        seen.add(id)
+        return true
+      })
+      .map((id) => space.evidence.find((e) => e.evidenceId === id))
+      .filter((e): e is Evidence => Boolean(e))
+  }, [dimension.evidenceIds, space.evidence])
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [pinnedId, setPinnedId] = useState<string | null>(initialEvidenceId ?? null)
   const [activeClaimId, setActiveClaimId] = useState<string | null>(initialClaimId ?? null)
@@ -152,25 +167,24 @@ export default function ReadingV3({
 
   return (
     <div
-      className="absolute inset-0 z-50 grid"
+      className="absolute inset-0 z-50 grid grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(280px,22vw)] lg:overflow-hidden"
       style={{
         background: V3_PALETTE.bg,
         color: V3_PALETTE.ink,
-        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 22vw)",
         overflowX: "hidden",
       }}
     >
       {/* 中：Claim Spine */}
-      <div className="relative min-w-0 overflow-y-auto overflow-x-hidden px-12 pb-36 pt-10">
+      <div className="relative min-w-0 overflow-visible px-5 pb-16 pt-20 sm:px-8 lg:overflow-y-auto lg:px-12 lg:pb-36 lg:pt-10">
         <div className="font-mono text-[10px] tracking-[0.28em]" style={{ color: V3_PALETTE.secondary }}>
           {space.company.stockCode} · RESEARCH READING
         </div>
-        <div className="mt-2 flex items-end justify-between">
+        <div className="mt-2 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
           <h1
             ref={titleRef}
             className="font-medium leading-[1.06] tracking-[-0.01em]"
             style={{
-              fontSize: "clamp(38px, 3.4vw, 52px)",
+              fontSize: "clamp(32px, 8vw, 52px)",
               whiteSpace: "normal",
               overflow: "visible",
               wordBreak: "keep-all",
@@ -198,6 +212,18 @@ export default function ReadingV3({
           )}
           {unknownClaims.length > 0 && <span style={{ color: V3_PALETTE.amber }}>{unknownClaims.length} UNKNOWN</span>}
           <span>{dimension.status.toUpperCase()}</span>
+          {onReorganize && (
+            <button
+              type="button"
+              data-reorganize-dimension
+              disabled={reorganizing}
+              onClick={onReorganize}
+              className="font-mono text-[10.5px] tracking-[0.16em] transition hover:opacity-70 disabled:opacity-50"
+              style={{ color: V3_PALETTE.blue, cursor: reorganizing ? "wait" : "pointer" }}
+            >
+              {reorganizing ? "REORGANIZING…" : "↻ 重新组织该维度"}
+            </button>
+          )}
         </div>
 
         <ol className="mt-12 space-y-12" style={{ maxWidth: 720 }}>
@@ -219,9 +245,18 @@ export default function ReadingV3({
                           {claim.signal.toUpperCase()}
                         </span>
                       )}
+                      {updatedClaimIds?.has(claim.claimId) && (
+                        <span
+                          data-claim-stale
+                          className="ml-2 border px-1.5 py-0.5 text-[9px]"
+                          style={{ color: V3_PALETTE.amber, borderColor: V3_PALETTE.amber }}
+                        >
+                          证据已更新 · 该结论为更新前生成
+                        </span>
+                      )}
                     </div>
                     <p
-                      className="mt-2 cursor-text text-[22px] leading-[1.45] tracking-[-0.005em]"
+                      className="mt-2 cursor-text text-[18px] leading-[1.5] tracking-[-0.005em] sm:text-[22px]"
                       style={{ opacity: activeClaimId && !isActive ? 0.42 : 1, transition: "opacity 280ms ease-out" }}
                       onClick={() => {
                         setActiveClaimId(claim.claimId)
@@ -231,10 +266,10 @@ export default function ReadingV3({
                       {claim.text}
                     </p>
                     {/* 证据锚点（§56：thin line 连接，无 Card） */}
-                    <div className="mt-3 flex items-center gap-3">
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
                       {claim.evidenceIds.map((id, i) => (
                         <button
-                          key={id}
+                          key={`${id}-${i}`}
                           type="button"
                           onMouseEnter={() => setPreviewId(id)}
                           onMouseLeave={() => setPreviewId(null)}
@@ -322,7 +357,7 @@ export default function ReadingV3({
                             {claim.evidenceIds.slice(0, 3).map((id, i) => {
                               const ev = dimEvidence.find((e) => e.evidenceId === id)
                               return (
-                                <li key={id}>
+                                <li key={`${id}-${i}`}>
                                   <span className="mr-2 font-mono text-[10.5px]" style={{ color: V3_PALETTE.secondary }}>
                                     {anchorGlyph(i + 1)}
                                   </span>
@@ -389,8 +424,8 @@ export default function ReadingV3({
 
       {/* 右：Evidence Rail（editorial column + 竖 rule，§55） */}
       <aside
-        className="relative min-w-0 overflow-y-auto border-l pl-6 pr-6 pt-10"
-        style={{ borderColor: "rgba(16,19,24,0.1)", width: 316 }}
+        className="relative min-w-0 border-t px-5 pb-16 pt-8 sm:px-8 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:px-6 lg:pb-8 lg:pt-10"
+        style={{ borderColor: "rgba(16,19,24,0.1)" }}
       >
         {railEvidence ? (
           <>

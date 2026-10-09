@@ -44,6 +44,7 @@ import {
   formatLastResearch,
   isSaved,
   loadCanvas,
+  loadChangeRecord,
   loadLibrary,
   loadResearch,
   loadRecent,
@@ -52,6 +53,8 @@ import {
   pushRecent,
   reconcileCanvasSnapshot,
   saveCanvas,
+  saveChangeRecord,
+  saveLastCheckedAt,
   saveLibrary,
   saveResearch,
   saveRecent,
@@ -68,6 +71,7 @@ import {
   type CanvasSnapshot,
   type SavedCompany,
 } from "@/lib/v5/shelf"
+import { CHANGE_KIND_LABEL, diffPayloads, type ChangeSet } from "@/lib/v5/change-diff"
 import { installTestFailureInterceptor } from "@/lib/v5/test-failure"
 import {
   apertureRectFor,
@@ -981,9 +985,17 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   // 「重新组织该维度」用最新证据重跑该维度合成。失败时 payload 原样保留 = 天然回滚。
   // 2026-10-09 用户拍板两层更新：①每次进入研究空间自动刷（见下方 effect，source="auto"）；
   // ②手动更新常驻顶栏（不只在过期时才出现）。
+  // 2026-10-10 M1：刷新后先算**结构化差异**，只有差异达标才落盘（写上一个有效版本 + 变化清单），
+  // 否则只更新检查时间——不再无脑重写 payload（评审红线：别刷爆本机存储）。
   const [updatedClaims, setUpdatedClaims] = useState<{ stockCode: string; ids: Set<string> } | null>(null)
   const [evidenceRefreshing, setEvidenceRefreshing] = useState(false)
   const [reorganizingDimId, setReorganizingDimId] = useState<string | null>(null)
+  const [changeSet, setChangeSet] = useState<ChangeSet | null>(null)
+  const [changeOpen, setChangeOpen] = useState(true)
+  /** live = 本次刷新产出的变化；stored = 重新进入后从本机恢复的、尚未核验的变化 */
+  const [changeOrigin, setChangeOrigin] = useState<"live" | "stored" | null>(null)
+  /** 变化清单属于哪家公司（切公司时用于判定残留；用 ref 是因为只在回调里读） */
+  const changeCodeRef = useRef<string | null>(null)
 
   const runEvidenceRefresh = useCallback(async (source: "auto" | "manual" = "manual") => {
     const current = payloadRef.current
@@ -997,15 +1009,42 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       })
       const body = (await res.json()) as Parameters<typeof mergeRefreshedTruth>[1] & { error?: string }
       if (!res.ok) throw new Error(body?.error ?? `刷新服务返回 ${res.status}`)
+      // 合并抛错即不写入任何 state（旧 payload 原样保留）
       const merged = mergeRefreshedTruth(current, body)
-      commitResearchPayload(merged.payload)
-      setUpdatedClaims({ stockCode: merged.payload.company.stockCode, ids: new Set(merged.updatedClaimIds) })
+      const change = diffPayloads(current, merged.payload, Date.now())
       const asOf = merged.payload.marketHistory?.latestDate ?? "未知"
-      setRefreshNote(
-        (source === "auto" ? "已自动更新数据" : "数据已刷新") +
-          `（截至 ${asOf}）` +
-          (merged.updatedClaimIds.length > 0 ? `；${merged.updatedClaimIds.length} 条结论为更新前生成，可重新组织` : ""),
-      )
+
+      if (change.hasQualifiedChange) {
+        // 顺序：先写「上一个有效版本」快照（含 metrics/evidence 全文），再提交新 payload。
+        // 任一步失败都不会留下"新数据已写、旧依据已丢"的半截状态。
+        await saveChangeRecord(merged.payload.company.stockCode, {
+          at: change.comparedAt,
+          prev: {
+            savedAt: change.comparedAt,
+            retrievedAt: body?.retrievedAt,
+            metrics: current.metrics ?? [],
+            evidence: current.evidence ?? [],
+            claims: (current.claims ?? []).map((c) => ({ claimId: c.claimId, evidenceIds: c.evidenceIds ?? [] })),
+          },
+          items: change.items,
+          claimRecheckIds: change.claimRecheckIds,
+        })
+        commitResearchPayload(merged.payload)
+        setUpdatedClaims({ stockCode: merged.payload.company.stockCode, ids: new Set(merged.updatedClaimIds) })
+        setChangeSet(change)
+        setChangeOrigin("live")
+        changeCodeRef.current = merged.payload.company.stockCode
+        setChangeOpen(true)
+        setRefreshNote(
+          `${source === "auto" ? "已自动更新数据" : "数据已刷新"}（截至 ${asOf}）· 本次发现 ${change.items.length} 项变化`,
+        )
+      } else {
+        // 无值得记录的变化：不重写 payload、不新增快照，只更新检查时间。
+        // 但**不清掉已有变化清单**——"N 条结论需重新核验"是留给用户的下一步动作，
+        // 一次无变化的刷新不该把它抹掉（M1 探针 ④ 抓到的真问题）。
+        await saveLastCheckedAt(merged.payload.company.stockCode, change.comparedAt)
+        setRefreshNote(`数据已是最新（截至 ${asOf}）`)
+      }
       window.setTimeout(() => setRefreshNote(null), 6000)
     } catch (err) {
       // 合并失败不写入 state：旧 payload 原样保留（回滚），明确报错不修饰
@@ -1015,6 +1054,16 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       setEvidenceRefreshing(false)
     }
   }, [evidenceRefreshing, commitResearchPayload])
+
+  /** 变化 → 定位证据：打开该证据所属维度的阅读态并高亮该证据卡 */
+  const openChangeEvidence = useCallback((evidenceId: string) => {
+    const current = payloadRef.current
+    if (!current) return
+    const dim = (current.dimensions ?? []).find((d) => d.evidenceIds?.includes(evidenceId))
+    if (dim) setReadingId(dim.dimensionId)
+    setReadingEvidenceId(evidenceId)
+    setChangeOpen(false)
+  }, [])
 
   const runReorganize = useCallback(
     async (dimension: ResearchSpacePayload["dimensions"][number]) => {
@@ -1514,6 +1563,36 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
     autoRefreshedCodesRef.current.add(code)
     void runEvidenceRefresh("auto")
   }, [payload, isRecordedSample, runEvidenceRefresh])
+
+  // 重新进入后恢复上次的变化清单（M1）：读本机「上一个有效版本 + 变化清单」，
+  // 让"变了什么"不只是更新那一瞬间的提示，重新打开也追得到。
+  const changeLoadedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!payload || isRecordedSample) return
+    const code = payload.company.stockCode
+    if (changeLoadedRef.current.has(code)) return
+    changeLoadedRef.current.add(code)
+    void (async () => {
+      const rec = await loadChangeRecord(code)
+      if (!rec || !rec.items?.length) {
+        // 这家没有待核验的变化：只在清单属于**别的公司**时才清掉（别把别家的变化留在这儿）
+        if (changeCodeRef.current && changeCodeRef.current !== code) {
+          setChangeSet(null)
+          setChangeOrigin(null)
+        }
+        return
+      }
+      setChangeSet({
+        items: rec.items,
+        claimRecheckIds: rec.claimRecheckIds ?? [],
+        hasQualifiedChange: true,
+        comparedAt: rec.at,
+      })
+      setChangeOrigin("stored")
+      changeCodeRef.current = code
+      setChangeOpen(true)
+    })()
+  }, [payload, isRecordedSample])
 
   const externalJob = useMemo(() => {
     const code = payload?.company.stockCode
@@ -3282,6 +3361,90 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
           </div>
         )}
       </header>
+      )}
+
+      {/* ---- 变化清单（M1 · 2026-10-10）----
+          变化有分类、有依据、有下一步动作：每条都能定位到公司 / 指标 / 报告期 / 证据卡。 */}
+      {payload && changeSet && changeSet.items.length > 0 && (
+        <div
+          data-ui
+          data-change-panel
+          className="pointer-events-auto absolute left-1/2 top-[76px] z-[55] w-[min(600px,calc(100vw-48px))] -translate-x-1/2 border"
+          style={{ borderColor: C.hair, background: "rgba(251,252,254,0.98)", boxShadow: "0 8px 28px rgba(17,21,27,0.10)" }}
+        >
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair }}>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-mono text-[11px] tracking-[0.12em]" style={{ color: C.blue }}>
+                {changeOrigin === "stored" ? "上次更新发现" : "本次发现"} {changeSet.items.length} 项变化
+                {changeOrigin === "stored" ? "（尚未核验）" : ""}
+              </span>
+              <span className="truncate font-mono text-[10px]" style={{ color: C.secondary }}>
+                相较上次有效研究记录
+                {changeSet.claimRecheckIds.length > 0 ? ` · ${changeSet.claimRecheckIds.length} 条结论需重新核验` : ""}
+              </span>
+            </div>
+            <button
+              type="button"
+              data-change-toggle
+              onClick={() => setChangeOpen((v) => !v)}
+              className="shrink-0 font-mono text-[10px] transition hover:opacity-70"
+              style={{ color: C.secondary, minHeight: 28 }}
+            >
+              {changeOpen ? "收起" : "展开"}
+            </button>
+          </div>
+
+          {changeOpen && (
+            <div className="max-h-[46vh] overflow-y-auto">
+              {changeSet.items.map((item) => (
+                <div
+                  key={`${item.kind}-${item.metricId}`}
+                  data-change-item={item.metricId}
+                  data-change-kind={item.kind}
+                  className="border-b px-4 py-3 last:border-b-0"
+                  style={{ borderColor: C.hair }}
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <span
+                        className="shrink-0 border px-1.5 py-0.5 font-mono text-[10px]"
+                        style={{
+                          borderColor: item.guarded ? C.amber : C.hair,
+                          color: item.guarded ? C.amber : C.secondary,
+                        }}
+                      >
+                        {CHANGE_KIND_LABEL[item.kind]}
+                      </span>
+                      <span className="truncate text-[13px]" style={{ color: C.ink }}>
+                        {item.name}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-[11px]" style={{ color: C.ink }}>
+                      {item.kind === "value" && item.valueFrom !== null && item.valueTo !== null
+                        ? `${item.valueFrom.toFixed(2)}${item.unit} → ${item.valueTo.toFixed(2)}${item.unit}`
+                        : `${item.periodFrom ?? "—"} → ${item.periodTo ?? "—"}`}
+                    </span>
+                  </div>
+                  <div className="mt-1 font-mono text-[10px]" style={{ color: item.guarded ? C.amber : C.secondary }}>
+                    {item.kind === "value" && item.deltaText ? `${item.name} ${item.deltaText}` : item.basis}
+                  </div>
+                  <div className="mt-1 font-mono text-[10px] opacity-70" style={{ color: C.secondary }}>
+                    依据：{item.basis}
+                  </div>
+                  <button
+                    type="button"
+                    data-change-locate={item.evidenceId}
+                    onClick={() => openChangeEvidence(item.evidenceId)}
+                    className="mt-1.5 font-mono text-[10px] underline transition hover:opacity-70"
+                    style={{ color: C.blue, minHeight: 28 }}
+                  >
+                    查看前后证据 →
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 快刷结果提示（全局可见，不依赖侧板开关；阶段 4） */}

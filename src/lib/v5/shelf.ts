@@ -3,6 +3,9 @@
 // 只存产品状态；不存任何凭据。
 
 import type { ResearchSpacePayload } from "@/components/observatory/theme"
+import type { MetricResult } from "@/lib/metrics/types"
+import type { Evidence } from "@/lib/evidence/types"
+import type { ChangeItem } from "@/lib/v5/change-diff"
 import {
   clearStorageEviction,
   clearStorageFailure,
@@ -194,6 +197,51 @@ export async function loadResearch(
     return null
   }
   return saved
+}
+
+// ---- 变化记录（M1）----
+//
+// 口径（交叉评审）：只保留「上一个有效版本」+「本次变化清单」；
+// **只在差异达标时才写**（无变化只更新 lastCheckedAt），且旧版本存的是
+// metrics / evidence **全文对象而非 id**——否则旧证据一旦从当前 payload 消失就再也追不回。
+
+export interface PreviousVersion {
+  savedAt: number
+  retrievedAt?: string
+  metrics: MetricResult[]
+  evidence: Evidence[]
+  /** 只留结论与证据的引用关系，用于说明"哪些结论需要重新核验" */
+  claims: { claimId: string; evidenceIds: string[] }[]
+}
+
+export interface ChangeRecord {
+  at: number
+  prev: PreviousVersion
+  items: ChangeItem[]
+  claimRecheckIds: string[]
+}
+
+const changeKey = (stockCode: string) => `stocklens.change.${stockCode}`
+const checkKey = (stockCode: string) => `stocklens.check.${stockCode}`
+
+export async function saveChangeRecord(stockCode: string, record: ChangeRecord): Promise<void> {
+  await writeKV(changeKey(stockCode), record)
+}
+
+export async function loadChangeRecord(stockCode: string): Promise<ChangeRecord | null> {
+  const saved = await readKV<ChangeRecord>(changeKey(stockCode))
+  if (!saved || !Array.isArray(saved.items) || !saved.prev || !Array.isArray(saved.prev.metrics)) return null
+  return saved
+}
+
+/** 无变化时只刷新检查时间——不写 payload、不新增快照。 */
+export async function saveLastCheckedAt(stockCode: string, at: number): Promise<void> {
+  await writeKV(checkKey(stockCode), at)
+}
+
+export async function loadLastCheckedAt(stockCode: string): Promise<number | null> {
+  const at = await readKV<number>(checkKey(stockCode))
+  return typeof at === "number" ? at : null
 }
 
 export async function loadCanvas(stockCode: string): Promise<CanvasSnapshot | null> {

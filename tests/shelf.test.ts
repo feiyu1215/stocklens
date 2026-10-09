@@ -230,3 +230,38 @@ describe("公司切换过期响应守卫（§15）", () => {
     expect(guard.isCurrent(guard.begin())).toBe(true)
   })
 })
+
+// ---- M3 版本历史（纯函数部分）----
+import { HISTORY_LIMIT, pushVersion, type ResearchVersion } from "@/lib/v5/shelf"
+
+const version = (at: number, changes = 0): ResearchVersion => ({
+  at,
+  metrics: [],
+  evidence: [],
+  claims: [],
+  changes: changes ? ([{ kind: "value", metricId: "X" }] as never) : [],
+  claimRecheckIds: [],
+})
+
+describe("M3 · 研究版本历史", () => {
+  it("新版本置顶，且按上限淘汰最旧", () => {
+    let list: ResearchVersion[] = []
+    for (let i = 1; i <= HISTORY_LIMIT + 4; i++) list = pushVersion(list, version(i * 10000))
+    expect(list).toHaveLength(HISTORY_LIMIT)
+    expect(list[0].at).toBe((HISTORY_LIMIT + 4) * 10000)
+    expect(list[list.length - 1].at).toBe(5 * 10000)
+  })
+
+  it("同一毫秒内的重复写入被忽略（连续进入不堆版本）", () => {
+    const once = pushVersion([], version(1000, 1))
+    const twice = pushVersion(once, version(1400, 2)) // 差 400ms < 1000ms
+    expect(twice).toHaveLength(1)
+    expect(twice[0].changes).toHaveLength(1)
+  })
+
+  it("首个版本是基线（changes 为空）也能进历史", () => {
+    const list = pushVersion([], version(1000))
+    expect(list).toHaveLength(1)
+    expect(list[0].changes).toHaveLength(0)
+  })
+})

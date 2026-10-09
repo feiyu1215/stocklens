@@ -234,6 +234,51 @@ export async function loadChangeRecord(stockCode: string): Promise<ChangeRecord 
   return saved
 }
 
+/** 一个研究版本（M3 时间线的基本单位）：够追回旧证据，不存整个 payload 的展示态 */
+export interface ResearchVersion {
+  at: number
+  retrievedAt?: string
+  metrics: MetricResult[]
+  evidence: Evidence[]
+  claims: { claimId: string; evidenceIds: string[] }[]
+  /** 相对上一版的变化（首个版本为空数组） */
+  changes: ChangeItem[]
+  claimRecheckIds: string[]
+}
+
+/** 每家公司保留的版本数上限（≈ 两个月的周度跟踪；超出按最旧淘汰） */
+export const HISTORY_LIMIT = 8
+
+/**
+ * 纯函数：新版本置顶、按上限淘汰最旧。
+ * 同一毫秒内的重复写入直接忽略——连续进入不该堆出没有新信息的版本。
+ */
+export function pushVersion(
+  list: ResearchVersion[],
+  version: ResearchVersion,
+  limit = HISTORY_LIMIT,
+): ResearchVersion[] {
+  if (list[0] && Math.abs(list[0].at - version.at) < 1000) return list
+  return [version, ...list].slice(0, limit)
+}
+
+const historyKey = (stockCode: string) => `stocklens.history.${stockCode}`
+
+export async function appendVersion(stockCode: string, version: ResearchVersion): Promise<void> {
+  const list = await loadHistory(stockCode)
+  await writeKV(historyKey(stockCode), pushVersion(list, version))
+}
+
+export async function saveHistory(stockCode: string, list: ResearchVersion[]): Promise<void> {
+  await writeKV(historyKey(stockCode), list)
+}
+
+export async function loadHistory(stockCode: string): Promise<ResearchVersion[]> {
+  const list = await readKV<ResearchVersion[]>(historyKey(stockCode))
+  if (!Array.isArray(list)) return []
+  return list.filter((v) => v && Array.isArray(v.metrics) && typeof v.at === "number")
+}
+
 /** 无变化时只刷新检查时间——不写 payload、不新增快照。 */
 export async function saveLastCheckedAt(stockCode: string, at: number): Promise<void> {
   await writeKV(checkKey(stockCode), at)

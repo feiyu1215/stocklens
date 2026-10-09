@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { diffPayloads, PCT_POINT_THRESHOLD } from "@/lib/v5/change-diff"
+import { diffPayloads, diffVersions, PCT_POINT_THRESHOLD } from "@/lib/v5/change-diff"
 import type { ResearchSpacePayload } from "@/components/observatory/theme"
 import type { MetricResult } from "@/lib/metrics/types"
 import type { Evidence } from "@/lib/evidence/types"
@@ -166,5 +166,26 @@ describe("M1 · 结构化变化差分", () => {
     )
     expect(set.items).toHaveLength(0)
     expect(set.hasQualifiedChange).toBe(false)
+  })
+})
+
+describe("M3 · 跨期对照复用同一套差分", () => {
+  it("任意历史版本 vs 当前版本：结果与 payload 级差分一致，且带护栏", () => {
+    const prev = payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 25.0, period: "2026-Q1" })], [])
+    const now = payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 23.0, period: "2026-Q2" })], [])
+    const set = diffVersions("000333.SZ", prev, now, NOW)
+    expect(set.items).toHaveLength(1)
+    expect(set.items[0].kind).toBe("period") // 跨报告期：只报切换，不算差额
+    expect(set.items[0].delta).toBeNull()
+  })
+
+  it("同报告期的历史对照按数值变化报", () => {
+    const prev = payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 25.0, period: "2026-Q2" })], [])
+    const now = payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 23.4, period: "2026-Q2" })], [])
+    const set = diffVersions("000333.SZ", prev, now, NOW)
+    expect(set.items).toHaveLength(1)
+    expect(set.items[0].kind).toBe("value")
+    expect(set.items[0].valueFrom).toBe(25.0)
+    expect(set.items[0].valueTo).toBe(23.4)
   })
 })

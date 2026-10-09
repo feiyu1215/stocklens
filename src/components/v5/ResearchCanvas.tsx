@@ -45,6 +45,8 @@ import {
   isSaved,
   loadCanvas,
   loadChangeRecord,
+  loadHistory,
+  pushVersion,
   loadLibrary,
   loadResearch,
   loadRecent,
@@ -53,7 +55,7 @@ import {
   pushRecent,
   reconcileCanvasSnapshot,
   saveCanvas,
-  saveChangeRecord,
+  saveHistory,
   saveLastCheckedAt,
   saveLibrary,
   saveResearch,
@@ -69,9 +71,22 @@ import {
   touchSaved,
   upsertLibrary,
   type CanvasSnapshot,
+  type ResearchVersion,
   type SavedCompany,
 } from "@/lib/v5/shelf"
 import { CHANGE_KIND_LABEL, diffPayloads, type ChangeSet } from "@/lib/v5/change-diff"
+import { diffVersions } from "@/lib/v5/change-diff"
+
+/** 版本时间标签：MM-DD HH:mm（纵向时间线用） */
+function versionLabel(at?: number | null): string {
+  if (!at) return "—"
+  const d = new Date(at)
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${mm}-${dd} ${hh}:${mi}`
+}
 import { installTestFailureInterceptor } from "@/lib/v5/test-failure"
 import {
   apertureRectFor,
@@ -999,6 +1014,11 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   const [changeOpen, setChangeOpen] = useState(true)
   /** live = 本次刷新产出的变化；stored = 重新进入后从本机恢复的、尚未核验的变化 */
   const [changeOrigin, setChangeOrigin] = useState<"live" | "stored" | null>(null)
+  /** M3：该公司的研究版本历史（最新在前），用于纵向时间线与跨期对照 */
+  const [versions, setVersions] = useState<ResearchVersion[]>([])
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  /** 跨期对照：选中的历史版本（null = 看"本次/上次变化"） */
+  const [compareVersionAt, setCompareVersionAt] = useState<number | null>(null)
   /** 变化清单属于哪家公司（切公司时用于判定残留；用 ref 是因为只在回调里读） */
   const changeCodeRef = useRef<string | null>(null)
 
@@ -1022,18 +1042,35 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       if (change.hasQualifiedChange) {
         // 顺序：先写「上一个有效版本」快照（含 metrics/evidence 全文），再提交新 payload。
         // 任一步失败都不会留下"新数据已写、旧依据已丢"的半截状态。
-        await saveChangeRecord(merged.payload.company.stockCode, {
+        // M3：这一版进历史（存**新**状态；上一版即历史里的第二条，前后对照因此可追）。
+        // 首次记录时先补一个**基线版本**（刷新前的状态，changes 为空）——
+        // 否则"第一次变化之前是什么样"无从对照，时间线只剩变化之后的世界。
+        // 顺序不变：先写历史，再提交 payload；失败即回滚，旧数据不动。
+        const code = merged.payload.company.stockCode
+        const list = await loadHistory(code)
+        const baseline: ResearchVersion = {
+          at: change.comparedAt - 1000,
+          metrics: current.metrics ?? [],
+          evidence: current.evidence ?? [],
+          claims: (current.claims ?? []).map((c) => ({ claimId: c.claimId, evidenceIds: c.evidenceIds ?? [] })),
+          changes: [],
+          claimRecheckIds: [],
+        }
+        const nextVersion: ResearchVersion = {
           at: change.comparedAt,
-          prev: {
-            savedAt: change.comparedAt,
-            retrievedAt: body?.retrievedAt,
-            metrics: current.metrics ?? [],
-            evidence: current.evidence ?? [],
-            claims: (current.claims ?? []).map((c) => ({ claimId: c.claimId, evidenceIds: c.evidenceIds ?? [] })),
-          },
-          items: change.items,
+          retrievedAt: body?.retrievedAt,
+          metrics: merged.payload.metrics ?? [],
+          evidence: merged.payload.evidence ?? [],
+          claims: (merged.payload.claims ?? []).map((c) => ({
+            claimId: c.claimId,
+            evidenceIds: c.evidenceIds ?? [],
+          })),
+          changes: change.items,
           claimRecheckIds: change.claimRecheckIds,
-        })
+        }
+        const nextList = pushVersion(list.length === 0 ? pushVersion([], baseline) : list, nextVersion)
+        await saveHistory(code, nextList)
+        setVersions(nextList)
         commitResearchPayload(merged.payload)
         setUpdatedClaims({ stockCode: merged.payload.company.stockCode, ids: new Set(merged.updatedClaimIds) })
         setChangeSet(change)
@@ -1059,6 +1096,18 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       setEvidenceRefreshing(false)
     }
   }, [evidenceRefreshing, commitResearchPayload])
+
+  // ---- M3 跨期对照：任意历史版本 vs 当前版本 ----
+  const compareVersion = useMemo(
+    () => (compareVersionAt ? versions.find((v) => v.at === compareVersionAt) ?? null : null),
+    [compareVersionAt, versions],
+  )
+  const crossSet = useMemo(() => {
+    if (!compareVersion || !payload) return null
+    return diffVersions(payload.company.stockCode, compareVersion, payload, compareVersion.at)
+  }, [compareVersion, payload])
+  /** 面板实际展示的变化集：跨期对照优先，否则是"本次/上次更新"的变化 */
+  const shownChangeSet = crossSet ?? changeSet
 
   /** 变化 → 定位证据：打开该证据所属维度的阅读态并高亮该证据卡 */
   const openChangeEvidence = useCallback((evidenceId: string) => {
@@ -1578,7 +1627,12 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
     if (changeLoadedRef.current.has(code)) return
     changeLoadedRef.current.add(code)
     void (async () => {
-      const rec = await loadChangeRecord(code)
+      // M3：先读版本历史（最新一版的 changes 就是"待核验的变化"）；
+      // 读不到再退回 M1 的旧记录键，保证升级前的数据不丢。
+      const list = await loadHistory(code)
+      setVersions(list)
+      const latest = list[0]
+      const rec = latest?.changes?.length ? { at: latest.at, items: latest.changes, claimRecheckIds: latest.claimRecheckIds ?? [] } : await loadChangeRecord(code)
       if (!rec || !rec.items?.length) {
         // 这家没有待核验的变化：只在清单属于**别的公司**时才清掉（别把别家的变化留在这儿）
         if (changeCodeRef.current && changeCodeRef.current !== code) {
@@ -3185,6 +3239,18 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                 </button>
               )
             )}
+            {!isRecordedSample && versions.length > 0 && (
+              <button
+                type="button"
+                data-timeline-toggle
+                aria-pressed={timelineOpen}
+                onClick={() => setTimelineOpen((v) => !v)}
+                className="transition hover:opacity-80"
+                style={{ minHeight: 36, cursor: "pointer", color: timelineOpen ? C.blue : undefined }}
+              >
+                历史 {versions.length} 版
+              </button>
+            )}
             {resolvingName && (
               <span data-resolving className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
                 Resolving {resolvingName}…
@@ -3370,7 +3436,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
 
       {/* ---- 变化清单（M1 · 2026-10-10）----
           变化有分类、有依据、有下一步动作：每条都能定位到公司 / 指标 / 报告期 / 证据卡。 */}
-      {payload && changeSet && changeSet.items.length > 0 && (
+      {payload && shownChangeSet && shownChangeSet.items.length > 0 && (
         <div
           data-ui
           data-change-panel
@@ -3380,12 +3446,14 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
           <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair }}>
             <div className="flex min-w-0 items-center gap-2">
               <span className="font-mono text-[11px] tracking-[0.12em]" style={{ color: C.blue }}>
-                {changeOrigin === "stored" ? "上次更新发现" : "本次发现"} {changeSet.items.length} 项变化
-                {changeOrigin === "stored" ? "（尚未核验）" : ""}
+                {crossSet
+                  ? `相对 ${versionLabel(compareVersion?.at)} 的变化`
+                  : `${changeOrigin === "stored" ? "上次更新发现" : "本次发现"} ${shownChangeSet.items.length} 项变化`}
+                {!crossSet && changeOrigin === "stored" ? "（尚未核验）" : ""}
               </span>
               <span className="truncate font-mono text-[10px]" style={{ color: C.secondary }}>
                 相较上次有效研究记录
-                {changeSet.claimRecheckIds.length > 0 ? ` · ${changeSet.claimRecheckIds.length} 条结论需重新核验` : ""}
+                {shownChangeSet.claimRecheckIds.length > 0 ? ` · ${shownChangeSet.claimRecheckIds.length} 条结论需重新核验` : ""}
               </span>
             </div>
             <button
@@ -3401,7 +3469,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
 
           {changeOpen && (
             <div className="max-h-[46vh] overflow-y-auto">
-              {changeSet.items.map((item) => (
+              {shownChangeSet.items.map((item) => (
                 <div
                   key={`${item.kind}-${item.metricId}`}
                   data-change-item={item.metricId}
@@ -3449,6 +3517,59 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ---- 纵向时间线（M3）----
+          多版本历史 + 跨期对照：选任意历史版本，与当前版本跑同一套差分。 */}
+      {!isRecordedSample && timelineOpen && versions.length > 0 && (
+        <div
+          data-timeline-panel
+          className="pointer-events-auto absolute right-8 top-[76px] z-[56] w-[268px] border"
+          style={{ borderColor: C.hair, background: "rgba(251,252,254,0.98)", boxShadow: "0 8px 28px rgba(17,21,27,0.10)" }}
+        >
+          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: C.hair }}>
+            <span className="font-mono text-[10px] tracking-[0.12em]" style={{ color: C.secondary }}>
+              研究时间线 · 最多 {versions.length} 版
+            </span>
+            {compareVersionAt && (
+              <button
+                type="button"
+                data-timeline-clear
+                onClick={() => setCompareVersionAt(null)}
+                className="font-mono text-[10px] underline"
+                style={{ color: C.blue, minHeight: 26 }}
+              >
+                退出对照
+              </button>
+            )}
+          </div>
+          <div className="max-h-[40vh] overflow-y-auto">
+            {versions.map((v, idx) => {
+              const active = compareVersionAt === v.at
+              return (
+                <button
+                  key={v.at}
+                  type="button"
+                  data-timeline-version={v.at}
+                  onClick={() => setCompareVersionAt(active ? null : v.at)}
+                  className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left last:border-b-0 transition hover:bg-[#F8FAFF]"
+                  style={{ borderColor: C.hair, background: active ? "rgba(47,102,255,0.06)" : undefined }}
+                >
+                  <span className="font-mono text-[10px]" style={{ color: C.ink }}>
+                    {versionLabel(v.at)}
+                    {idx === 0 ? " · 当前" : ""}
+                  </span>
+                  <span className="font-mono text-[9px]" style={{ color: C.secondary }}>
+                    {v.changes?.length ? `${v.changes.length} 项变化` : "基线"}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="px-3 py-2 font-mono text-[9px] leading-4" style={{ color: C.secondary }}>
+            点任一版本 → 与当前版本对照（同一套差分规则；跨报告期只报切换，不算差额）
+          </p>
         </div>
       )}
 

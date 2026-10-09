@@ -12,6 +12,7 @@
 
 import type { ResearchSpacePayload } from "@/components/observatory/theme"
 import type { MetricResult } from "@/lib/metrics/types"
+import type { Evidence } from "@/lib/evidence/types"
 import { COMPARE_CATALOG, type CompareGroup } from "@/lib/v5/compare"
 
 /** 变化类型：数值变化 / 报告期变化 / 证据变化（结论需重新核验由 claimRecheckIds 表达） */
@@ -103,19 +104,23 @@ function passesThreshold(metric: MetricResult, group: CompareGroup, delta: numbe
   return Math.abs(delta) >= (group === "valuation" ? VALUATION_RELATIVE_THRESHOLD : RELATIVE_THRESHOLD)
 }
 
+/** 版本的轻量形状：历史快照与 payload 都满足它，跨期对照因此复用同一套差分 */
+export interface VersionLite {
+  metrics: MetricResult[]
+  evidence: Evidence[]
+  claims: { claimId: string; evidenceIds: string[] }[]
+}
+
 /**
- * 上一次有效研究 vs 本次更新后的研究，产出分类变化清单。
- * 传入的 payload 必须是**同一家公司**；不匹配时返回空集合（不猜）。
+ * 核心差分：任意两个**同一家公司**的版本（payload 或历史快照）→ 分类变化清单。
+ * M1 用它做"上一版 vs 本次更新"，M3 用它做"任意历史版本 vs 当前版本"的跨期对照。
  */
-export function diffPayloads(
-  prev: ResearchSpacePayload,
-  next: ResearchSpacePayload,
+export function diffVersions(
+  stockCode: string,
+  prev: VersionLite,
+  next: VersionLite,
   now = Date.now(),
 ): ChangeSet {
-  if (prev?.company?.stockCode !== next?.company?.stockCode) {
-    return { items: [], claimRecheckIds: [], hasQualifiedChange: false, comparedAt: now }
-  }
-
   const prevMetrics = new Map<string, MetricResult>((prev.metrics ?? []).map((m) => [m.metricId, m]))
   const prevEvidence = new Map((prev.evidence ?? []).map((e) => [e.evidenceId, e]))
   const nextEvidence = new Map((next.evidence ?? []).map((e) => [e.evidenceId, e]))
@@ -243,6 +248,21 @@ export function diffPayloads(
     hasQualifiedChange: items.length > 0,
     comparedAt: now,
   }
+}
+
+/**
+ * 上一次有效研究 vs 本次更新后的研究。
+ * 传入的必须是**同一家公司**；不匹配时返回空集合（不猜）。
+ */
+export function diffPayloads(
+  prev: ResearchSpacePayload,
+  next: ResearchSpacePayload,
+  now = Date.now(),
+): ChangeSet {
+  if (prev?.company?.stockCode !== next?.company?.stockCode) {
+    return { items: [], claimRecheckIds: [], hasQualifiedChange: false, comparedAt: now }
+  }
+  return diffVersions(next.company.stockCode, prev, next, now)
 }
 
 /** 展示层用：把变化类型翻成中文标签 */

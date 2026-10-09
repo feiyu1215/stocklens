@@ -76,6 +76,7 @@ import {
 } from "@/lib/v5/shelf"
 import { CHANGE_KIND_LABEL, diffPayloads, type ChangeSet } from "@/lib/v5/change-diff"
 import { diffVersions } from "@/lib/v5/change-diff"
+import { evaluateJudgmentReport } from "@/lib/v5/judgment"
 
 /** 版本时间标签：MM-DD HH:mm（纵向时间线用） */
 function versionLabel(at?: number | null): string {
@@ -1019,6 +1020,8 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   const [timelineOpen, setTimelineOpen] = useState(false)
   /** 跨期对照：选中的历史版本（null = 看"本次/上次变化"） */
   const [compareVersionAt, setCompareVersionAt] = useState<number | null>(null)
+  /** M4：条件性判断层面板开关（只展示"触发了什么 + 为什么没触发"，不做综合评价） */
+  const [judgmentOpen, setJudgmentOpen] = useState(false)
   /** 变化清单属于哪家公司（切公司时用于判定残留；用 ref 是因为只在回调里读） */
   const changeCodeRef = useRef<string | null>(null)
 
@@ -1108,6 +1111,40 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   }, [compareVersion, payload])
   /** 面板实际展示的变化集：跨期对照优先，否则是"本次/上次更新"的变化 */
   const shownChangeSet = crossSet ?? changeSet
+
+  // ---- M4 条件性判断层：纯规则推导，不碰模型；未触发的规则也要给出原因 ----
+  const judgmentReport = useMemo(() => evaluateJudgmentReport(payload?.metrics), [payload])
+
+  /**
+   * 挂在维度卡上的证据 ID 集合。
+   * 不是每个 FACT 证据都会被某个维度引用（例：EV_FACT_FIN_REVENUE_YOY_YTD 只出现在指标里，
+   * 维度卡上挂的是 QUARTER 那条）——这类证据可引用、不可定位，按钮不能假装能跳转。
+   */
+  const locatableEvidenceIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const d of payload?.dimensions ?? []) for (const id of d.evidenceIds ?? []) set.add(id)
+    return set
+  }, [payload])
+
+  /**
+   * 变化清单展开时会占住顶部中间一条；右侧栏（时间线 / 判断层）必须让位，否则两者重叠。
+   * 这里实测其高度，供右侧栏计算 top——不猜高度，用 ResizeObserver 跟。
+   */
+  const changePanelRef = useRef<HTMLDivElement | null>(null)
+  const [changePanelHeight, setChangePanelHeight] = useState(0)
+  const changePanelVisible = !!payload && !!shownChangeSet && shownChangeSet.items.length > 0
+  useEffect(() => {
+    const el = changePanelRef.current
+    if (!changePanelVisible || !el) {
+      setChangePanelHeight(0)
+      return
+    }
+    const measure = () => setChangePanelHeight(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [changePanelVisible, changeOpen, payload])
 
   /** 变化 → 定位证据：打开该证据所属维度的阅读态并高亮该证据卡 */
   const openChangeEvidence = useCallback((evidenceId: string) => {
@@ -3251,6 +3288,24 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                 历史 {versions.length} 版
               </button>
             )}
+            {payload && (
+              <button
+                type="button"
+                data-ui
+                data-judgment-toggle
+                aria-pressed={judgmentOpen}
+                onClick={() => setJudgmentOpen((v) => !v)}
+                className="transition hover:opacity-80"
+                style={{
+                  minHeight: 36,
+                  cursor: "pointer",
+                  color: judgmentOpen ? C.blue : judgmentReport.fired.length > 0 ? C.amber : undefined,
+                }}
+                title="条件性判断：按预设阈值与适用边界触发的关注信号（不做综合评价）"
+              >
+                判断 {judgmentReport.fired.length}
+              </button>
+            )}
             {resolvingName && (
               <span data-resolving className="font-mono text-[10.5px]" style={{ color: C.secondary }}>
                 Resolving {resolvingName}…
@@ -3438,6 +3493,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
           变化有分类、有依据、有下一步动作：每条都能定位到公司 / 指标 / 报告期 / 证据卡。 */}
       {payload && shownChangeSet && shownChangeSet.items.length > 0 && (
         <div
+          ref={changePanelRef}
           data-ui
           data-change-panel
           className="pointer-events-auto absolute left-1/2 top-[76px] z-[55] w-[min(600px,calc(100vw-48px))] -translate-x-1/2 border"
@@ -3504,15 +3560,26 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                   <div className="mt-1 font-mono text-[10px] opacity-70" style={{ color: C.secondary }}>
                     依据：{item.basis}
                   </div>
-                  <button
-                    type="button"
-                    data-change-locate={item.evidenceId}
-                    onClick={() => openChangeEvidence(item.evidenceId)}
-                    className="mt-1.5 font-mono text-[10px] underline transition hover:opacity-70"
-                    style={{ color: C.blue, minHeight: 28 }}
-                  >
-                    查看前后证据 →
-                  </button>
+                  {locatableEvidenceIds.has(item.evidenceId) ? (
+                    <button
+                      type="button"
+                      data-change-locate={item.evidenceId}
+                      onClick={() => openChangeEvidence(item.evidenceId)}
+                      className="mt-1.5 font-mono text-[10px] underline transition hover:opacity-70"
+                      style={{ color: C.blue, minHeight: 28 }}
+                    >
+                      查看前后证据 →
+                    </button>
+                  ) : (
+                    // 不假装能跳转：该 FACT 证据没有被任何维度卡引用，只能作为出处被引用
+                    <div
+                      data-change-locate-unavailable={item.evidenceId}
+                      className="mt-1.5 font-mono text-[9.5px]"
+                      style={{ color: C.secondary }}
+                    >
+                      该指标未挂在维度卡上，无法定位
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -3520,12 +3587,16 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
         </div>
       )}
 
-      {/* ---- 纵向时间线（M3）----
-          多版本历史 + 跨期对照：选任意历史版本，与当前版本跑同一套差分。 */}
+      {/* ---- 右侧栏：纵向时间线（M3）+ 条件性判断层（M4）----
+          两个面板共用一列纵向排列，避免互相遮挡；容器不吃指针事件，只有面板本身吃。 */}
+      <div
+        className="pointer-events-none absolute right-8 z-[56] flex w-[300px] flex-col gap-3"
+        style={{ top: 76 + (changePanelVisible ? changePanelHeight + 12 : 0) }}
+      >
       {!isRecordedSample && timelineOpen && versions.length > 0 && (
         <div
           data-timeline-panel
-          className="pointer-events-auto absolute right-8 top-[76px] z-[56] w-[268px] border"
+          className="pointer-events-auto w-full border"
           style={{ borderColor: C.hair, background: "rgba(251,252,254,0.98)", boxShadow: "0 8px 28px rgba(17,21,27,0.10)" }}
         >
           <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: C.hair }}>
@@ -3572,6 +3643,132 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
           </p>
         </div>
       )}
+
+      {/* ---- 条件性判断层（M4 · 2026-10-10）----
+          三层里的**第二层**：事实之上、综合评价之下。
+          每条判断必须同时给出阈值（依据）与适用边界；不做"盈利质量差""估值偏贵"这类综合评价。
+          未触发的规则同样列出原因——判定层沉默时，使用者至少要能确认它跑过了。 */}
+      {payload && judgmentOpen && (
+        <div
+          data-ui
+          data-judgment-panel
+          className="pointer-events-auto w-full border"
+          style={{ borderColor: C.hair, background: "rgba(251,252,254,0.98)", boxShadow: "0 8px 28px rgba(17,21,27,0.10)" }}
+        >
+          <div className="flex items-center justify-between gap-2 border-b px-3 py-2" style={{ borderColor: C.hair }}>
+            <span className="font-mono text-[10px] tracking-[0.12em]" style={{ color: C.blue }}>
+              条件性判断 · 触发 {judgmentReport.fired.length} / {judgmentReport.checked.length}
+            </span>
+            <button
+              type="button"
+              data-judgment-toggle
+              onClick={() => setJudgmentOpen(false)}
+              className="font-mono text-[10px] transition hover:opacity-70"
+              style={{ color: C.secondary, minHeight: 26 }}
+            >
+              收起
+            </button>
+          </div>
+
+          <div className="max-h-[52vh] overflow-y-auto">
+            {judgmentReport.fired.length === 0 && (
+              <p className="px-3 py-2.5 text-[11px] leading-[1.6]" style={{ color: C.ink }}>
+                按下列规则检查后<b>没有触发</b>任何关注信号。这不是“没有信息”，是“这套标准下没有异常”。
+              </p>
+            )}
+
+            {judgmentReport.fired.map((j) => (
+              <div
+                key={j.id}
+                data-judgment-item={j.id}
+                className="border-b px-3 py-3 last:border-b-0"
+                style={{ borderColor: C.hair }}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[12.5px]" style={{ color: C.ink }}>
+                    {j.name}
+                  </span>
+                  <span
+                    className="shrink-0 border px-1.5 py-0.5 font-mono text-[9px]"
+                    style={{ borderColor: C.amber, color: C.amber }}
+                  >
+                    关注
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-[1.6]" style={{ color: C.ink }}>
+                  {j.statement}
+                </p>
+                <p className="mt-1.5 font-mono text-[9.5px] leading-[1.55]" style={{ color: C.secondary }}>
+                  依据：{j.basis}
+                </p>
+                <p className="mt-1 font-mono text-[9.5px] leading-[1.55] opacity-80" style={{ color: C.secondary }}>
+                  {j.boundary}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                  {j.evidenceIds.map((eid) =>
+                    locatableEvidenceIds.has(eid) ? (
+                      <button
+                        key={eid}
+                        type="button"
+                        data-judgment-locate={eid}
+                        onClick={() => openChangeEvidence(eid)}
+                        className="font-mono text-[9.5px] underline transition hover:opacity-70"
+                        style={{ color: C.blue, minHeight: 26 }}
+                      >
+                        查看依据 →
+                      </button>
+                    ) : (
+                      // 该 FACT 证据没有被任何维度卡引用：可引用为出处，但不可定位——不假装能跳转
+                      <span
+                        key={eid}
+                        data-judgment-locate-unavailable={eid}
+                        className="font-mono text-[9px]"
+                        style={{ color: C.secondary }}
+                      >
+                        {eid}（未挂维度卡）
+                      </span>
+                    ),
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {judgmentReport.checked.some((c) => !c.fired) && (
+              <div className="px-3 py-2.5">
+                <div className="font-mono text-[9px] tracking-[0.16em]" style={{ color: C.secondary }}>
+                  已检查 · 未触发
+                </div>
+                {judgmentReport.checked
+                  .filter((c) => !c.fired)
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      data-judgment-checked={c.id}
+                      data-judgment-fired="false"
+                      className="mt-2 border-l pl-2"
+                      style={{ borderColor: C.hair }}
+                    >
+                      <div className="text-[10.5px]" style={{ color: C.ink }}>
+                        {c.name}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[9px]" style={{ color: C.secondary }}>
+                        阈值：{c.threshold}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[9px] leading-[1.5]" style={{ color: C.secondary }}>
+                        {c.reason}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <p className="border-t px-3 py-2 font-mono text-[9px] leading-4" style={{ borderColor: C.hair, color: C.secondary }}>
+            只做条件性判断：阈值与适用边界均公开、可质疑；不输出综合评价。收入与利润增长背离已由证据层给出（阈值 1.0pct），本层不重复。
+          </p>
+        </div>
+      )}
+      </div>
 
       {/* 快刷结果提示（全局可见，不依赖侧板开关；阶段 4） */}
       {refreshNote && (

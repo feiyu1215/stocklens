@@ -990,6 +990,11 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
   const [updatedClaims, setUpdatedClaims] = useState<{ stockCode: string; ids: Set<string> } | null>(null)
   const [evidenceRefreshing, setEvidenceRefreshing] = useState(false)
   const [reorganizingDimId, setReorganizingDimId] = useState<string | null>(null)
+  /** 录制示例的数据日期：取最新行情日期，其次最新报告期（不再硬编码，避免不同示例标错日期） */
+  const recordedSampleAsOf = useMemo(() => {
+    if (!payload) return null
+    return payload.marketHistory?.latestDate ?? payload.metrics?.find((m) => m.period)?.period ?? null
+  }, [payload])
   const [changeSet, setChangeSet] = useState<ChangeSet | null>(null)
   const [changeOpen, setChangeOpen] = useState(true)
   /** live = 本次刷新产出的变化；stored = 重新进入后从本机恢复的、尚未核验的变化 */
@@ -3063,7 +3068,7 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
               className="border px-2 py-1 font-mono text-[9px] tracking-[0.12em]"
               style={{ borderColor: C.hair, color: C.secondary }}
             >
-              录制示例 · 2026-09-30
+              录制示例 · {recordedSampleAsOf ?? "—"}
             </span>
           )}
         </div>

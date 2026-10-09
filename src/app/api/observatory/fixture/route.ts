@@ -14,6 +14,8 @@ const ALLOWED = new Set([
   "midea-artdirection",
   // Task 15.3B §44：碰撞测试用 8 维度 fixture
   "midea-eight",
+  // M2 冷启动：第二家录制示例（贵州茅台，与美的不同行业 → 对比页可秒开演示三级可比性）
+  "maotai-artdirection",
 ])
 
 /**

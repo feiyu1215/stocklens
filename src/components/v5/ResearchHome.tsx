@@ -7,6 +7,7 @@ import GlobalNav from "@/components/v5/GlobalNav"
 import { WipeLink, useRouteWipe } from "@/components/v5/RouteWipe"
 import StockLensMark from "@/components/v5/StockLensMark"
 import AssistantPanel from "@/components/v5/AssistantPanel"
+import type { ResearchSpacePayload } from "@/components/observatory/theme"
 import type { PlannedAction } from "@/lib/v5/assistant/capabilities"
 import {
   ensureShelfMigrated,
@@ -16,11 +17,13 @@ import {
   isSaved,
   loadLibrary,
   loadRecent,
+  loadResearch,
   loadSaved,
   mergeLibraryCompanies,
   onStorageEviction,
   onStorageFailure,
   saveLibrary,
+  saveResearch,
   searchCompanies,
   type SavedCompany,
   type StorageEviction,
@@ -38,6 +41,24 @@ const SAMPLE: SavedCompany = {
   evidenceCount: 38,
   aiStatus: "success",
 }
+
+/**
+ * 第二家录制示例（M2 冷启动）：贵州茅台——与美的**不同行业**，
+ * 这样冷启动也能立刻演示对比页的三级可比性（可比较 / 并列参考 / 不可比），
+ * 不必先花 15–30 秒研究出第二家公司。
+ * fixture 由真实链路录制（2026-10-10），见 tests/fixtures/observatory/maotai-artdirection.json。
+ */
+const SAMPLE2: SavedCompany = {
+  stockCode: "600519.SH",
+  name: "贵州茅台",
+  industry: "白酒",
+  savedAt: 0,
+  lastVisitedAt: 0,
+  dimensionCount: 6,
+  evidenceCount: 29,
+  aiStatus: "success",
+}
+const SAMPLE2_FIXTURE = "maotai-artdirection"
 
 type Locale = "zh" | "en"
 type HomeSurface = "start" | "library"
@@ -77,7 +98,7 @@ const COPY = {
     matrixNote: "每次进入画布都会自动入库；“最近”只影响快捷列表，不再把旧研究挤出去。",
     columns: ["公司", "子行业", "研究维度", "证据", "研究状态", "最近研究", ""],
     sampleStatus: "可体验示例",
-    sampleHint: "当前显示录制示例。完成第一次公司研究后，它会自动被真实记录取代。",
+    sampleHint: "当前显示两家录制示例（美的集团 · 贵州茅台，不同行业）——秒开，不发起实时研究；可以直接选两家做对比。研究一家新公司约需 15–30 秒。",
     unknownIndustry: "待识别",
     browseMatrix: "查看公司研究矩阵",
     backToResearch: "返回新研究",
@@ -119,7 +140,7 @@ const COPY = {
     matrixNote: "Every opened canvas is saved here. Recent activity never removes older research.",
     columns: ["Company", "Subsector", "Angles", "Evidence", "Status", "Last research", ""],
     sampleStatus: "Interactive sample",
-    sampleHint: "A recorded sample is shown until your first company research is created.",
+    sampleHint: "Two recorded samples are shown (different industries) — instant, no live research; pick both to compare. Researching a new company takes about 15–30 seconds.",
     unknownIndustry: "Unclassified",
     browseMatrix: "Browse company research",
     backToResearch: "Back to new research",
@@ -136,11 +157,19 @@ const COPY = {
 
 type SearchResult = { stockCode: string; stockName: string }
 
-function workspaceHref(stockCode: string, question = "", recordedSample = false, resume = false) {
+function workspaceHref(
+  stockCode: string,
+  question = "",
+  recordedSample = false,
+  resume = false,
+  fixture?: string,
+) {
   const params = new URLSearchParams({ stockCode })
   if (!recordedSample) params.set("live", "1")
   if (question.trim()) params.set("q", question.trim())
   if (resume) params.set("resume", "1")
+  // 第二家录制示例走自己的 fixture（不同公司 → 对比页能直接演示三级可比性）
+  if (recordedSample && fixture) params.set("fixture", fixture)
   return `/lab/ai-workspace-v1?${params.toString()}`
 }
 
@@ -345,7 +374,15 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
   }, [query, selected])
 
   const rows = useMemo(() => {
-    const source = library.length > 0 ? library : [SAMPLE]
+    // M2：冷启动给出**两家**录制示例（不同行业），对比页可直接秒开演示。
+    // 关键修正：打开一家示例后它会被写进研究库，如果此时改用 library 作为唯一数据源，
+    // 另一家示例就会"消失"，两家示例永远凑不齐 → 对比开关又被禁用。
+    // 规则：**只要还没有真实研究，示例行就一直保留**（真实研究出现后才让位）。
+    const SAMPLE_CODES = new Set([SAMPLE.stockCode, SAMPLE2.stockCode])
+    const hasRealResearch = library.some((company) => !SAMPLE_CODES.has(company.stockCode))
+    const source = hasRealResearch
+      ? library
+      : [...library, ...[SAMPLE, SAMPLE2].filter((s) => !library.some((c) => c.stockCode === s.stockCode))]
     const needle = libraryQuery.trim().toLowerCase()
     if (!needle) return source
     return source.filter((company) =>
@@ -374,8 +411,29 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
     setCompareMode(false)
     setCompareSelection([])
   }
-  const startCompare = () => {
+  /**
+   * M2 冷启动：选了录制示例做对比时，先把示例载荷落到本机再跳。
+   * 对比页只读本机 payload（`stocklens.research.<code>`），没有就会显示"缺失"；
+   * 这里只写缓存，**不写 shelf.library**——示例不会因此变成研究库里的真实记录。
+   */
+  const ensureSamplePayload = async (code: string) => {
+    const existing = await loadResearch(code)
+    if (existing) return
+    const fixture = code === SAMPLE2.stockCode ? SAMPLE2_FIXTURE : "midea-artdirection"
+    try {
+      const res = await fetch(`/api/observatory/fixture?name=${fixture}`)
+      if (!res.ok) return
+      const payload = (await res.json()) as ResearchSpacePayload
+      if (payload?.company?.stockCode !== code) return
+      await saveResearch(payload, true)
+    } catch {
+      // 写不进去就让对比页如实呈现缺失状态，不假装成功
+    }
+  }
+
+  const startCompare = async () => {
     if (compareSelection.length !== 2) return
+    await Promise.all(compareSelection.map((code) => ensureSamplePayload(code)))
     wipeTo(`/research/compare?stocks=${compareSelection.join(",")}`)
   }
   const compareSelectedNames = compareSelection
@@ -767,7 +825,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
               type="button"
               data-library-compare-toggle
               aria-pressed={compareMode}
-              disabled={library.length < 2}
+              disabled={rows.length < 2}
               onClick={() => {
                 if (compareMode) {
                   exitCompareMode()
@@ -776,7 +834,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
                   setCompareSelection([])
                 }
               }}
-              title={library.length < 2 ? copy.compareMaxHint : undefined}
+              title={rows.length < 2 ? copy.compareMaxHint : undefined}
               className={`shrink-0 rounded-full border px-3 py-2 text-[10.5px] transition disabled:cursor-not-allowed disabled:opacity-45 ${
                 compareMode
                   ? "border-[#2F66FF] bg-[#2F66FF] text-white"
@@ -843,7 +901,9 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
             </div>
 
             {rows.map((company) => {
-              const isSample = library.length === 0 && company.stockCode === SAMPLE.stockCode
+              const isSample =
+                library.length === 0 &&
+                (company.stockCode === SAMPLE.stockCode || company.stockCode === SAMPLE2.stockCode)
               const state = statusLabel(company.aiStatus, locale)
               const comparePicked = compareMode && compareSelection.includes(company.stockCode)
               const rowBody = (
@@ -901,7 +961,17 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
               ) : (
                 <WipeLink
                   key={company.stockCode}
-                  href={isSample ? workspaceHref(company.stockCode, "", true) : workspaceHref(company.stockCode, "", false, true)}
+                  href={
+                    isSample
+                      ? workspaceHref(
+                          company.stockCode,
+                          "",
+                          true,
+                          false,
+                          company.stockCode === SAMPLE2.stockCode ? SAMPLE2_FIXTURE : undefined,
+                        )
+                      : workspaceHref(company.stockCode, "", false, true)
+                  }
                   data-research-library-row={company.stockCode}
                   className="group grid min-h-[82px] grid-cols-[2fr_1.2fr_1fr_1fr_1.2fr_1.3fr_48px] border-b border-black/10 last:border-b-0 hover:bg-[#F8FAFF]"
                 >
@@ -947,7 +1017,7 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
                 type="button"
                 data-library-compare-start
                 disabled={compareSelection.length !== 2}
-                onClick={startCompare}
+                onClick={() => void startCompare()}
                 className="rounded-full bg-[#11151B] px-4 py-1.5 text-[10.5px] text-white transition hover:bg-[#2F66FF] disabled:cursor-not-allowed disabled:bg-[#D2D6DC]"
               >
                 {copy.compareStart}
@@ -957,9 +1027,12 @@ export default function ResearchHome({ initialSurface = "start" }: { initialSurf
         )}
 
         {library.length === 0 && (
-          <p className="mt-3 font-mono text-[9px] tracking-[0.08em] text-[#6D7480]">
-            {copy.sampleHint}
-          </p>
+          <div data-coldstart-guide className="mt-3 space-y-1 font-mono text-[9px] leading-4 tracking-[0.08em] text-[#6D7480]">
+            <p>{copy.sampleHint}</p>
+            <p data-coldstart-expect className="text-[#9AA0AA]">
+              预期耗时：打开示例 秒开 ｜ 对比两家示例 秒开 ｜ 研究一家新公司 15–30 秒（会使用实时数据）
+            </p>
+          </div>
         )}
         <p className="mt-4 max-w-[520px] text-[10.5px] leading-5 text-[#6D7480]">{copy.matrixNote}</p>
         {library.length > 0 && (

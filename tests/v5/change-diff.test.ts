@@ -130,6 +130,34 @@ describe("M1 · 结构化变化差分", () => {
     expect(big.items[0].kind).toBe("value")
   })
 
+  it("阈值复核①：% 类按波动性分档（同比增速 1.0pct，水平比率 0.5pct）", () => {
+    const growth = diffPayloads(
+      payload("000333.SZ", [metric({ metricId: "FIN_REVENUE_YOY_YTD", value: 10.0, period: "2026-Q2" })], []),
+      payload("000333.SZ", [metric({ metricId: "FIN_REVENUE_YOY_YTD", value: 10.8, period: "2026-Q2" })], []),
+      NOW,
+    )
+    expect(growth.items).toHaveLength(0) // 0.8pct 未达增速档 1.0pct
+
+    const level = diffPayloads(
+      payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 25.0, period: "2026-Q2" })], []),
+      payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 25.8, period: "2026-Q2" })], []),
+      NOW,
+    )
+    expect(level.items).toHaveLength(1) // 0.8pct 已达水平比率档 0.5pct
+  })
+
+  it("阈值复核②：基数趋零时改报绝对差并标需核验，而不是报出爆炸的相对变化率", () => {
+    const set = diffPayloads(
+      payload("000333.SZ", [metric({ metricId: "FIN_CFO_TO_NET_PROFIT_YTD", value: 0.01, unit: "x", period: "2026-Q2" })], []),
+      payload("000333.SZ", [metric({ metricId: "FIN_CFO_TO_NET_PROFIT_YTD", value: 0.05, unit: "x", period: "2026-Q2" })], []),
+      NOW,
+    )
+    expect(set.items).toHaveLength(1)
+    expect(set.items[0].guarded).toContain("接近零")
+    expect(set.items[0].deltaText).toContain("绝对差")
+    expect(set.items[0].deltaText).not.toContain("400.0%")
+  })
+
   it("跨公司不猜：代码不匹配直接返回空集合", () => {
     const set = diffPayloads(
       payload("000333.SZ", [metric({ metricId: "FIN_GROSS_MARGIN", value: 25.0, period: "2026-Q2" })], []),

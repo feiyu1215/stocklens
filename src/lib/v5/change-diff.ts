@@ -50,30 +50,56 @@ export interface ChangeSet {
   comparedAt: number
 }
 
-// ---- 阈值（v2 草案，可在 UI 层覆盖）----
-/** % 类指标：按百分点（绝对值）判定 */
-export const PCT_POINT_THRESHOLD = 0.5
-/** 其余量纲：按相对变化率判定 */
-export const RELATIVE_THRESHOLD = 0.05
-/** 估值类：派生自价格，需更大的幅度才算变化 */
-export const VALUATION_RELATIVE_THRESHOLD = 0.1
+// ---- 阈值（2026-10-10 复核后收紧，见 §阈值复核）----
+//
+// 复核改动一：**% 类不再一刀切**。
+//   COMPARE_CATALOG 里 unit="%" 的指标包含两种波动性完全不同的东西：
+//   - growth 组（营收/净利润/经营现金流同比）：增速本身波动大，0.5pct 太敏感，容易把噪声当变化；
+//   - profitability 组（毛利率/净利率/ROE）：水平值，季度间变 0.5pct 已经值得看，保持 0.5pct。
+// 复核改动二：**相对变化率必须有"基数护栏"**。
+//   倍数类（经营现金流/净利润）与估值类在**分母趋近 0**（微利、亏损边缘）时相对变化率会爆炸
+//   （0.01 → 0.05 就是 +400%），这在语义上不是"经营变化"，是算术假象。
+//   处理方式：不静默丢弃（那会漏掉真实修正），而是降级为 guarded（标"需核验"）并改报绝对差。
+export const PCT_POINT_THRESHOLD = 0.5 // 水平比率（毛利率/净利率/ROE）
+export const GROWTH_PCT_POINT_THRESHOLD = 1.0 // 同比增速（营收/净利润/现金流同比）
+export const RELATIVE_THRESHOLD = 0.05 // 其余量纲相对变化
+export const VALUATION_RELATIVE_THRESHOLD = 0.1 // 估值派生自价格
+/** 相对变化率的基数下限：|基准值| 低于此值时，相对变化率不可解读 */
+export const RELATIVE_BASELINE_MIN = 0.05
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v)
 
-function formatDelta(metric: MetricResult, next: MetricResult, from: number, to: number): { delta: number; text: string } {
+function formatDelta(
+  metric: MetricResult,
+  group: CompareGroup,
+  from: number,
+  to: number,
+): { delta: number; text: string; guarded?: string } {
   if (metric.unit === "%") {
     const delta = to - from
     return { delta, text: `${delta >= 0 ? "增加" : "减少"} ${Math.abs(delta).toFixed(2)} 个百分点` }
   }
-  // 其余量纲统一报相对变化率，避免跨量纲的"绝对差"不可比
+  const nearZeroBase = Math.abs(from) < RELATIVE_BASELINE_MIN
   const delta = from === 0 ? Number.NaN : (to - from) / Math.abs(from)
-  if (!Number.isFinite(delta)) return { delta: Number.NaN, text: "基数不可计算相对变化" }
+  if (nearZeroBase) {
+    // 基数趋零：改报绝对差，并明确"相对变化率不可解读"
+    return {
+      delta: Number.isFinite(delta) ? delta : Number.NaN,
+      text: `由 ${from.toFixed(2)} 变为 ${to.toFixed(2)}${metric.unit}（绝对差 ${(to - from).toFixed(2)}）`,
+      guarded: `基准值 ${from.toFixed(2)}${metric.unit} 接近零，相对变化率不可解读——已改报绝对差，需人工核验`,
+    }
+  }
+  if (!Number.isFinite(delta)) {
+    return { delta: Number.NaN, text: "基数不可计算相对变化" }
+  }
   return { delta, text: `${delta >= 0 ? "上升" : "下降"} ${(Math.abs(delta) * 100).toFixed(1)}%` }
 }
 
 function passesThreshold(metric: MetricResult, group: CompareGroup, delta: number): boolean {
   if (!Number.isFinite(delta)) return false
-  if (metric.unit === "%") return Math.abs(delta) >= PCT_POINT_THRESHOLD
+  if (metric.unit === "%") {
+    return Math.abs(delta) >= (group === "growth" ? GROWTH_PCT_POINT_THRESHOLD : PCT_POINT_THRESHOLD)
+  }
   return Math.abs(delta) >= (group === "valuation" ? VALUATION_RELATIVE_THRESHOLD : RELATIVE_THRESHOLD)
 }
 
@@ -167,15 +193,17 @@ export function diffPayloads(
       continue
     }
 
-    // 同口径且数值变了：先过阈值，再过解释护栏
-    const { delta, text } = formatDelta(before, after, from, to)
-    if (!passesThreshold(before, def.group, delta)) continue
+    // 同口径且数值变了：先过阈值，再过解释护栏；基数趋零时 delta 为 NaN 也要出（不可解读 ≠ 无变化）
+    const { delta, text, guarded: baseGuarded } = formatDelta(before, def.group, from, to)
+    const nearZero = Math.abs(from) < RELATIVE_BASELINE_MIN && after.unit !== "%"
+    if (!nearZero && !passesThreshold(before, def.group, delta)) continue
 
     const flags = [...(after.interpretationFlags ?? []), ...(before.interpretationFlags ?? [])]
     const guarded =
-      flags.length > 0
+      baseGuarded ??
+      (flags.length > 0
         ? `该指标带解释护栏（${[...new Set(flags)].join(" / ")}），变化幅度不可直接解读为经营变化`
-        : undefined
+        : undefined)
 
     items.push({
       kind: "value",

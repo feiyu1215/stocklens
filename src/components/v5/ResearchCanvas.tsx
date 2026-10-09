@@ -1132,7 +1132,10 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
    */
   const changePanelRef = useRef<HTMLDivElement | null>(null)
   const [changePanelHeight, setChangePanelHeight] = useState(0)
-  const changePanelVisible = !!payload && !!shownChangeSet && shownChangeSet.items.length > 0
+  /** 收起 = 面板整体不渲染（2026-10-10 用户反馈：折起来的白条照样遮挡画布） */
+  const changePanelVisible =
+    !!payload && !!shownChangeSet && shownChangeSet.items.length > 0 && changeOpen
+  const hasChangeItems = !!payload && !!shownChangeSet && shownChangeSet.items.length > 0
   useEffect(() => {
     const el = changePanelRef.current
     if (!changePanelVisible || !el) {
@@ -3276,6 +3279,25 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
                 </button>
               )
             )}
+            {hasChangeItems && (
+              <button
+                type="button"
+                data-ui
+                data-change-toggle
+                aria-pressed={changeOpen}
+                onClick={() => setChangeOpen((v) => !v)}
+                className="transition hover:opacity-80"
+                style={{
+                  minHeight: 36,
+                  cursor: "pointer",
+                  color: changeOpen ? C.blue : changeOrigin === "stored" ? C.amber : undefined,
+                }}
+                title="上次更新发现的变化清单（收起后从这里再展开）"
+              >
+                变化 {shownChangeSet.items.length}
+                {!changeOpen && changeOrigin === "stored" ? " · 待核验" : ""}
+              </button>
+            )}
             {!isRecordedSample && versions.length > 0 && (
               <button
                 type="button"
@@ -3490,8 +3512,10 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
       )}
 
       {/* ---- 变化清单（M1 · 2026-10-10）----
-          变化有分类、有依据、有下一步动作：每条都能定位到公司 / 指标 / 报告期 / 证据卡。 */}
-      {payload && shownChangeSet && shownChangeSet.items.length > 0 && (
+          变化有分类、有依据、有下一步动作：每条都能定位到公司 / 指标 / 报告期 / 证据卡。
+          2026-10-10 用户反馈：收起后 600px 白条仍横在画布上遮挡内容 →
+          收起 = 面板整体离开画布，入口收进顶栏「变化 N」按钮（与 判断/历史 同一模式）。 */}
+      {changePanelVisible && (
         <div
           ref={changePanelRef}
           data-ui
@@ -3514,12 +3538,12 @@ export default function ResearchCanvas({ workspaceLab = false }: { workspaceLab?
             </div>
             <button
               type="button"
-              data-change-toggle
-              onClick={() => setChangeOpen((v) => !v)}
+              data-change-collapse
+              onClick={() => setChangeOpen(false)}
               className="shrink-0 font-mono text-[10px] transition hover:opacity-70"
               style={{ color: C.secondary, minHeight: 28 }}
             >
-              {changeOpen ? "收起" : "展开"}
+              收起
             </button>
           </div>
 
